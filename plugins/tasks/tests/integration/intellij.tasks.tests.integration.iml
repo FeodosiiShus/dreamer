@@ -36,7 +36,6 @@
     <orderEntry type="module" module-name="intellij.tasks.jira" scope="TEST" />
     <orderEntry type="module" module-name="intellij.platform.testFramework" scope="TEST" />
     <orderEntry type="module" module-name="intellij.vcs.git.backend" scope="TEST" />
-    <orderEntry type="module" module-name="intellij.vcs.hg" scope="TEST" />
     <orderEntry type="module" module-name="intellij.platform.vcs.testFramework" scope="TEST" />
     <orderEntry type="module" module-name="intellij.platform.tasks" scope="TEST" />
     <orderEntry type="module" module-name="intellij.platform.tasks.impl" scope="TEST" />
@@ -60,7 +59,6 @@
     <orderEntry type="module" module-name="intellij.platform.concurrency" scope="TEST" />
     <orderEntry type="module" module-name="intellij.platform.lang.core" scope="TEST" />
     <orderEntry type="module" module-name="intellij.vcs.git.testFramework" scope="TEST" />
-    <orderEntry type="module" module-name="intellij.vcs.hg.tests" scope="TEST" />
     <orderEntry type="module" module-name="intellij.platform.credentialStore.impl" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.platform.monolith.main" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.idea.community.customization" scope="RUNTIME" />

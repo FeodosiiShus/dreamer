@@ -7,9 +7,6 @@ dev_dist_plugin(
         # do not sort,
         "intellij.idea.customization.base",
         "intellij.idea.customization.backend",
-        "intellij.platform.ide.nonModalWelcomeScreen",
-        "intellij.platform.ide.nonModalWelcomeScreen.frontend",
-        "intellij.platform.ide.nonModalWelcomeScreen.backend",
     ],
     main_module = "intellij.idea.customization.plugin",
 )

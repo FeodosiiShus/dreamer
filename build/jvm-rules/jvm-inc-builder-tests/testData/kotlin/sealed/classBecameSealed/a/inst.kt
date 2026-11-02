@@ -1,1 +1,0 @@
-fun mk(): Base = Base()

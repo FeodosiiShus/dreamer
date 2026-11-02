@@ -19,13 +19,8 @@
   <xi:include href="/META-INF/intellij.moduleSets.rd.common.xml"/>
   <!-- region additional -->
   <content namespace="jetbrains">
-    <module name="intellij.platform.ide.newUiOnboarding"/>
-    <module name="intellij.ide.startup.importSettings"/>
     <module name="intellij.platform.remoteServers.impl"/>
     <module name="intellij.pycharm.community.ide.customization" loading="embedded"/>
-  </content>
-  <content>
-    <module name="intellij.libraries.sqlite"/>
   </content>
   <!-- endregion -->
 </idea-plugin>

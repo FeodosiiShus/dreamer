@@ -1,1 +1,0 @@
-operator fun V.plus(o: V): V = o

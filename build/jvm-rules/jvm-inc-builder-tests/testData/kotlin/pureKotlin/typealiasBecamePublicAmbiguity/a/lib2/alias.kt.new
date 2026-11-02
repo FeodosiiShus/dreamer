@@ -1,3 +1,0 @@
-package lib2
-
-typealias Name = Int

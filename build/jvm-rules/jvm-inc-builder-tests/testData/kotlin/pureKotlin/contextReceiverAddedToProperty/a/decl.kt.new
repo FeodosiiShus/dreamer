@@ -1,5 +1,0 @@
-class Ctx
-
-context(c: Ctx)
-val ok: Int
-    get() = 1

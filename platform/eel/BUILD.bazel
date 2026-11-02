@@ -93,7 +93,6 @@ jvm_library(
         "//libraries/kotlinc/kotlin-compiler-common:libraries-kotlinc-kotlin-compiler-common",
         "//libraries/kotlinc/symbol-light-classes:libraries-kotlinc-symbol-light-classes",
         "//libraries/kotlinx/coroutines/core",
-        "//plugins/copyright",
         "//java/openapi:java",
         "//java/java-impl:impl",
         "//java/java-psi-api:psi",

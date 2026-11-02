@@ -16,8 +16,6 @@ jvm_library(
     runtime_deps = [
         # do not sort,
         "//python/ide/impl",
-        "//python/ide/implTraining/intellij.pycharm.community.ide.implTraining:pycharm-community-ide-implTraining",
-        "//platform/whatsNew",
         "//platform/platform-impl:ide-impl",
         "//python/ide/customization.backend",
         "//python/ide/customization.scratch",

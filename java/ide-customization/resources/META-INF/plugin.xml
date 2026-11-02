@@ -20,7 +20,6 @@
     <module name="intellij.platform.core"/>
     <module name="intellij.platform.core.ui"/>
     <module name="intellij.platform.ide.impl"/>
-    <module name="intellij.platform.ide.nonModalWelcomeScreen"/>
     <module name="intellij.platform.lang"/>
     <module name="intellij.platform.lang.core"/>
     <module name="intellij.platform.project"/>
@@ -30,7 +29,6 @@
   </dependencies>
 
   <content namespace="jetbrains">
-    <module name="intellij.java.ide.customization.training"/>
     <module name="intellij.java.ide.customization.backend"/>
   </content>
 
@@ -40,17 +38,5 @@
     <applicationService serviceInterface="com.intellij.lang.IdeLanguageCustomization"
                         serviceImplementation="com.intellij.ide.customization.java.JavaIdeLanguageCustomization"
                         overrides="true"/>
-
-    <platform.ide.welcomeScreenContentProvider implementation="com.intellij.ide.customization.java.welcomeScreen.IdeaWelcomeRightTabContentProvider"/>
-    <platform.ide.welcomeScreenFeatureFrontend implementation="com.intellij.ide.customization.java.welcomeScreen.IdeaTerminalFeatureFrontend"/>
   </extensions>
-
-  <actions resource-bundle="messages.NonModalWelcomeScreenBundle">
-    <group id="NonModalWelcomeScreen.LeftTabActions.New" overrides="true" searchable="false" icon="AllIcons.General.Add" popup="true">
-      <reference ref="NonModalWelcomeNewProjectGroup"/>
-      <separator/>
-      <reference ref="WelcomeNewEmptyFile"/>
-      <reference ref="WelcomeMarkdownNewFile"/>
-    </group>
-  </actions>
 </idea-plugin>

@@ -1,1 +1,0 @@
-fun use(): Int = util()

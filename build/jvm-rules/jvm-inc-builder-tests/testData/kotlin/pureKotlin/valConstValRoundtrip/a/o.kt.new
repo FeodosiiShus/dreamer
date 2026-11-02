@@ -1,3 +1,0 @@
-object O {
-    const val K: Int = 1
-}

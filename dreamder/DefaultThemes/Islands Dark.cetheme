@@ -1,0 +1,126 @@
+{
+  "name": "Islands Dark",
+  "displayName": "Islands Dark",
+  "description": "IntelliJ IDEA Islands Dark theme.",
+  "author": "Dreamder",
+  "version": "0.0.1",
+  "license": "MIT",
+  "distributionURL": "https://github.com/FeodosiiShus/dreamer",
+  "type": "dark",
+  "editor": {
+    "background": {
+      "color": "#191A1C"
+    },
+    "selection": {
+      "color": "#214283"
+    },
+    "insertionPoint": {
+      "color": "#CED0D6"
+    },
+    "lineHighlight": {
+      "color": "#1F2024"
+    },
+    "invisibles": {
+      "color": "#6F737A"
+    },
+    "text": {
+      "color": "#BCBEC4"
+    },
+    "comments": {
+      "color": "#7A7E85"
+    },
+    "strings": {
+      "color": "#6AAB73"
+    },
+    "characters": {
+      "color": "#6AAB73"
+    },
+    "numbers": {
+      "color": "#2AACB8"
+    },
+    "keywords": {
+      "color": "#CF8E6D",
+      "bold": false
+    },
+    "attributes": {
+      "color": "#B3AE60"
+    },
+    "types": {
+      "color": "#BCBEC4"
+    },
+    "variables": {
+      "color": "#C77DBB"
+    },
+    "commands": {
+      "color": "#56A8F5"
+    },
+    "values": {
+      "color": "#C77DBB"
+    }
+  },
+  "terminal": {
+    "background": {
+      "color": "#191A1C"
+    },
+    "selection": {
+      "color": "#214283"
+    },
+    "cursor": {
+      "color": "#CED0D6"
+    },
+    "text": {
+      "color": "#BCBEC4"
+    },
+    "boldText": {
+      "color": "#DFE1E5"
+    },
+    "black": {
+      "color": "#000000"
+    },
+    "red": {
+      "color": "#F0524F"
+    },
+    "green": {
+      "color": "#5C962C"
+    },
+    "yellow": {
+      "color": "#A68A0D"
+    },
+    "blue": {
+      "color": "#3993D4"
+    },
+    "magenta": {
+      "color": "#A771BF"
+    },
+    "cyan": {
+      "color": "#00A3A3"
+    },
+    "white": {
+      "color": "#808080"
+    },
+    "brightBlack": {
+      "color": "#595959"
+    },
+    "brightRed": {
+      "color": "#FF4050"
+    },
+    "brightGreen": {
+      "color": "#4FC414"
+    },
+    "brightYellow": {
+      "color": "#E5BF00"
+    },
+    "brightBlue": {
+      "color": "#1FB0FF"
+    },
+    "brightMagenta": {
+      "color": "#ED7EED"
+    },
+    "brightCyan": {
+      "color": "#00E5E5"
+    },
+    "brightWhite": {
+      "color": "#FFFFFF"
+    }
+  }
+}

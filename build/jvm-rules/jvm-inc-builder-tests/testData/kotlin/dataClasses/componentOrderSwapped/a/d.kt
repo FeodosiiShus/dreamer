@@ -1,1 +1,0 @@
-data class D(val a: String, val b: String)

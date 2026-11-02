@@ -9,7 +9,6 @@ dev_dist_plugin(
         "intellij.maven.model",
         "intellij.maven",
         "intellij.maven.proofreading",
-        "intellij.maven.performanceTesting",
         "intellij.maven.groovy",
         "intellij.maven.completion",
         "intellij.maven.delegation.junit",
@@ -52,7 +51,6 @@ dev_dist_complex_plugin(
     independent_artifacts = [
         "//plugins/maven/model:model_content_module_jar",
         "//plugins/maven/proofreading:proofreading_content_module_jar",
-        "//plugins/maven/performanceTesting:performanceTesting_content_module_jar",
         "//plugins/maven/groovy:groovy_content_module_jar",
         "//plugins/maven/completion:completion_content_module_jar",
         "//plugins/maven/delegation/junit:junit_content_module_jar",

@@ -16,7 +16,6 @@ private const val BASE_URL = "https://github.com/JetBrains/intellij-community/bl
 enum class Module(val moduleName: String, val src: String, val stripPackage: String?) {
 
   INTERNAL("intellij.platform.ide.internal", "platform/platform-impl/internal", stripPackage = null),
-  DEVKIT_UI_DSL("intellij.devkit.uiDsl", "plugins/devkit/intellij.devkit.uiDsl", stripPackage = "com.intellij.devkit.uiDsl"),
 }
 
 @ApiStatus.Internal

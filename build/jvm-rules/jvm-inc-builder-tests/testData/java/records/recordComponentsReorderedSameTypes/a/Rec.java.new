@@ -1,2 +1,0 @@
-public record Rec(int height, int width) {
-}

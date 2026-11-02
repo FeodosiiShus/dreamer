@@ -30,9 +30,6 @@
             "module": "intellij.platform.ide.impl.jcef"
         },
         {
-            "module": "intellij.platform.ide.newUiOnboarding.jcef"
-        },
-        {
             "module": "intellij.jcef.frontend"
         },
         {

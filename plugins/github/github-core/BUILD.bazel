@@ -18,7 +18,6 @@ dev_dist_plugin(
     content_modules = [
         # do not sort,
         "intellij.vcs.github.git",
-        "intellij.vcs.github.ultimatePromo",
         "intellij.vcs.github.tracker",
         "intellij.vcs.github.json",
     ],

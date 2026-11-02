@@ -57,9 +57,6 @@
             "module": "intellij.maven.proofreading"
         },
         {
-            "module": "intellij.maven.performanceTesting"
-        },
-        {
             "module": "intellij.maven.groovy"
         },
         {

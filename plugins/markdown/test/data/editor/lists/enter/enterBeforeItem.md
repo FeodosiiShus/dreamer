@@ -1,1 +1,0 @@
-<caret>* list item

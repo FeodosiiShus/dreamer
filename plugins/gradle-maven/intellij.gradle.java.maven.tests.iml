@@ -44,7 +44,6 @@
     <orderEntry type="module" module-name="intellij.properties" scope="TEST" />
     <orderEntry type="module" module-name="intellij.properties.backend" scope="TEST" />
     <orderEntry type="module" module-name="intellij.properties.backend.psi" scope="TEST" />
-    <orderEntry type="module" module-name="intellij.properties.copyright" scope="TEST" />
     <orderEntry type="module" module-name="intellij.properties.psi" scope="TEST" />
     <orderEntry type="module" module-name="intellij.platform.testFramework" scope="TEST" />
     <orderEntry type="module" module-name="intellij.gradle.java.maven" scope="TEST" />

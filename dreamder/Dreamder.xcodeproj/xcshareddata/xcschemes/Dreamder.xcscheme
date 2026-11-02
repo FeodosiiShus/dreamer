@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Scheme
+   LastUpgradeVersion = "2610"
+   version = "1.7">
+   <BuildAction
+      parallelizeBuildables = "YES"
+      buildImplicitDependencies = "YES">
+      <BuildActionEntries>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "B658FB2B27DA9E0F00EA4DBD"
+               BuildableName = "Dreamder.app"
+               BlueprintName = "Dreamder"
+               ReferencedContainer = "container:Dreamder.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+      </BuildActionEntries>
+   </BuildAction>
+   <TestAction
+      buildConfiguration = "Debug"
+      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      shouldUseLaunchSchemeArgsEnv = "YES">
+      <TestPlans>
+         <TestPlanReference
+            reference = "container:DreamderTestPlan.xctestplan"
+            default = "YES">
+         </TestPlanReference>
+      </TestPlans>
+      <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "B658FB3C27DA9E1000EA4DBD"
+               BuildableName = "DreamderTests.xctest"
+               BlueprintName = "DreamderTests"
+               ReferencedContainer = "container:Dreamder.xcodeproj">
+            </BuildableReference>
+            <SkippedTests>
+               <Test
+                  Identifier = "DreamderUIUnitTests">
+               </Test>
+               <Test
+                  Identifier = "DreamderUIUnitTests/testBranchPickerDark()">
+               </Test>
+               <Test
+                  Identifier = "DreamderUIUnitTests/testBranchPickerLight()">
+               </Test>
+               <Test
+                  Identifier = "DreamderUIUnitTests/testEffectViewDark()">
+               </Test>
+               <Test
+                  Identifier = "DreamderUIUnitTests/testEffectViewLight()">
+               </Test>
+               <Test
+                  Identifier = "DreamderUIUnitTests/testFontPickerViewDark()">
+               </Test>
+               <Test
+                  Identifier = "DreamderUIUnitTests/testFontPickerViewLight()">
+               </Test>
+               <Test
+                  Identifier = "DreamderUIUnitTests/testHelpButtonDark()">
+               </Test>
+               <Test
+                  Identifier = "DreamderUIUnitTests/testHelpButtonLight()">
+               </Test>
+               <Test
+                  Identifier = "DreamderUIUnitTests/testSegmentedControlDark()">
+               </Test>
+               <Test
+                  Identifier = "DreamderUIUnitTests/testSegmentedControlLight()">
+               </Test>
+               <Test
+                  Identifier = "DreamderUIUnitTests/testSegmentedControlProminentDark()">
+               </Test>
+               <Test
+                  Identifier = "DreamderUIUnitTests/testSegmentedControlProminentLight()">
+               </Test>
+               <Test
+                  Identifier = "WelcomeModuleUnitTests">
+               </Test>
+               <Test
+                  Identifier = "WelcomeModuleUnitTests/testRecentJSFileDarkSnapshot()">
+               </Test>
+               <Test
+                  Identifier = "WelcomeModuleUnitTests/testRecentJSFileLightSnapshot()">
+               </Test>
+               <Test
+                  Identifier = "WelcomeModuleUnitTests/testRecentProjectItemDarkSnapshot()">
+               </Test>
+               <Test
+                  Identifier = "WelcomeModuleUnitTests/testRecentProjectItemLightSnapshot()">
+               </Test>
+               <Test
+                  Identifier = "WelcomeModuleUnitTests/testWelcomeActionViewDarkSnapshot()">
+               </Test>
+               <Test
+                  Identifier = "WelcomeModuleUnitTests/testWelcomeActionViewLightSnapshot()">
+               </Test>
+            </SkippedTests>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "B658FB4627DA9E1000EA4DBD"
+               BuildableName = "DreamderUITests.xctest"
+               BlueprintName = "DreamderUITests"
+               ReferencedContainer = "container:Dreamder.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+      </Testables>
+   </TestAction>
+   <LaunchAction
+      buildConfiguration = "Debug"
+      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      launchStyle = "0"
+      useCustomWorkingDirectory = "NO"
+      ignoresPersistentStateOnLaunch = "NO"
+      debugDocumentVersioning = "YES"
+      debugServiceExtension = "internal"
+      allowLocationSimulation = "YES">
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "B658FB2B27DA9E0F00EA4DBD"
+            BuildableName = "Dreamder.app"
+            BlueprintName = "Dreamder"
+            ReferencedContainer = "container:Dreamder.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </LaunchAction>
+   <ProfileAction
+      buildConfiguration = "Release"
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      savedToolIdentifier = ""
+      useCustomWorkingDirectory = "NO"
+      debugDocumentVersioning = "YES">
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "B658FB2B27DA9E0F00EA4DBD"
+            BuildableName = "Dreamder.app"
+            BlueprintName = "Dreamder"
+            ReferencedContainer = "container:Dreamder.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </ProfileAction>
+   <AnalyzeAction
+      buildConfiguration = "Debug">
+   </AnalyzeAction>
+   <ArchiveAction
+      buildConfiguration = "Release"
+      revealArchiveInOrganizer = "YES">
+   </ArchiveAction>
+</Scheme>

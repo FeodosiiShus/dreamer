@@ -15,7 +15,6 @@ jps_test(
 dev_dist_plugin(
     content_modules = [
         # do not sort,
-        "intellij.java.ide.customization.training",
         "intellij.java.ide.customization.backend",
     ],
     descriptor = "resources/META-INF/plugin.xml",
@@ -25,7 +24,6 @@ dev_dist_plugin(
     main_module = "intellij.java.ide.customization",
     mode_refused_content_modules = {
         "frontend": [
-            "intellij.java.ide.customization.training",
             "intellij.java.ide.customization.backend",
         ],
     },
@@ -61,7 +59,6 @@ jvm_library(
         "//platform/platform-impl:ide-impl",
         "//platform/lang-core",
         "//libraries/kotlinx/collections-immutable:libraries-kotlinx-collections-immutable",
-        "//platform/non-modal-welcome-screen",
         "//platform/project/shared:project",
         "//platform/welcome-screen",
         "//platform/util:util-ui",
@@ -77,7 +74,6 @@ ij_plugin(
     descriptor_module = ":ide-customization",
     content_modules = [
         # do not sort,
-        "//java/ide-customization/training",
         "//java/ide-customization/backend",
     ],
     visibility = ["//visibility:public"],

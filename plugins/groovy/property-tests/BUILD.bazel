@@ -77,7 +77,6 @@ jvm_library(
         "//java/execution/openapi:java-execution",
         "//java/idea-ui:ui",
         "//java/java-impl:impl",
-        "//plugins/copyright",
         "//plugins/IntelliLang:langInjection",
         "//libraries/guava",
         "//java/testFramework",

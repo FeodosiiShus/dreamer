@@ -1,2 +1,0 @@
-val Int.ext: Int
-    get() = this

@@ -18,7 +18,6 @@
     <module name="intellij.groovy.duplicatesDetection"/>
     <module name="intellij.groovy.git"/>
     <module name="intellij.groovy.ant"/>
-    <module name="intellij.groovy.copyright"/>
     <module name="intellij.groovy.byteCodeViewer"/>
     <module name="intellij.groovy.langInjection"/>
     <module name="intellij.groovy.structuralSearch"/>

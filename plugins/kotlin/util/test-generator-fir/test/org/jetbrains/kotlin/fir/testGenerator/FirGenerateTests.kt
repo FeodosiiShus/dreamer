@@ -118,7 +118,6 @@ import org.jetbrains.kotlin.idea.fir.search.AbstractKotlinBuiltInsResolveScopeEn
 import org.jetbrains.kotlin.idea.fir.search.AbstractScopeEnlargerTest
 import org.jetbrains.kotlin.idea.fir.shortenRefs.AbstractFirShortenRefsTest
 import org.jetbrains.kotlin.idea.highlighter.AbstractUsageHighlightingTest
-import org.jetbrains.kotlin.idea.k2.copyright.AbstractFirUpdateKotlinCopyrightTest
 import org.jetbrains.kotlin.idea.k2.refactoring.rename.AbstractFirMultiModuleRenameTest
 import org.jetbrains.kotlin.idea.k2.refactoring.rename.AbstractFirRenameTest
 import org.jetbrains.kotlin.idea.k2.refactoring.rename.AbstractK2InplaceRenameConflictTest
@@ -812,12 +811,6 @@ private fun assembleWorkspace(): TWorkspace = workspace() {
 
         testClass<AbstractFirLegacyUastValuesTest> {
             model("")
-        }
-    }
-
-    testGroup("copyright/fir-tests", testDataPath = "../../copyright/tests/testData", category = CODE_INSIGHT) {
-        testClass<AbstractFirUpdateKotlinCopyrightTest> {
-            model("update", pattern = KT_OR_KTS, testMethodName = "doTest")
         }
     }
 

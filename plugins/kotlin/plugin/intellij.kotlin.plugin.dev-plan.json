@@ -60,9 +60,6 @@
             "module": "intellij.kotlin.scripting"
         },
         {
-            "module": "intellij.kotlin.copyright"
-        },
-        {
             "module": "intellij.kotlin.coverage"
         },
         {
@@ -145,9 +142,6 @@
         },
         {
             "module": "intellij.kotlin.projectWizard.compose"
-        },
-        {
-            "module": "intellij.kotlin.featuresTrainer"
         },
         {
             "module": "intellij.kotlin.jvm.decompiler"
@@ -292,9 +286,6 @@
         },
         {
             "module": "intellij.kotlin.internal"
-        },
-        {
-            "module": "intellij.kotlin.performanceExtendedPlugin"
         },
         {
             "module": "intellij.kotlin.base.analysis"

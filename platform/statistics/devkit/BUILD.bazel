@@ -117,7 +117,6 @@ jvm_library(
         "//platform/execution",
         "//platform/consoleView",
         "//platform/consoleView/impl",
-        "//plugins/dev/intellij.dev:dev",
         "//libraries/junit4",
         "//platform/scratch/plugin",
     ],

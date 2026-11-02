@@ -1,3 +1,0 @@
-@Ann
-public class UseAnn {
-}

@@ -41,7 +41,6 @@
 
   <content namespace="jetbrains">
     <module name="intellij.platform.images.jcef" loading="optional"/>
-    <module name="intellij.platform.images.copyright"/>
     <module name="intellij.platform.images.xdebugger"/>
   </content>
 

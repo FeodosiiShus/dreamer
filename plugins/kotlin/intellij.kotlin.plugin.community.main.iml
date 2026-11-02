@@ -128,7 +128,6 @@
     <orderEntry type="module" module-name="intellij.kotlin.grazie" exported="" />
     <orderEntry type="module" module-name="intellij.kotlin.completion.ml" exported="" />
     <orderEntry type="module" module-name="intellij.kotlin.gradle.codeInsight.groovy" exported="" />
-    <orderEntry type="module" module-name="intellij.kotlin.copyright" exported="" />
     <orderEntry type="module" module-name="intellij.kotlin.spellchecker" exported="" />
     <orderEntry type="module" module-name="intellij.kotlin.jvm.decompiler" exported="" />
     <orderEntry type="module" module-name="intellij.kotlin.plugin.updater" exported="" />
@@ -140,7 +139,6 @@
     <orderEntry type="module" module-name="intellij.kotlin.highlighting" exported="" />
     <orderEntry type="module" module-name="intellij.kotlin.codeInsight.utils" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.kotlin.codeInsight.postfixTemplates" exported="" />
-    <orderEntry type="module" module-name="intellij.kotlin.featuresTrainer" exported="" />
     <orderEntry type="module" module-name="intellij.libraries.kotlinc.kotlin.jps.common" exported="" />
     <orderEntry type="module" module-name="intellij.kotlin.runConfigurations.jvm" exported="" />
     <orderEntry type="module" module-name="intellij.kotlin.compilerPlugins.lombok.gradle" exported="" />
@@ -173,7 +171,6 @@
     <orderEntry type="module" module-name="intellij.kotlin.searching.base" exported="" />
     <orderEntry type="module" module-name="intellij.kotlin.refactorings" exported="" />
     <orderEntry type="module" module-name="intellij.kotlin.refactorings.base" exported="" />
-    <orderEntry type="module" module-name="intellij.kotlin.performanceExtendedPlugin" exported="" />
     <orderEntry type="module" module-name="intellij.kotlin.compilerPlugins.support.bundled" exported="" />
     <orderEntry type="module" module-name="intellij.kotlin.onboarding" exported="" />
     <orderEntry type="module" module-name="intellij.kotlin.onboarding.gradle" scope="RUNTIME" />

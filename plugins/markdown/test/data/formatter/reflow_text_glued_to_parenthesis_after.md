@@ -1,1 +1,0 @@
-The search returned no matches for word(s).

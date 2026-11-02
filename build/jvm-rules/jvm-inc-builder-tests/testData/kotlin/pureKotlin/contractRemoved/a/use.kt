@@ -1,1 +1,0 @@
-fun u(x: Any?): Int = if (isStr(x)) x.length else 0

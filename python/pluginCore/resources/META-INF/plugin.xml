@@ -118,8 +118,6 @@ The Python plug-in provides smart editing for Python scripts. The feature set of
     <module name="intellij.commandInterface"/> <!-- used by Django in Prof, by some plugins in community -->
     <module name="intellij.python.community.plugin.impl"/><!--Python for any IDE except PyCharm -->
     <module name="intellij.python.community.plugin.java"/><!-- Python for Java IDE -->
-    <module name="intellij.python.copyright"/>
-    <module name="intellij.python.featuresTrainer"/>
     <module name="intellij.python.grazie"/>
     <module name="intellij.python.langInjection"/>
     <module name="intellij.python.markdown"/>

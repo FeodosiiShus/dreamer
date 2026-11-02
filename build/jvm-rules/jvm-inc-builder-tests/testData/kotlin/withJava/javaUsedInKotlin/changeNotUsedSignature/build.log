@@ -1,9 +1,0 @@
-================ Step #1 =================
-Cleaning output files:
-  JavaClass.class
-End of files
-Compiling files:
-  kotlin/withJava/javaUsedInKotlin/changeNotUsedSignature/a/JavaClass.java
-End of files
-------------------------------------------
-Exit code: OK

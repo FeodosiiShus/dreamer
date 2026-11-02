@@ -1,1 +1,0 @@
-interface MyMultiple<caret>EPsInterface

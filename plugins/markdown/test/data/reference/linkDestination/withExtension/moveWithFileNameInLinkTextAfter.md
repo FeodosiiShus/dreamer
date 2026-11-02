@@ -1,1 +1,0 @@
-[moved_stub](moved/moved_stub.md)

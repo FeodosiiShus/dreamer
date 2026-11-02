@@ -1,7 +1,0 @@
-<!-- BUILD_USING_BAZEL_MARKER -->
-<idea-plugin>
-  <id>my.plugin</id>
-  <content>
-    <module name="intellij.module"/>
-  </content>
-</idea-plugin>

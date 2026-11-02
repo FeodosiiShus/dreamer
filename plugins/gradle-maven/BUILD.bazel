@@ -119,7 +119,6 @@ jvm_library(
         "//plugins/properties/properties-common:properties",
         "//plugins/properties:properties-backend",
         "//plugins/properties/properties-psi-impl:backend-psi",
-        "//plugins/properties/copyright",
         "//plugins/properties/properties-psi-api:psi",
         "//platform/testFramework",
         "//plugins/gradle-maven:gradle-java-maven",

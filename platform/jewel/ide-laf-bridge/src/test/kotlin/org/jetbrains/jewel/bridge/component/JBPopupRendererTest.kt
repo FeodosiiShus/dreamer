@@ -91,8 +91,7 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * Contract and initial-bounds unit tests for [JBPopupRenderer]. Full interactive end-to-end tests that build a real
- * `JBPopup` in a running IDE live in the `jewel-bridge-e2e-tests` lane.
+ * Contract and initial-bounds unit tests for [JBPopupRenderer].
  */
 @Suppress("LargeClass")
 public class JBPopupRendererTest {

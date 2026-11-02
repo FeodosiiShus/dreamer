@@ -78,12 +78,10 @@ class MPSProperties : JetBrainsProductProperties() {
             "intellij.java.plugin",
             "intellij.java.ide.customization",
             "intellij.json",
-            "intellij.copyright",
             "intellij.mcpserver.plugin",
             "intellij.properties",
             "intellij.terminal",
             "intellij.vcs.git",
-            "intellij.vcs.svn",
             "intellij.vcs.github",
             "intellij.vcs.git.commit.modal",
             //"intellij.ant",
@@ -194,8 +192,6 @@ class MPSProperties : JetBrainsProductProperties() {
         moduleSet(CommunityModuleSets.composeRuntime())
         moduleSet(CommunityModuleSets.platformResourceDefaults())
 
-        module("intellij.platform.whatsNew")
-        module("intellij.ide.startup.importSettings")
         // the sqlite JDBC driver `importSettings` needs; private, so plugins bundle their own copy of it
         privateModule("intellij.libraries.sqlite")
 
@@ -216,10 +212,6 @@ class MPSProperties : JetBrainsProductProperties() {
         module("intellij.idea.customization.base")
 
         embeddedModule("intellij.idea.community.ide.customization")
-
-      module("intellij.platform.ide.nonModalWelcomeScreen")
-      module("intellij.platform.ide.nonModalWelcomeScreen.frontend")
-      module("intellij.platform.ide.nonModalWelcomeScreen.backend")
     }
 
     override fun getSystemSelector(appInfo: ApplicationInfoProperties, buildNumber: String): String {

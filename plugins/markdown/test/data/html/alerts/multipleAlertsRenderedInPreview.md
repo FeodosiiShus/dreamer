@@ -1,5 +1,0 @@
-> [!NOTE]
-> First
-
-> [!WARNING]
-> Second

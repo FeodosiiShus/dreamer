@@ -1,5 +1,0 @@
-package ppp;
-
-public interface Inner {
-  void foo();
-}

@@ -10,9 +10,6 @@
   <content namespace="jetbrains">
     <module name="intellij.idea.customization.base" loading="required"/>
     <module name="intellij.idea.customization.backend"/>
-    <module name="intellij.platform.ide.nonModalWelcomeScreen"/>
-    <module name="intellij.platform.ide.nonModalWelcomeScreen.frontend"/>
-    <module name="intellij.platform.ide.nonModalWelcomeScreen.backend"/>
     <!-- ultimate-homed modules, skipped in community-based dists -->
     <module name="intellij.idea.customization.ultimate"/>
     <module name="intellij.idea.ultimate.customizationTrial"/>

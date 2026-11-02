@@ -21,7 +21,6 @@ import com.intellij.openapi.module.JavaModuleType
 import com.intellij.openapi.module.ModifiableModuleModel
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleManager
-import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ex.ProjectManagerEx
 import com.intellij.openapi.project.modules
@@ -63,7 +62,6 @@ import com.intellij.testFramework.junit5.fixture.projectFixture
 import com.intellij.util.indexing.FileBasedIndex
 import com.intellij.util.io.copyRecursively
 import com.intellij.util.io.createDirectories
-import com.maddyhome.idea.copyright.actions.UpdateCopyrightProcessor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -191,7 +189,7 @@ class BuildersGeneratorTest {
       run {
         val tempProjectPath = Path.of(tempProject.basePath!!)
         Files.createDirectories(tempProjectPath.resolve(".idea"))
-        for (subpath in listOf(".idea/copyright", ".idea/scopes", ".idea/codeStyleSettings.xml")) {
+        for (subpath in listOf(".idea/scopes", ".idea/codeStyleSettings.xml")) {
           thisProject.resolve(subpath).copyRecursively(tempProjectPath.resolve(subpath))
         }
       }
@@ -312,9 +310,6 @@ class BuildersGeneratorTest {
     val psiFile = readAction {
       PsiManager.getInstance(tempProject).findFile(virtualFile)!!
     }
-    val module = readAction {
-      ModuleUtilCore.findModuleForPsiElement(psiFile)
-    }
     val scope = AnalysisScope(psiFile)
 
     globalContext.codeCleanup(
@@ -340,8 +335,6 @@ class BuildersGeneratorTest {
       finally {
         codeInsightSettings.ENABLE_SECOND_REFORMAT = false
       }
-
-      UpdateCopyrightProcessor(tempProject, module, psiFile).run()
     }
   }
 

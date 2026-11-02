@@ -1,3 +1,0 @@
-fun a(): String = "abc"
-
-fun c(): String = b()

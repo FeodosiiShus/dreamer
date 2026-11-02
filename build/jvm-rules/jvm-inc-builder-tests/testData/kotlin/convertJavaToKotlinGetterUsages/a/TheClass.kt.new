@@ -1,3 +1,0 @@
-open class TheClass {
-  fun getData() = 42
-}

@@ -1,4 +1,0 @@
-class Api {
-    fun m(x: Int): String = "s"
-    fun m(x: Long): Int = 2
-}  // @JvmSynthetic removed: ACC_SYNTHETIC cleared on m(I)Ljava/lang/String;

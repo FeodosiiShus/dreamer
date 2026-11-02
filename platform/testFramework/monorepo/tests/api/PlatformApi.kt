@@ -13,7 +13,6 @@ internal object PlatformApi {
     "intellij.platform.uast", // IDEA
     "intellij.platform.uast.ide", // IDEA
     "intellij.platform.images", // plugin
-    "intellij.platform.images.copyright", // plugin
     "intellij.platform.images.xdebugger", // plugin
     "intellij.platform.images.jcef", // plugin
     "intellij.platform.pluginGraph", // build scripts

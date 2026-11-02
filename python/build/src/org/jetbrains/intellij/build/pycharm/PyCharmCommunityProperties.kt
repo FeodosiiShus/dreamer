@@ -45,8 +45,7 @@ class PyCharmCommunityProperties(private val communityHome: Path) : PyCharmPrope
         "intellij.python.community.plugin", // Python language
         "intellij.pycharm.community.customization", // Convert Intellij to PyCharm
         "intellij.pycharm.community.customization.shared",
-        "intellij.vcs.github",
-        "intellij.vcs.gitlab") +
+        "intellij.vcs.github") +
       Files.readAllLines(communityHome.resolve("python/build/plugin-list.txt"))
 
     productLayout.skipUnresolvedContentModules = true
@@ -63,12 +62,6 @@ class PyCharmCommunityProperties(private val communityHome: Path) : PyCharmPrope
     alias("com.intellij.modules.pycharm.community")
     alias("com.intellij.modules.python-core-capable")
     alias("com.intellij.platform.ide.provisioner")
-
-    // Content modules
-    module("intellij.platform.ide.newUiOnboarding")
-    module("intellij.ide.startup.importSettings")
-    // the sqlite JDBC driver `importSettings` needs; private, so plugins bundle their own copy of it
-    privateModule("intellij.libraries.sqlite")
 
     // Module sets
     moduleSet(CommunityModuleSets.ideCommon())

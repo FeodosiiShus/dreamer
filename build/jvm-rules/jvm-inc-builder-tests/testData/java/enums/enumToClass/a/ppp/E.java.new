@@ -1,5 +1,0 @@
-package ppp;
-public class E {
-  public static final E A = new E();
-  public static final E B = new E();
-}

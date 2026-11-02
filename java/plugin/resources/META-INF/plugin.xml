@@ -90,8 +90,6 @@
     <module name="intellij.java.debugger.impl.shared"/>
     <module name="intellij.java.execution.impl.shared"/>
     <module name="intellij.java.structuralSearch"/>
-    <module name="intellij.java.featuresTrainer"/>
-    <module name="intellij.java.performancePlugin" loading="optional"/>
     <module name="intellij.java.unscramble"/>
     <module name="intellij.java.vcs"/>
     <module name="intellij.java.terminal.shared" loading="optional"/>
@@ -123,8 +121,6 @@
     <module name="intellij.debugger.logpoints.frontend.split"/>
     <module name="intellij.debugger.jvm.advanced.java.logpoints"/>
     <module name="intellij.debugger.logpoints.java"/>
-    <module name="intellij.java.copyright"/>
-    <module name="intellij.java.promo"/>
   </content>
   <content>
     <module name="intellij.libraries.completion.ranking.java" loading="required"/>

@@ -79,8 +79,6 @@
     <orderEntry type="module" module-name="intellij.platform.testExtensions" scope="TEST" />
     <orderEntry type="module" module-name="intellij.libraries.hamcrest" scope="TEST" />
     <orderEntry type="module" module-name="intellij.platform.tests" scope="TEST" />
-    <orderEntry type="module" module-name="intellij.copyright" scope="TEST" />
-    <orderEntry type="module" module-name="intellij.python.copyright" scope="TEST" />
     <orderEntry type="module" module-name="intellij.python.community.testFramework" scope="TEST" />
     <orderEntry type="module" module-name="intellij.platform.debugger.testFramework" scope="TEST" />
     <orderEntry type="module" module-name="intellij.python.psi.impl" scope="TEST" />
@@ -97,7 +95,6 @@
     <orderEntry type="module" module-name="intellij.statsCollector" scope="TEST" />
     <orderEntry type="module" module-name="intellij.python.markdown" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.notebooks.visualization" scope="RUNTIME" />
-    <orderEntry type="module" module-name="intellij.python.featuresTrainer" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.notebooks.jupyter.core" scope="RUNTIME" />
     <orderEntry type="module" module-name="intellij.grazie.tests" scope="TEST" />
     <orderEntry type="module" module-name="intellij.python.grazie" scope="TEST" />

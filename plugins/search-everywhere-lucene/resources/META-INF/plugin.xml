@@ -11,6 +11,5 @@
     <module name="intellij.searchEverywhereLucene.common" loading="embedded"/>
     <module name="intellij.searchEverywhereLucene.frontend"/>
     <module name="intellij.searchEverywhereLucene.backend"/>
-    <module name="intellij.searchEverywhereLucene.performanceTesting"/>
   </content>
 </idea-plugin>

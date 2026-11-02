@@ -1,6 +1,0 @@
-public class Sub extends Base {
-  @Override
-  public int m() {
-    return 2;
-  }
-}

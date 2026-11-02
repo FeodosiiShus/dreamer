@@ -1,0 +1,114 @@
+import Foundation
+
+extension GitClient {
+    static let logGraphFormat = "%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s"
+
+    func logGraph(ref: String?, limit: Int = 2000) async throws -> [GitLogCommit] {
+        var command = "log --date-order -z --format=\(Self.logGraphFormat) -n \(limit)"
+        if let ref, !ref.isEmpty {
+            command += " \(Self.logGraphQuote(ref))"
+        } else {
+            command += " --all"
+        }
+        return Self.logGraphParse(try await run(command))
+    }
+
+    func logGraphMessage(hash: String) async throws -> String {
+        let output = try await run("log -1 --format=%B \(Self.logGraphQuote(hash))")
+        return output.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func logGraphChangedFiles(commit: GitLogCommit) async throws -> [GitChangedFile] {
+        let output: String
+        if let firstParent = commit.parents.first {
+            output = try await run(
+                "diff --name-status \(Self.logGraphQuote(firstParent)) \(Self.logGraphQuote(commit.hash))"
+            )
+        } else {
+            output = try await run(
+                "diff-tree --root --no-commit-id --name-status -r \(Self.logGraphQuote(commit.hash))"
+            )
+        }
+        return Self.logGraphParseChangedFiles(output, root: directoryURL)
+    }
+
+    static func logGraphParseChangedFiles(_ output: String, root: URL) -> [GitChangedFile] {
+        output.components(separatedBy: "\n").compactMap { line -> GitChangedFile? in
+            let fields = line.split(separator: "\t")
+            guard fields.count >= 2,
+                  let status = fields.first.flatMap({ GitStatus(rawValue: String($0.prefix(1))) }) else {
+                return nil
+            }
+            let path = String(fields[fields.count - 1])
+            guard !path.isEmpty else { return nil }
+            return GitChangedFile(
+                status: status,
+                stagedStatus: .none,
+                fileURL: root.appending(path: path),
+                originalFilename: fields.count == 3 ? String(fields[1]) : nil
+            )
+        }
+    }
+
+    static func logGraphParse(_ output: String) -> [GitLogCommit] {
+        output
+            .split(separator: "\0", omittingEmptySubsequences: true)
+            .compactMap { logGraphParse(record: String($0)) }
+    }
+
+    static func logGraphParse(record: String) -> GitLogCommit? {
+        let record = record.trimmingCharacters(in: .newlines)
+        let fields = record.split(separator: "\u{1f}", maxSplits: 6, omittingEmptySubsequences: false)
+        guard fields.count == 7, let seconds = TimeInterval(fields[4]) else {
+            return nil
+        }
+        let hash = String(fields[0])
+        guard !hash.isEmpty else { return nil }
+        return GitLogCommit(
+            hash: hash,
+            parents: fields[1].split(separator: " ").map { String($0) },
+            authorName: String(fields[2]),
+            authorEmail: String(fields[3]),
+            date: Date(timeIntervalSince1970: seconds),
+            refs: logGraphRefs(from: String(fields[5])),
+            subject: String(fields[6])
+        )
+    }
+
+    static func logGraphRefs(from decoration: String) -> [GitLogRef] {
+        let trimmed = decoration.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        var refs: [GitLogRef] = []
+        var seen = Set<String>()
+
+        for entry in trimmed.split(separator: ",") {
+            var name = String(entry).trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty, name != "grafted", !name.hasSuffix("/HEAD") else { continue }
+
+            let kind: GitLogRef.Kind
+            if let arrow = name.range(of: "->") {
+                let source = String(name[..<arrow.lowerBound]).trimmingCharacters(in: .whitespaces)
+                guard source == "HEAD" else { continue }
+                name = String(name[arrow.upperBound...]).trimmingCharacters(in: .whitespaces)
+                kind = .head
+            } else if name.hasPrefix("tag: ") {
+                name = String(name.dropFirst("tag: ".count)).trimmingCharacters(in: .whitespaces)
+                kind = .tag
+            } else if name.contains("/") {
+                kind = .remote
+            } else {
+                kind = .branch
+            }
+
+            guard !name.isEmpty, seen.insert("\(kind.rawValue):\(name)").inserted else { continue }
+            refs.append(GitLogRef(name: name, kind: kind))
+        }
+
+        return refs
+    }
+
+    static func logGraphQuote(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+}

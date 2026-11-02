@@ -1,0 +1,57 @@
+//
+//  EditorAreaFileView.swift
+//  Dreamder
+//
+//  Created by Pavel Kasila on 20.03.22.
+//
+
+import AppKit
+import AVKit
+import CodeEditSourceEditor
+import SwiftUI
+
+struct EditorAreaFileView: View {
+
+    @EnvironmentObject private var statusBarViewModel: StatusBarViewModel
+
+    var editorInstance: EditorInstance
+    var codeFile: CodeFileDocument
+
+    @ViewBuilder var editorAreaFileView: some View {
+        if let utType = codeFile.utType, utType.conforms(to: .text) {
+            if MarkdownPreviewLayoutStore.isMarkdownFile(codeFile.fileURL) {
+                MarkdownEditorWithPreview(
+                    editorInstance: editorInstance,
+                    codeFile: codeFile
+                )
+                .id(ObjectIdentifier(codeFile))
+            } else {
+                CodeFileView(
+                    editorInstance: editorInstance,
+                    codeFile: codeFile
+                )
+            }
+        } else {
+            NonTextFileView(fileDocument: codeFile)
+                .modifier(UpdateStatusBarInfo(with: codeFile.fileURL))
+                .onDisappear {
+                    statusBarViewModel.dimensions = nil
+                    statusBarViewModel.fileSize = nil
+                }
+        }
+    }
+
+    var body: some View {
+        editorAreaFileView
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onHover { hover in
+                DispatchQueue.main.async {
+                    if hover {
+                        NSCursor.iBeam.push()
+                    } else {
+                        NSCursor.pop()
+                    }
+                }
+            }
+    }
+}

@@ -63,7 +63,6 @@ jvm_library(
         "//platform/testFramework/junit5/codeInsight",
         "//libraries/junit6",
         "//plugins/git4idea/backend",
-        "//plugins/hg4idea:vcs-hg",
         "//platform/vcs-tests:vcs-testFramework",
         "//platform/tasks-platform-api:tasks",
         "//platform/tasks-platform-impl:tasks-impl",
@@ -85,7 +84,6 @@ jvm_library(
         "//platform/util/concurrency",
         "//platform/lang-core",
         "//plugins/git4idea/testFramework:testFramework_test_lib",
-        "//plugins/hg4idea:vcs-hg-tests_test_lib",
     ],
 )
 ### auto-generated section `build intellij.tasks.tests` end

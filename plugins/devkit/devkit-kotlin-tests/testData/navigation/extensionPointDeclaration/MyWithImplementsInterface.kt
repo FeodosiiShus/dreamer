@@ -1,1 +1,0 @@
-interface MyWith<caret>ImplementsInterface

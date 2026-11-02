@@ -1,2 +1,0 @@
-package ppp;
-public class A { @Deprecated public static int f() { return 1; } }

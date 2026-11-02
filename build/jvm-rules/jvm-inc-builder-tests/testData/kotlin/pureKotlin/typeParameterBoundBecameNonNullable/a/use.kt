@@ -1,1 +1,0 @@
-fun u(s: String?): String? = f(s)

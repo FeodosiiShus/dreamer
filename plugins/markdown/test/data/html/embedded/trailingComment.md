@@ -1,5 +1,0 @@
-# Heading
-
-text
-
-<!-- c -->

@@ -1,5 +1,0 @@
-<idea-plugin>
-  <actions>
-    <action class="MyActionGroup"/>
-  </actions>
-</idea-plugin>

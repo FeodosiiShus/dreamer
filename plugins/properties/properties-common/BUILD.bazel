@@ -8,7 +8,6 @@ content_module_jar(module = ":properties")
 dev_dist_plugin(
     content_modules = [
         # do not sort,
-        "intellij.properties.copyright",
         "intellij.properties.backend.psi",
         "intellij.properties.backend",
         "intellij.properties.structuralSearch",

@@ -34,9 +34,6 @@ val existingPackageAttributesInCommunity: Map<String, Set<String>> = mapOf(
   "intellij.compose.ide.plugin.resources.android" to setOf(
     "plugins/compose/intellij.compose.ide.plugin.resources.android/resources/intellij.compose.ide.plugin.resources.android.xml",
   ),
-  "intellij.copyright.vcs" to setOf("plugins/copyright/vcs/resources/intellij.copyright.vcs.xml"),
-  "intellij.dev.codeInsight" to setOf("plugins/dev/intellij.dev.codeInsight/resources/intellij.dev.codeInsight.xml"),
-  "intellij.dev.psiViewer" to setOf("plugins/dev/intellij.dev.psiViewer/resources/intellij.dev.psiViewer.xml"),
   "intellij.dotenv" to setOf("plugins/env-files-support/src/main/resources/META-INF/plugin.xml"),
   "intellij.dotenv.java" to setOf("plugins/env-files-support/java/resources/intellij.dotenv.java.xml"),
   "intellij.dotenv.kotlin" to setOf("plugins/env-files-support/kotlin/resources/intellij.dotenv.kotlin.xml"),
@@ -50,15 +47,8 @@ val existingPackageAttributesInCommunity: Map<String, Set<String>> = mapOf(
   "intellij.execution.process.mediator.daemon" to setOf(
     "platform/execution-process-mediator/daemon/resources/intellij.execution.process.mediator.daemon.xml",
   ),
-  "intellij.featuresTrainer" to setOf("plugins/ide-features-trainer/res/META-INF/plugin.xml"),
-  "intellij.featuresTrainer.onboarding" to setOf(
-    "plugins/ide-features-trainer/onboarding/resources/intellij.featuresTrainer.onboarding.xml",
-  ),
   "intellij.groovy.git" to setOf("plugins/groovy/git/resources/intellij.groovy.git.xml"),
-  "intellij.ide.startup.importSettings" to setOf("plugins/ide-startup/importSettings/resources/intellij.ide.startup.importSettings.xml"),
-  "intellij.java.dev" to setOf("plugins/dev/intellij.java.dev/resources/intellij.java.dev.xml"),
   "intellij.javaFX.properties" to setOf("plugins/javaFX/properties/resources/intellij.javaFX.properties.xml"),
-  "intellij.kotlin.dev" to setOf("plugins/dev/intellij.kotlin.dev/resources/intellij.kotlin.dev.xml"),
   "intellij.platform.bookmarks.backend" to setOf("platform/bookmarks/backend/resources/intellij.platform.bookmarks.backend.xml"),
   "intellij.platform.bookmarks.frontend" to setOf("platform/bookmarks/frontend/resources/intellij.platform.bookmarks.frontend.xml"),
   "intellij.platform.debugger.impl.backend" to setOf(
@@ -71,12 +61,6 @@ val existingPackageAttributesInCommunity: Map<String, Set<String>> = mapOf(
     "platform/diagnostic/telemetry/agent-extension/resources/intellij.platform.diagnostic.telemetry.agent.extension.xml",
   ),
   "intellij.platform.frontend" to setOf("platform/platform-frontend/resources/intellij.platform.frontend.xml"),
-  "intellij.platform.ide.newUsersOnboarding" to setOf(
-    "platform/new-users-onboarding/resources/intellij.platform.ide.newUsersOnboarding.xml",
-  ),
-  "intellij.platform.ide.nonModalWelcomeScreen" to setOf(
-    "platform/non-modal-welcome-screen/resources/intellij.platform.ide.nonModalWelcomeScreen.xml",
-  ),
   "intellij.platform.inline.completion" to setOf("platform/inline-completion/shared/resources/intellij.platform.inline.completion.xml"),
   "intellij.platform.ml.logs" to setOf("platform/ml-logs/resources/intellij.platform.ml.logs.xml"),
   "intellij.platform.pluginManager.shared" to setOf("platform/pluginManager/shared/resources/intellij.platform.pluginManager.shared.xml"),
@@ -92,12 +76,7 @@ val existingPackageAttributesInCommunity: Map<String, Set<String>> = mapOf(
     "platform/searchEverywhere/testFramework/resources/intellij.platform.searchEverywhere.testFramework.xml",
   ),
   "intellij.platform.smRunner.vcs" to setOf("platform/smRunner/vcs/resources/intellij.platform.smRunner.vcs.xml"),
-  "intellij.platform.warmup.performanceTesting" to setOf(
-    "platform/warmup/performanceTesting/resources/intellij.platform.warmup.performanceTesting.xml",
-  ),
-  "intellij.platform.whatsNew" to setOf("platform/whatsNew/resources/intellij.platform.whatsNew.xml"),
   "intellij.settingsSync.core" to setOf("platform/settings-sync-core/resources/intellij.settingsSync.core.xml"),
   "intellij.tools.ide.starter.bus" to setOf("plugins/performanceTesting/event-bus/resources/intellij.tools.ide.starter.bus.xml"),
   "intellij.vcs.git.backend" to setOf("plugins/git4idea/backend/resources/intellij.vcs.git.backend.xml"),
-  "intellij.vcs.git.featuresTrainer" to setOf("plugins/git-features-trainer/resources/intellij.vcs.git.featuresTrainer.xml"),
 )

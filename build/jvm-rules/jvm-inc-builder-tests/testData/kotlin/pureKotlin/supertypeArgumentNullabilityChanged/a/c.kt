@@ -1,3 +1,0 @@
-class C : I<String> {
-    override fun get(): String = "a"
-}

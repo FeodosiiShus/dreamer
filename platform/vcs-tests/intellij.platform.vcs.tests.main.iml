@@ -18,9 +18,5 @@
     <orderEntry type="module" module-name="intellij.vcs.git.terminal.tests" scope="TEST" />
     <orderEntry type="module" module-name="intellij.vcs.git.backend.tests" scope="TEST" />
     <orderEntry type="module" module-name="intellij.vcs.github.tests" scope="TEST" />
-    <orderEntry type="module" module-name="intellij.vcs.gitlab.tests" scope="TEST" />
-    <orderEntry type="module" module-name="intellij.vcs.gitlab.yaml.tests" scope="TEST" />
-    <orderEntry type="module" module-name="intellij.vcs.hg.tests" scope="TEST" />
-    <orderEntry type="module" module-name="intellij.vcs.svn.tests" scope="TEST" />
   </component>
 </module>

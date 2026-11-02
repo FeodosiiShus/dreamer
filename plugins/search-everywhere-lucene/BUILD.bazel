@@ -9,7 +9,6 @@ dev_dist_plugin(
         "intellij.searchEverywhereLucene.common",
         "intellij.searchEverywhereLucene.frontend",
         "intellij.searchEverywhereLucene.backend",
-        "intellij.searchEverywhereLucene.performanceTesting",
     ],
     descriptor = "resources/META-INF/plugin.xml",
     jars = {
@@ -17,10 +16,7 @@ dev_dist_plugin(
     },
     main_module = "intellij.searchEverywhereLucene.plugin",
     mode_refused_content_modules = {
-        "frontend": [
-            "intellij.searchEverywhereLucene.backend",
-            "intellij.searchEverywhereLucene.performanceTesting",
-        ],
+        "frontend": ["intellij.searchEverywhereLucene.backend"],
     },
     module_jar_paths = {
         "intellij.searchEverywhereLucene.common": "lib/intellij.searchEverywhereLucene.common.jar",
@@ -53,7 +49,6 @@ ij_plugin(
         "//plugins/search-everywhere-lucene/common",
         "//plugins/search-everywhere-lucene/frontend",
         "//plugins/search-everywhere-lucene/backend",
-        "//plugins/search-everywhere-lucene/test-commands:searchEverywhereLucene-performanceTesting",
     ],
     visibility = ["//visibility:public"],
 )

@@ -33,10 +33,8 @@ jvm_library(
     visibility = ["//visibility:public"],
     deps = [
         # do not sort,
-        "//platform/non-modal-welcome-screen/backend",
         "//platform/core-api:core",
         "//platform/util",
-        "//platform/non-modal-welcome-screen",
         "//platform/kernel/rpc.backend",
         "//platform/project/shared:project",
         "//platform/platform-api:ide",

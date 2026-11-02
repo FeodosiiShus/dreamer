@@ -1,3 +1,0 @@
-interface MyServiceInterface {
-  fun doWork()
-}

@@ -1,0 +1,75 @@
+name: Dreamder
+
+on:
+  push:
+    paths:
+      - dreamder/**
+      - .github/workflows/dreamder.yml
+  pull_request:
+    paths:
+      - dreamder/**
+      - .github/workflows/dreamder.yml
+  workflow_dispatch:
+
+concurrency:
+  group: dreamder-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  XCODE_DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+
+jobs:
+  build:
+    name: Build Dreamder.app
+    runs-on: xcode-27
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: dreamder
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: dreamder
+      - uses: actions/cache@v6
+        with:
+          path: dreamder/.build/xcode/SourcePackages
+          key: spm-${{ runner.os }}-${{ hashFiles('dreamder/Dreamder.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+      - name: Build Release app
+        run: make release
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Dreamder
+          path: dreamder/.build/Dreamder.zip
+          if-no-files-found: error
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-logs
+          path: dreamder/.build/logs
+
+  test:
+    name: Unit tests
+    runs-on: xcode-27
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: dreamder
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: dreamder
+      - uses: actions/cache@v6
+        with:
+          path: dreamder/.build/xcode/SourcePackages
+          key: spm-${{ runner.os }}-${{ hashFiles('dreamder/Dreamder.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+      - name: Build
+        run: make build
+      - name: Test
+        run: make test
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-logs
+          path: dreamder/.build/logs

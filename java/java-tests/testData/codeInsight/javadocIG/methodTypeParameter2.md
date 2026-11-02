@@ -1,5 +1,0 @@
-```java
-<T>
-```
-
-  type param

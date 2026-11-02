@@ -1,2 +1,0 @@
-package ppp;
-public record E(int x) { }

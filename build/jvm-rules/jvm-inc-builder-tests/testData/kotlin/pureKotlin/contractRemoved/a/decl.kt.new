@@ -1,3 +1,0 @@
-fun isStr(x: Any?): Boolean {
-    return x is String
-}

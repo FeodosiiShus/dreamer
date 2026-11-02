@@ -1,4 +1,0 @@
-module A {
-  exports ppp;
-  requires kotlin.stdlib;
-}

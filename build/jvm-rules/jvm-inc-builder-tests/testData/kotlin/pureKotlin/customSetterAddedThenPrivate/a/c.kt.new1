@@ -1,4 +1,0 @@
-class C {
-    var p: Int = 1
-        private set
-}
