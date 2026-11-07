@@ -2,10 +2,16 @@ import Foundation
 import Synchronization
 
 nonisolated struct ProcessRunner: ProcessRunning {
-    init() {}
+    private let slots: ProcessSlotPool
+
+    init(slots: ProcessSlotPool = .shared) {
+        self.slots = slots
+    }
 
     func run(_ invocation: ProcessInvocation) async throws -> ProcessOutput {
-        try await ProcessExecution.run(invocation)
+        try await slots.withSlot {
+            try await ProcessExecution.run(invocation)
+        }
     }
 
     func stream(_ invocation: ProcessInvocation) -> AsyncThrowingStream<ProcessEvent, any Error> {
@@ -13,9 +19,11 @@ nonisolated struct ProcessRunner: ProcessRunning {
             let buffers = LineBuffers()
             let task = Task {
                 do {
-                    let output = try await ProcessExecution.run(invocation) { stream, data in
-                        for line in buffers.append(data, to: stream) {
-                            continuation.yield(.line(stream, line))
+                    let output = try await slots.withSlot {
+                        try await ProcessExecution.run(invocation) { stream, data in
+                            for line in buffers.append(data, to: stream) {
+                                continuation.yield(.line(stream, line))
+                            }
                         }
                     }
                     for (stream, line) in buffers.finish() {
