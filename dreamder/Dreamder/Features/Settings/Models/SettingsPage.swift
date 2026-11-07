@@ -18,7 +18,7 @@ struct SettingsPage: Hashable, Equatable, Identifiable {
     }
 
     /// An enum of all the settings pages
-    enum Name: String, CaseIterable {
+    nonisolated enum Name: String, CaseIterable, Sendable {
         case general = "General"
         case appearance = "Appearance"
         case accounts = "Accounts"
@@ -66,7 +66,7 @@ struct SettingsPage: Hashable, Equatable, Identifiable {
 
 extension SettingsPage {
     /// The IntelliJ settings tree groups, in the order they appear in the navigation pane.
-    enum Category: String, CaseIterable, Identifiable, Hashable {
+    nonisolated enum Category: String, CaseIterable, Identifiable, Hashable, Sendable {
         case appearanceAndBehavior = "Appearance & Behavior"
         case keymap = "Keymap"
         case editor = "Editor"
@@ -90,7 +90,7 @@ extension SettingsPage {
     }
 }
 
-extension SettingsPage.Name {
+nonisolated extension SettingsPage.Name {
     /// The tree group this page belongs to, or `nil` for pages without a settings view.
     var category: SettingsPage.Category? {
         switch self {

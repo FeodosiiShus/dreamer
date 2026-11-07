@@ -40,8 +40,30 @@ struct ExtensionInfo: Identifiable, Hashable {
     }
 
     init(endpoint: AppExtensionIdentity) async throws {
-        self.endpoint = endpoint
+        let details = try await ExtensionInfo.loadDetails(for: endpoint)
+        try self.init(endpoint: endpoint, details: details)
+    }
 
+    init(endpoint: AppExtensionIdentity, details: Details) throws {
+        self.endpoint = endpoint
+        self.pid = details.pid
+        self.isDebug = details.isDebug
+        self.availableFeatures = try JSONDecoder().decode([ExtensionKind].self, from: details.encodedFeatures)
+        self.bundleURL = try JSONDecoder().decode(URL.self, from: details.encodedBundleURL)
+        self.bundle = Bundle(url: bundleURL)
+    }
+}
+
+extension ExtensionInfo {
+    nonisolated struct Details: Sendable {
+        let pid: pid_t
+        let isDebug: Bool
+        let encodedFeatures: Data
+        let encodedBundleURL: Data
+    }
+
+    @concurrent
+    static func loadDetails(for endpoint: AppExtensionIdentity) async throws -> Details {
         let process = try await AppExtensionProcess(configuration: .init(appExtensionIdentity: endpoint))
 
         let connection = try process.makeXPCConnection()
@@ -52,16 +74,15 @@ struct ExtensionInfo: Identifiable, Hashable {
             connection.invalidate()
         }
 
-        self.pid = try await ExtensionInfo.getProcessID(connection)
-        self.isDebug = try await ExtensionInfo.getDebugState(connection)
-        self.availableFeatures = try await ExtensionInfo.getAvailableFeatures(connection)
-        self.bundleURL = try await ExtensionInfo.getBundleURL(connection)
-        self.bundle = Bundle(url: bundleURL)
+        return Details(
+            pid: try await getProcessID(connection),
+            isDebug: try await getDebugState(connection),
+            encodedFeatures: try await getEncodedFeatures(connection),
+            encodedBundleURL: try await getEncodedBundleURL(connection)
+        )
     }
-}
 
-// Functions to get basic information about extension
-extension ExtensionInfo {
+    @concurrent
     private static func getProcessID(_ connection: NSXPCConnection) async throws -> pid_t {
         try await connection.withContinuation { (service: XPCWrappable, continuation) in
             service.getExtensionProcessIdentifier {
@@ -70,6 +91,7 @@ extension ExtensionInfo {
         }
     }
 
+    @concurrent
     private static func getDebugState(_ connection: NSXPCConnection) async throws -> Bool {
         try await connection.withContinuation { (service: XPCWrappable, continuation) in
             service.isDebug {
@@ -78,19 +100,34 @@ extension ExtensionInfo {
         }
     }
 
-    private static func getAvailableFeatures(_ connection: NSXPCConnection) async throws -> [ExtensionKind] {
-        let encodedAvailableFeatures = try await connection.withContinuation { (service: XPCWrappable, continuation) in
-            service.getExtensionKinds(reply: continuation.resumingHandler)
+    @concurrent
+    private static func getEncodedFeatures(_ connection: NSXPCConnection) async throws -> Data {
+        try await connection.withContinuation { (service: XPCWrappable, continuation) in
+            service.getExtensionKinds(reply: Self.dataHandler(for: continuation))
         }
-        return try JSONDecoder().decode([ExtensionKind].self, from: encodedAvailableFeatures)
     }
 
-    private static func getBundleURL(_ connection: NSXPCConnection) async throws -> URL {
-        let bundleURLEncoded = try await connection.withContinuation { (service: XPCWrappable, continuation) in
-            service.getExtensionURL(reply: continuation.resumingHandler)
+    @concurrent
+    private static func getEncodedBundleURL(_ connection: NSXPCConnection) async throws -> Data {
+        try await connection.withContinuation { (service: XPCWrappable, continuation) in
+            service.getExtensionURL(reply: Self.dataHandler(for: continuation))
         }
+    }
 
-        return try JSONDecoder().decode(URL.self, from: bundleURLEncoded)
+    private nonisolated static func dataHandler(for continuation: CheckedContinuation<Data, Error>) -> XPCReply {
+        { data, error in
+            if let error {
+                continuation.resume(throwing: error)
+            } else if let data {
+                continuation.resume(returning: data)
+            } else {
+                continuation.resume(throwing: ExtensionReplyError.missingValue)
+            }
+        }
+    }
+
+    private nonisolated enum ExtensionReplyError: Error {
+        case missingValue
     }
 }
 

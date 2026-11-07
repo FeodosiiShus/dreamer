@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum BitBucketTokenRouter: GitRouter {
+nonisolated enum BitBucketTokenRouter: GitRouter {
     case refreshToken(BitBucketOAuthConfiguration, String)
     case emptyToken(BitBucketOAuthConfiguration, String)
 

@@ -1,6 +1,6 @@
 import Foundation
 
-enum MarkdownInlineRenderer {
+nonisolated enum MarkdownInlineRenderer {
     static func render(_ text: String) -> String {
         var scanner = MarkdownInlineScanner(text)
         return scanner.render()
@@ -22,7 +22,7 @@ enum MarkdownInlineRenderer {
     }
 }
 
-private struct MarkdownInlineScanner {
+private nonisolated struct MarkdownInlineScanner {
     private static let lineBreakMarker: Character = "\u{E000}"
     private static let escapableCharacters: Set<Character> = Set("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
 

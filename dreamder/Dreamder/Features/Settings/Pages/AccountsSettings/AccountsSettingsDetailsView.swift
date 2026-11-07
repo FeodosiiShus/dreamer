@@ -89,7 +89,7 @@ struct AccountsSettingsDetailsView: View {
                             ) {
                                 ForEach(files, id: \.self) { filename in
                                     let fileURL = sshPath.appending(path: filename)
-                                    if let contents = try? String(contentsOf: fileURL) {
+                                    if let contents = try? String(contentsOf: fileURL, encoding: .utf8) {
                                         if isPublicSSHKey(contents) {
                                             Text(filename.replacingOccurrences(of: ".pub", with: ""))
                                                 .tag(fileURL.path)

@@ -24,20 +24,20 @@ extension String {
             let nonHighlightedText = self[currentIndex..<range.lowerBound]
             let highlightedSubstring = self[range]
 
-            // swiftlint:disable shorthand_operator
-            highlightedText = highlightedText + Text(nonHighlightedText).foregroundColor(.secondary)
-            highlightedText = highlightedText + Text(highlightedSubstring).foregroundColor(.primary).bold()
+            let nonHighlightedLabel = Text(nonHighlightedText).foregroundColor(.secondary)
+            let highlightedLabel = Text(highlightedSubstring).foregroundColor(.primary).bold()
+            highlightedText = Text("\(highlightedText)\(nonHighlightedLabel)\(highlightedLabel)")
 
             currentIndex = range.upperBound
         }
 
         let remainingText = self[currentIndex..<self.endIndex]
 
-        return highlightedText + Text(remainingText).foregroundColor(.secondary)
-        // swiftlint:enable shorthand_operator
+        let remainingLabel = Text(remainingText).foregroundColor(.secondary)
+        return Text("\(highlightedText)\(remainingLabel)")
     }
 
-    private func rangesOfSubstring(_ substring: String) -> [Range<Index>] {
+    nonisolated private func rangesOfSubstring(_ substring: String) -> [Range<Index>] {
         var ranges = [Range<Index>]()
         var currentIndex = self.startIndex
 

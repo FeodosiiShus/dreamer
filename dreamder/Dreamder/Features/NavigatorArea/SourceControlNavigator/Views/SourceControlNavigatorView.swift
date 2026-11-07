@@ -67,7 +67,14 @@ struct SourceControlNavigatorTabs: View {
                  actions: {
                     Button("Initialize") {
                         Task {
-                            try await sourceControlManager.initiate()
+                            do {
+                                try await sourceControlManager.initiate()
+                            } catch {
+                                await sourceControlManager.showAlertForError(
+                                    title: "Failed to initialize repository",
+                                    error: error
+                                )
+                            }
                         }
                     }
                 }

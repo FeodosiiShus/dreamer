@@ -72,7 +72,7 @@ final class GolangPackageManager: PackageManagerProtocol {
             name: "Initialize Directory Structure",
             confirmation: .none
         ) { model in
-            try await model.createDirectoryStructure(for: packagePath)
+            try model.createDirectoryStructure(for: packagePath)
 
             // For Go, we need to set up a proper module structure
             let goModPath = packagePath.appending(path: "go.mod")

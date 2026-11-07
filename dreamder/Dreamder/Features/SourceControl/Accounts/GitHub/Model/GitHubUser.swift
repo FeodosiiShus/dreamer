@@ -10,7 +10,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
-class GitHubUser: Codable {
+nonisolated struct GitHubUser: Codable, Sendable {
     private(set) var id: Int = -1
     var login: String?
     var avatarURL: String?
@@ -77,7 +77,7 @@ extension GitHubAccount {
     func user(
         _ session: GitURLSession = URLSession.shared,
         name: String,
-        completion: @escaping (_ response: Result<GitHubUser, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitHubUser, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitHubUserRouter.readUser(name, configuration)
 
@@ -104,7 +104,7 @@ extension GitHubAccount {
     @discardableResult
     func me(
         _ session: GitURLSession = URLSession.shared,
-        completion: @escaping (_ response: Result<GitHubUser, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitHubUser, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitHubUserRouter.readAuthenticatedUser(configuration)
 

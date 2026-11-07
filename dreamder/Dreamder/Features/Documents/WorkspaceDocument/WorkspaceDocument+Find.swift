@@ -7,8 +7,6 @@
 
 import Foundation
 
-extension WorkspaceDocument.SearchState: @unchecked Sendable {}
-
 extension WorkspaceDocument.SearchState {
     /// Creates a search term based on the given query and search mode.
     ///
@@ -107,41 +105,43 @@ extension WorkspaceDocument.SearchState {
         }
 
         let asyncController = SearchIndexer.AsyncManager(index: indexer)
-        let evaluateSearchQueue = DispatchQueue(label: "dev.dreamder.Dreamder.EvaluateSearch")
-        let evaluateResultGroup = DispatchGroup()
+        let caseSensitive = self.caseSensitive
 
         let searchStream = await asyncController.search(query: searchQuery, 20)
-        for await result in searchStream {
-            for file in result.results {
-                let fileURL = file.url
-                let fileScore = file.score
+        await withTaskGroup(of: (URL, Float, FileEvaluation).self) { group in
+            for await result in searchStream {
+                for file in result.results {
+                    let fileURL = file.url
+                    let fileScore = file.score
 
-                evaluateResultGroup.enter()
-                evaluateSearchQueue.async { [weak self] in
-                    Task {
-                        guard let self else {
-                            evaluateResultGroup.leave()
-                            return
-                        }
-
-                        let result = await self.evaluateSearchResult(
-                            fileURL: fileURL,
-                            fileScore: fileScore,
-                            regexPattern: regexPattern
+                    group.addTask {
+                        let evaluation = Self.evaluateFile(
+                            at: fileURL,
+                            query: regexPattern,
+                            caseSensitive: caseSensitive
                         )
-
-                        if let result {
-                            await self.appendNewResultsToTempResults(newResult: result)
-                        }
-                        evaluateResultGroup.leave()
+                        return (fileURL, fileScore, evaluation)
                     }
                 }
             }
-        }
 
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            evaluateResultGroup.notify(queue: evaluateSearchQueue) {
-                continuation.resume()
+            for await (fileURL, fileScore, evaluation) in group {
+                if let failureMessage = evaluation.failureMessage {
+                    await setStatus(.failed(errorMessage: failureMessage))
+                }
+                if !evaluation.matches.isEmpty {
+                    let file = CEWorkspaceFile(url: fileURL)
+                    let newResult = SearchResultModel(file: file, score: fileScore)
+                    newResult.lineMatches = evaluation.matches.map {
+                        SearchResultMatchModel(
+                            rangeWithinFile: $0.rangeWithinFile,
+                            file: file,
+                            lineContent: $0.lineContent,
+                            keywordRange: $0.keywordRange
+                        )
+                    }
+                    appendNewResultsToTempResults(newResult: newResult)
+                }
             }
         }
 
@@ -192,13 +192,16 @@ extension WorkspaceDocument.SearchState {
     /// var resultModel = SearchResultModel()
     /// await evaluateFile(query: "example", searchResult: &resultModel)
     /// ```
-    private func evaluateFile(query: String, searchResult: inout SearchResultModel) async {
-        guard let data = try? Data(contentsOf: searchResult.file.url) else {
-            return
+    nonisolated private static func evaluateFile(
+        at fileURL: URL,
+        query: String,
+        caseSensitive: Bool
+    ) -> FileEvaluation {
+        guard let data = try? Data(contentsOf: fileURL) else {
+            return FileEvaluation(matches: [], failureMessage: nil)
         }
         guard let fileContent = String(bytes: data, encoding: .utf8) else {
-            await setStatus(.failed(errorMessage: "Failed to decode file content."))
-            return
+            return FileEvaluation(matches: [], failureMessage: "Failed to decode file content.")
         }
 
         // Attempt to create a regular expression from the provided query
@@ -206,14 +209,13 @@ extension WorkspaceDocument.SearchState {
             pattern: query,
             options: caseSensitive ? [] : .caseInsensitive
         ) else {
-            await setStatus(.failed(errorMessage: "Invalid regular expression."))
-            return
+            return FileEvaluation(matches: [], failureMessage: "Invalid regular expression.")
         }
 
         // Find all matches of the query within the file content using the regular expression
         let matches = regex.matches(in: fileContent, range: NSRange(location: 0, length: fileContent.utf16.count))
 
-        var newMatches = [SearchResultMatchModel]()
+        var newMatches = [FileMatchSnapshot]()
 
         // Process each match and add it to the array of `newMatches`
         for match in matches {
@@ -222,14 +224,13 @@ extension WorkspaceDocument.SearchState {
                 let matchModel = createMatchModel(
                     from: matchRange,
                     fileContent: fileContent,
-                    file: searchResult.file,
                     matchWordLength: matchWordLength
                 )
                 newMatches.append(matchModel)
             }
         }
 
-        searchResult.lineMatches = newMatches
+        return FileEvaluation(matches: newMatches, failureMessage: nil)
     }
 
     /// Creates a `SearchResultMatchModel` instance based on the provided parameters,
@@ -249,21 +250,19 @@ extension WorkspaceDocument.SearchState {
     /// The resulting model includes information about the match's range within the file,
     /// the file itself, the content of the line containing the match,
     /// and the range of the matched keyword within that line.
-    private func createMatchModel(
+    nonisolated private static func createMatchModel(
         from matchRange: Range<String.Index>,
         fileContent: String,
-        file: CEWorkspaceFile,
         matchWordLength: Int
-    ) -> SearchResultMatchModel {
+    ) -> FileMatchSnapshot {
         let preLine = extractPreLine(from: matchRange, fileContent: fileContent)
         let keywordRange = extractKeywordRange(from: preLine, matchWordLength: matchWordLength)
         let postLine = extractPostLine(from: matchRange, fileContent: fileContent)
 
         let finalLine = preLine + postLine
 
-        return SearchResultMatchModel(
+        return FileMatchSnapshot(
             rangeWithinFile: matchRange,
-            file: file,
             lineContent: finalLine,
             keywordRange: keywordRange
         )
@@ -282,7 +281,10 @@ extension WorkspaceDocument.SearchState {
     /// occurrence of a newline character, ensuring that only the line containing the search term is displayed.
     /// The extracted line is then trimmed of leading and trailing whitespaces and
     /// newline characters before being returned.
-    private func extractPreLine(from matchRange: Range<String.Index>, fileContent: String) -> String {
+    nonisolated private static func extractPreLine(
+        from matchRange: Range<String.Index>,
+        fileContent: String
+    ) -> String {
         let preRangeStart = fileContent.index(
             matchRange.lowerBound,
             offsetBy: -60,
@@ -312,7 +314,10 @@ extension WorkspaceDocument.SearchState {
     /// the provided line preceding a matching occurrence.
     /// It considers the length of the search term to determine
     /// the lower and upper bounds of the keyword range within the line.
-    private func extractKeywordRange(from preLine: String, matchWordLength: Int) -> Range<String.Index> {
+    nonisolated private static func extractKeywordRange(
+        from preLine: String,
+        matchWordLength: Int
+    ) -> Range<String.Index> {
         let keywordLowerBound = preLine.index(
             preLine.endIndex,
             offsetBy: -matchWordLength,
@@ -335,7 +340,10 @@ extension WorkspaceDocument.SearchState {
     /// It considers a context of up to 60 characters after the match and clips the result to the first
     /// occurrence of a newline character, ensuring that only the relevant portion of the line is displayed.
     /// The extracted line is then converted to a string before being returned.
-    private func extractPostLine(from matchRange: Range<String.Index>, fileContent: String) -> String {
+    nonisolated private static func extractPostLine(
+        from matchRange: Range<String.Index>,
+        fileContent: String
+    ) -> String {
         let postRangeStart = matchRange.upperBound
         let postRangeEnd = fileContent.index(
             matchRange.upperBound,
@@ -359,29 +367,15 @@ extension WorkspaceDocument.SearchState {
             self.findNavigatorStatus = .none
         }
     }
+}
 
-    /// Evaluates a matched file to determine if it contains any search matches.
-    /// Requires a file score from the search model.
-    ///
-    /// Evaluates the file's contents asynchronously.
-    ///
-    /// - Parameters:
-    ///   - fileURL: The `URL` of the file to evaluate.
-    ///   - fileScore:  The file's score from a ``SearchIndexer``
-    ///   - regexPattern: The pattern to evaluate against the file's contents.
-    /// - Returns: `nil` if there are no relevant search matches, or a search result if matches are found.
-    private func evaluateSearchResult(
-        fileURL: URL,
-        fileScore: Float,
-        regexPattern: String
-    ) async -> SearchResultModel? {
-        var newResult = SearchResultModel(
-            file: CEWorkspaceFile(url: fileURL),
-            score: fileScore
-        )
+nonisolated struct FileMatchSnapshot: Sendable {
+    let rangeWithinFile: Range<String.Index>
+    let lineContent: String
+    let keywordRange: Range<String.Index>
+}
 
-        await evaluateFile(query: regexPattern, searchResult: &newResult)
-
-        return newResult.lineMatches.isEmpty ? nil : newResult
-    }
+nonisolated struct FileEvaluation: Sendable {
+    let matches: [FileMatchSnapshot]
+    let failureMessage: String?
 }

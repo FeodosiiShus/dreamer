@@ -27,7 +27,7 @@ extension LogMessage: @retroactive Identifiable, UtilityAreaOutputMessage {
     }
 }
 
-struct ExtensionUtilityAreaOutputSource: UtilityAreaOutputSource {
+struct ExtensionUtilityAreaOutputSource: @MainActor UtilityAreaOutputSource {
     var id: String {
         "extension_output" + extensionInfo.id
     }

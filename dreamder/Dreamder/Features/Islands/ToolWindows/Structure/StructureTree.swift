@@ -1,7 +1,7 @@
 import Foundation
 import LanguageServerProtocol
 
-enum StructureSymbolKind: String, Equatable, CaseIterable {
+nonisolated enum StructureSymbolKind: String, Equatable, CaseIterable, Sendable {
     case file
     case module
     case namespace
@@ -85,7 +85,7 @@ enum StructureSymbolKind: String, Equatable, CaseIterable {
     }
 }
 
-struct StructureNode: Identifiable, Equatable {
+nonisolated struct StructureNode: Identifiable, Equatable, Sendable {
     let id: String
     let name: String
     let detail: String?
@@ -102,7 +102,7 @@ struct StructureNode: Identifiable, Equatable {
     }
 }
 
-enum StructureBreadcrumbs {
+nonisolated enum StructureBreadcrumbs {
     static func path(in nodes: [StructureNode], line: Int) -> [StructureNode] {
         var result: [StructureNode] = []
         var level = nodes
@@ -114,14 +114,14 @@ enum StructureBreadcrumbs {
     }
 }
 
-struct StructureRow: Identifiable, Equatable {
+nonisolated struct StructureRow: Identifiable, Equatable, Sendable {
     let node: StructureNode
     let depth: Int
 
     var id: String { node.id }
 }
 
-enum StructureTreeBuilder {
+nonisolated enum StructureTreeBuilder {
     static func nodes(from documentSymbols: [DocumentSymbol]) -> [StructureNode] {
         documentSymbols.enumerated().map { node($0.element, path: "\($0.offset)") }
     }

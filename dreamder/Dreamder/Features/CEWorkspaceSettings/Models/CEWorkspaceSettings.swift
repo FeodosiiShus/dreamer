@@ -38,7 +38,7 @@ final class CEWorkspaceSettings: ObservableObject {
         storeTask = nil
     }
 
-    deinit {
+    isolated deinit {
         cleanUp()
     }
 

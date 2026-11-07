@@ -5,7 +5,7 @@
 //  Created by Abe Malla on 3/12/25.
 //
 
-extension PackageSourceParser {
+nonisolated extension PackageSourceParser {
     static func parsePythonPackage(_ entry: RegistryItem) -> InstallationMethod {
         // Format: pkg:pypi/PACKAGE@VERSION?PARAMS
         let pkgPrefix = "pkg:pypi/"

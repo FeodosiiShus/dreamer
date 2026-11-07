@@ -9,7 +9,7 @@ import Foundation
 import SwiftUI
 
 /// Represents a single changed file in the working tree.
-struct GitChangedFile: Identifiable, Hashable {
+nonisolated struct GitChangedFile: Identifiable, Hashable, Sendable {
     var id: String { fileURL.relativePath }
 
     /// The status of the file.

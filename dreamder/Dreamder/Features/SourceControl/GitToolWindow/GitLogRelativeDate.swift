@@ -1,6 +1,6 @@
 import Foundation
 
-enum GitLogRelativeDate {
+nonisolated enum GitLogRelativeDate {
     static func string(for date: Date, now: Date = Date()) -> String {
         let seconds = Int(now.timeIntervalSince(date).rounded())
         if seconds < 45 {

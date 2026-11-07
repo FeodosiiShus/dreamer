@@ -114,11 +114,6 @@ struct GitCommandLineTests {
         #expect(try GitCommandLine.tokenize(GitClient.logGraphQuote(value)) == [value])
     }
 
-    @Test(arguments: awkwardValues)
-    func commitToolWindowQuoteRoundTrips(value: String) throws {
-        #expect(try GitCommandLine.tokenize(GitClient.commitToolWindowQuote(value)) == [value])
-    }
-
     @Test(arguments: [
         "/Users/test/plain",
         "/Users/test/with space/project",

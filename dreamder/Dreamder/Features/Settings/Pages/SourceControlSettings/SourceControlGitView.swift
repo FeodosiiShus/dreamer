@@ -58,12 +58,16 @@ struct SourceControlGitView: View {
             // Intentionally using an onAppear with a Task instead of just a .task modifier.
             // When we did this it was executing too often.
             Task {
-                authorName = try await gitConfig.get(key: "user.name", global: true) ?? ""
-                authorEmail = try await gitConfig.get(key: "user.email", global: true) ?? ""
-                defaultBranch = try await gitConfig.get(key: "init.defaultBranch", global: true) ?? ""
-                preferRebaseWhenPulling = try await gitConfig.get(key: "pull.rebase", global: true) ?? false
-                try? await Task.sleep(for: .milliseconds(0))
-                hasAppeared = true
+                do {
+                    authorName = try await gitConfig.get(key: "user.name", global: true) ?? ""
+                    authorEmail = try await gitConfig.get(key: "user.email", global: true) ?? ""
+                    defaultBranch = try await gitConfig.get(key: "init.defaultBranch", global: true) ?? ""
+                    preferRebaseWhenPulling = try await gitConfig.get(key: "pull.rebase", global: true) ?? false
+                    try? await Task.sleep(for: .milliseconds(0))
+                    hasAppeared = true
+                } catch {
+                    print("Failed to read git config: \(error.localizedDescription)")
+                }
             }
         }
     }

@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-extension Color {
+nonisolated extension Color {
 
     /// Initializes a `Color` from a HEX String (e.g.: `#1D2E3F`) and an optional alpha value.
     /// - Parameters:
@@ -55,7 +55,7 @@ extension Color {
     }
 }
 
-extension NSColor {
+nonisolated extension NSColor {
 
     /// Initializes a `NSColor` from a HEX String (e.g.: `#1D2E3F`) and an optional alpha value.
     /// - Parameters:

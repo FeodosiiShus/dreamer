@@ -152,7 +152,7 @@ final class ProjectNavigatorViewController: NSViewController {
         super.init(nibName: nil, bundle: nil)
     }
 
-    deinit {
+    isolated deinit {
         outlineView.removeFromSuperview()
         scrollView.removeFromSuperview()
         noResultsLabel.removeFromSuperview()

@@ -1,7 +1,7 @@
 import Foundation
 
-enum GitDiffParser {
-    struct Hunk: Equatable {
+nonisolated enum GitDiffParser {
+    struct Hunk: Equatable, Sendable {
         let oldStart: Int
         let oldCount: Int
         let newStart: Int

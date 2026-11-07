@@ -77,7 +77,7 @@ final class NPMPackageManager: PackageManagerProtocol {
             }
 
             // Init npm directory with .npmrc file
-            try await model.createDirectoryStructure(for: packagePath)
+            try model.createDirectoryStructure(for: packagePath)
             _ = try await model.executeInDirectory(
                 in: packagePath.path, ["npm init --yes --scope=dreamder"]
             )

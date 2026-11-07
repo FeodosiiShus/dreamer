@@ -1,17 +1,17 @@
 import Foundation
 
-struct GitLogGraphEdge: Hashable {
+nonisolated struct GitLogGraphEdge: Hashable, Sendable {
     let fromLane: Int
     let toLane: Int
 }
 
-struct GitLogGraphRow: Hashable {
+nonisolated struct GitLogGraphRow: Hashable, Sendable {
     let hash: String
     let lane: Int
     let edges: [GitLogGraphEdge]
 }
 
-enum GitLogGraphLayout {
+nonisolated enum GitLogGraphLayout {
     static func rows(for commits: [GitLogCommit]) -> [GitLogGraphRow] {
         var lanes: [String?] = []
         var result: [GitLogGraphRow] = []

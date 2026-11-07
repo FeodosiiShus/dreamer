@@ -67,7 +67,7 @@ private extension NSEvent.Publisher {
 
         }
 
-        deinit {
+        isolated deinit {
             if let monitor {
                 NSEvent.removeMonitor(monitor)
             }

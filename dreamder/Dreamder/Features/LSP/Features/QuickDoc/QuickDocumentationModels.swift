@@ -1,12 +1,12 @@
 import Foundation
 import LanguageServerProtocol
 
-struct QuickDocumentationContent: Equatable {
+nonisolated struct QuickDocumentationContent: Equatable, Sendable {
     let text: String
     let isMarkdown: Bool
 }
 
-enum QuickDocumentationBlock: Equatable {
+nonisolated enum QuickDocumentationBlock: Equatable, Sendable {
     case prose(String)
     case plain(String)
     case code(String)
@@ -24,7 +24,7 @@ enum QuickDocumentationBlock: Equatable {
     }
 }
 
-enum QuickDocumentationMarkup {
+nonisolated enum QuickDocumentationMarkup {
     static func content(from response: HoverResponse) -> QuickDocumentationContent? {
         guard let hover = response else { return nil }
         switch hover.contents {

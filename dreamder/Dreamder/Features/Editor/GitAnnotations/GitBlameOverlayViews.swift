@@ -34,7 +34,7 @@ final class GitBlameInlineView: NSView {
     }
 }
 
-enum GitBlameAnnotationPalette {
+nonisolated enum GitBlameAnnotationPalette {
     private static let recent = (red: 0x2F, green: 0x51, blue: 0x94)
     private static let old = (red: 0x22, green: 0x25, blue: 0x2E)
 

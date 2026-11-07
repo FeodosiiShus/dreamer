@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum GitHubReviewsRouter: GitJSONPostRouter {
+nonisolated enum GitHubReviewsRouter: GitJSONPostRouter {
     case listReviews(GitRouterConfiguration, String, String, Int)
 
     var method: GitHTTPMethod {

@@ -1,7 +1,8 @@
 import Combine
 import Foundation
+import Synchronization
 
-struct ExclusionRules: Sendable, Equatable {
+nonisolated struct ExclusionRules: Sendable, Equatable {
     static let defaultExcludedNames: Set<String> = ["node_modules"]
 
     let rootPath: String
@@ -53,20 +54,19 @@ final class ExcludedDirectories: ObservableObject {
     static let excludedKeyPrefix = "dreamder.excludedDirectories."
     static let cancelledKeyPrefix = "dreamder.cancelledExclusions."
 
-    private static let lock = NSLock()
-    nonisolated(unsafe) private static var registry: [String: ExclusionRules] = [:]
+    private nonisolated static let registry = Mutex<[String: ExclusionRules]>([:])
 
-    static func rules(covering url: URL) -> ExclusionRules {
+    nonisolated static func rules(covering url: URL) -> ExclusionRules {
         let candidate = ExclusionRules(rootURL: url)
-        lock.lock()
-        defer { lock.unlock() }
-        if let exact = registry[candidate.rootPath] {
-            return exact
+        return registry.withLock { registry in
+            if let exact = registry[candidate.rootPath] {
+                return exact
+            }
+            let enclosing = registry.values
+                .filter { candidate.rootPath.hasPrefix($0.rootPath + "/") }
+                .max { $0.rootPath.count < $1.rootPath.count }
+            return enclosing ?? candidate
         }
-        let enclosing = registry.values
-            .filter { candidate.rootPath.hasPrefix($0.rootPath + "/") }
-            .max { $0.rootPath.count < $1.rootPath.count }
-        return enclosing ?? candidate
     }
 
     @Published private(set) var rules: ExclusionRules {
@@ -87,9 +87,7 @@ final class ExcludedDirectories: ObservableObject {
     }
 
     private static func register(_ rules: ExclusionRules) {
-        lock.lock()
-        registry[rules.rootPath] = rules
-        lock.unlock()
+        registry.withLock { $0[rules.rootPath] = rules }
     }
 
     func exclude(_ url: URL) {

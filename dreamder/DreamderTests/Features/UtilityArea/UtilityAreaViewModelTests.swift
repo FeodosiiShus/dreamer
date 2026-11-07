@@ -8,6 +8,7 @@
 import XCTest
 @testable import Dreamder
 
+@MainActor
 final class UtilityAreaViewModelTests: XCTestCase {
     var model: UtilityAreaViewModel!
     let rootURL: URL = URL(filePath: "~/")

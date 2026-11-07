@@ -119,19 +119,21 @@ final class NotificationPanelViewModel: ObservableObject {
             withTimeInterval: displayDuration,
             repeats: false
         ) { [weak self] _ in
-            guard let self = self else { return }
-            self.timers[notification.id] = nil
+            MainActor.assumeIsolated {
+                guard let self = self else { return }
+                self.timers[notification.id] = nil
 
-            // Ensure we're on the main thread and animate the change
-            DispatchQueue.main.async {
-                NSAnimationContext.runAnimationGroup { context in
-                    context.duration = 0.3
-                    context.allowsImplicitAnimation = true
+                // Ensure we're on the main thread and animate the change
+                DispatchQueue.main.async {
+                    NSAnimationContext.runAnimationGroup { context in
+                        context.duration = 0.3
+                        context.allowsImplicitAnimation = true
 
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        var newHiddenIds = self.hiddenNotificationIds
-                        newHiddenIds.insert(notification.id)
-                        self.hiddenNotificationIds = newHiddenIds
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            var newHiddenIds = self.hiddenNotificationIds
+                            newHiddenIds.insert(notification.id)
+                            self.hiddenNotificationIds = newHiddenIds
+                        }
                     }
                 }
             }
@@ -278,7 +280,7 @@ final class NotificationPanelViewModel: ObservableObject {
         }
     }
 
-    deinit {
+    isolated deinit {
         NotificationCenter.default.removeObserver(self)
     }
 

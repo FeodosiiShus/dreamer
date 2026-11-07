@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct GitLabTokenConfiguration: GitRouterConfiguration {
+nonisolated struct GitLabTokenConfiguration: GitRouterConfiguration {
     let provider = SourceControlAccount.Provider.gitlab
     var apiEndpoint: String?
     var accessToken: String?
@@ -19,7 +19,7 @@ struct GitLabTokenConfiguration: GitRouterConfiguration {
     }
 }
 
-struct GitLabPrivateTokenConfiguration: GitRouterConfiguration {
+nonisolated struct GitLabPrivateTokenConfiguration: GitRouterConfiguration {
     let provider = SourceControlAccount.Provider.gitlab
     var apiEndpoint: String?
     var accessToken: String?

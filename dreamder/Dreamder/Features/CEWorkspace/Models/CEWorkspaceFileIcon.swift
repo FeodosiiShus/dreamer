@@ -8,10 +8,10 @@
 import SwiftUI
 
 // TODO: DOCS (Nanashi Li)
-enum FileIcon {
+nonisolated enum FileIcon {
 
     // swiftlint:disable identifier_name
-    enum FileType: String {
+    nonisolated enum FileType: String {
         case adb
         case aif
         case avi
@@ -171,7 +171,7 @@ enum FileIcon {
 
     /// Returns a `Color` for a specific `fileType`
     /// If not specified otherwise this will return `Color.accentColor`
-    static func iconColor(fileType: FileType?) -> Color { // swiftlint:disable:this cyclomatic_complexity
+    @MainActor static func iconColor(fileType: FileType?) -> Color { // swiftlint:disable:this cyclomatic_complexity
         switch fileType {
         case .swift, .html:
             return .orange

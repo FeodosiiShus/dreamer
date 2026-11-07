@@ -1,6 +1,6 @@
 import Foundation
 
-struct ProblemCounts: Equatable {
+nonisolated struct ProblemCounts: Equatable, Sendable {
     var errors = 0
     var warnings = 0
     var information = 0
@@ -39,7 +39,7 @@ struct ProblemCounts: Equatable {
     }
 }
 
-struct ProblemFileNode: Identifiable, Equatable {
+nonisolated struct ProblemFileNode: Identifiable, Equatable, Sendable {
     let url: URL
     let name: String
     let directory: String
@@ -52,7 +52,7 @@ struct ProblemFileNode: Identifiable, Equatable {
     }
 }
 
-enum ProblemsTab: String, CaseIterable, Identifiable {
+nonisolated enum ProblemsTab: String, CaseIterable, Identifiable, Sendable {
     case file
     case project
 
@@ -70,7 +70,7 @@ enum ProblemsTab: String, CaseIterable, Identifiable {
     }
 }
 
-enum ProblemsTreeBuilder {
+nonisolated enum ProblemsTreeBuilder {
     static func instances(
         diagnosticsByFile: [URL: [WorkspaceDiagnostic]],
         root: URL?
@@ -126,7 +126,7 @@ enum ProblemsTreeBuilder {
     }
 }
 
-struct ProblemsEmptyState: Equatable {
+nonisolated struct ProblemsEmptyState: Equatable, Sendable {
     let primary: String
     let secondary: String?
 
@@ -145,7 +145,7 @@ struct ProblemsEmptyState: Equatable {
     static let project = ProblemsEmptyState(primary: "No problems found", secondary: nil)
 }
 
-extension WorkspaceDiagnostic.Severity {
+nonisolated extension WorkspaceDiagnostic.Severity {
     var iconName: String {
         switch self {
         case .error: "status/error"

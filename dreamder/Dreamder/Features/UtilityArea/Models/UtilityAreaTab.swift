@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-enum UtilityAreaTab: WorkspacePanelTab, CaseIterable {
+nonisolated enum UtilityAreaTab: WorkspacePanelTab, CaseIterable {
     var id: Self { self }
 
     case terminal
@@ -36,6 +36,7 @@ enum UtilityAreaTab: WorkspacePanelTab, CaseIterable {
         }
     }
 
+    @MainActor
     var body: some View {
         switch self {
         case .terminal:

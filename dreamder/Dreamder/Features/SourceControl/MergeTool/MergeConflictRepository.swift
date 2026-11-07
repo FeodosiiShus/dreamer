@@ -121,7 +121,7 @@ struct MergeConflictRepository {
         _ = try await gitClient.run("add -- \(GitClient.logGraphQuote(path))")
     }
 
-    static func shortBranchName(_ ref: String) -> String {
+    nonisolated static func shortBranchName(_ ref: String) -> String {
         ref.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "refs/heads/", with: "")
             .replacingOccurrences(of: "refs/tags/", with: "")

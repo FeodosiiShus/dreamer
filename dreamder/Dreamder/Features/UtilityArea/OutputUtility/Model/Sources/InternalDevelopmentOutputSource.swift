@@ -7,10 +7,10 @@
 
 import Foundation
 
-class InternalDevelopmentOutputSource: UtilityAreaOutputSource {
+class InternalDevelopmentOutputSource: @MainActor UtilityAreaOutputSource {
     static let shared = InternalDevelopmentOutputSource()
 
-    struct Message: UtilityAreaOutputMessage {
+    struct Message: @MainActor UtilityAreaOutputMessage {
         var id: UUID = UUID()
 
         var message: String

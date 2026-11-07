@@ -7,7 +7,7 @@
 
 import Foundation
 
-class GitLabEventNote: Codable {
+nonisolated struct GitLabEventNote: Codable, Sendable {
     var id: Int?
     var body: String?
     var attachment: String?

@@ -159,10 +159,11 @@ struct FindModePicker: View {
     }
 }
 
-final class FindModeMenu: NSMenu, NSMenuDelegate {
+nonisolated final class FindModeMenu: NSMenu, NSMenuDelegate {
     private let modes: [SearchModeModel]
     private let onSelect: (SearchModeModel) -> Void
 
+    @MainActor
     init(
         modes: [SearchModeModel],
         onSelect: @escaping (SearchModeModel) -> Void
@@ -186,10 +187,11 @@ final class FindModeMenu: NSMenu, NSMenuDelegate {
     }
 }
 
-final class FindModeMenuItem: NSMenuItem {
+nonisolated final class FindModeMenuItem: NSMenuItem {
     private let mode: SearchModeModel
     private let onSelect: (SearchModeModel) -> Void
 
+    @MainActor
     init(
         mode: SearchModeModel,
         onSelect: @escaping (SearchModeModel) -> Void
@@ -203,11 +205,12 @@ final class FindModeMenuItem: NSMenuItem {
 
     @available(*, unavailable)
     required init(coder: NSCoder) {
-        self.mode = .Find
+        self.mode = MainActor.assumeIsolated { SearchModeModel.Find }
         self.onSelect = { _ in }
         super.init(coder: coder)
     }
 
+    @MainActor
     @objc
     func handleSelect() {
         onSelect(mode)

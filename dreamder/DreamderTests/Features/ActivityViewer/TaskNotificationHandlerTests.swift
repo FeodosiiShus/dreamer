@@ -8,6 +8,7 @@
 import XCTest
 @testable import Dreamder
 
+@MainActor
 final class TaskNotificationHandlerTests: XCTestCase {
     var taskNotificationHandler: TaskNotificationHandler!
 

@@ -1,6 +1,6 @@
 import Foundation
 
-extension GitChangedFile {
+nonisolated extension GitChangedFile {
     func gitRelativeDirectory(from root: URL) -> String {
         var rootPath = root.path(percentEncoded: false)
         while rootPath.hasSuffix("/") {

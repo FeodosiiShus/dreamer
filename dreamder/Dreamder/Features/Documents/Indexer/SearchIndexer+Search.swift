@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension SearchIndexer {
+nonisolated extension SearchIndexer {
     /// Initiates a search operation based on the provided query.
     ///
     /// - Parameters:

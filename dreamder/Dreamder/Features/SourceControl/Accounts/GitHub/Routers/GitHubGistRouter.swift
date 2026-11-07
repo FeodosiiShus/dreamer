@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum GitHubGistRouter: GitJSONPostRouter {
+nonisolated enum GitHubGistRouter: GitJSONPostRouter {
     case readAuthenticatedGists(GitRouterConfiguration, String, String)
     case readGists(GitRouterConfiguration, String, String, String)
     case readGist(GitRouterConfiguration, String)

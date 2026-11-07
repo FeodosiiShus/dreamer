@@ -10,20 +10,20 @@
 import Foundation
 
 // TODO: DOCS (Nanashi Li)
-enum GitHTTPMethod: String {
+nonisolated enum GitHTTPMethod: String, Sendable {
     case GET, POST, PUT, PATCH, DELETE
 }
 
-enum GitHTTPEncoding: Int {
+nonisolated enum GitHTTPEncoding: Int, Sendable {
     case url, form, json
 }
 
-struct GitHTTPHeader {
+nonisolated struct GitHTTPHeader: Sendable {
     var headerField: String
     var value: String
 }
 
-protocol GitRouterConfiguration {
+nonisolated protocol GitRouterConfiguration: Sendable {
     var apiEndpoint: String? { get }
     var accessToken: String? { get }
     var accessTokenFieldName: String? { get }
@@ -32,7 +32,7 @@ protocol GitRouterConfiguration {
     var customHeaders: [GitHTTPHeader]? { get }
 }
 
-extension GitRouterConfiguration {
+nonisolated extension GitRouterConfiguration {
     var accessTokenFieldName: String? {
         "access_token"
     }
@@ -50,7 +50,7 @@ extension GitRouterConfiguration {
     }
 }
 
-protocol GitRouter {
+nonisolated protocol GitRouter {
     var method: GitHTTPMethod { get }
     var path: String { get }
     var encoding: GitHTTPEncoding { get }
@@ -61,24 +61,24 @@ protocol GitRouter {
 
     func request(_ urlComponents: URLComponents, parameters: [String: Any]) -> URLRequest?
 
-    func load<T: Codable>(
+    func load<T: Codable & Sendable>(
         _ session: GitURLSession,
         dateDecodingStrategy: JSONDecoder.DateDecodingStrategy?,
         expectedResultType: T.Type,
-        completion: @escaping (_ json: T?, _ error: Error?) -> Void
+        completion: @escaping @Sendable (_ json: T?, _ error: Error?) -> Void
     ) -> GitURLSessionDataTaskProtocol?
 
-    func load<T: Codable>(
+    func load<T: Codable & Sendable>(
         _ session: GitURLSession,
         decoder: JSONDecoder,
         expectedResultType: T.Type,
-        completion: @escaping (_ json: T?, _ error: Error?) -> Void
+        completion: @escaping @Sendable (_ json: T?, _ error: Error?) -> Void
     ) -> GitURLSessionDataTaskProtocol?
 
     func request() -> URLRequest?
 }
 
-extension GitRouter {
+nonisolated extension GitRouter {
 
     var gitErrorKey: String { "ErrorKey" }
 
@@ -189,11 +189,11 @@ extension GitRouter {
         }
     }
 
-    func load<T: Codable>(
+    func load<T: Codable & Sendable>(
         _ session: GitURLSession = URLSession.shared,
         dateDecodingStrategy: JSONDecoder.DateDecodingStrategy?,
         expectedResultType: T.Type,
-        completion: @escaping (_ json: T?, _ error: Error?) -> Void
+        completion: @escaping @Sendable (_ json: T?, _ error: Error?) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
 
         let decoder = JSONDecoder()
@@ -205,15 +205,18 @@ extension GitRouter {
         return load(session, decoder: decoder, expectedResultType: expectedResultType, completion: completion)
     }
 
-    func load<T: Codable>(
+    func load<T: Codable & Sendable>(
         _ session: GitURLSession = URLSession.shared,
         decoder: JSONDecoder = JSONDecoder(), expectedResultType _: T.Type,
-        completion: @escaping (_ json: T?, _ error: Error?) -> Void
+        completion: @escaping @Sendable (_ json: T?, _ error: Error?) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
 
         guard let request = request() else {
             return nil
         }
+
+        let errorDomain = configuration?.errorDomain ?? ""
+        let errorKey = gitErrorKey
 
         let task = session.dataTask(with: request) { data, response, err in
             if let response = response as? HTTPURLResponse {
@@ -224,11 +227,11 @@ extension GitRouter {
                         options: .mutableContainers
                     ) as? [String: Any] {
 
-                        userInfo[gitErrorKey] = json as Any?
+                        userInfo[errorKey] = json as Any?
                     }
 
                     let error = NSError(
-                        domain: self.configuration?.errorDomain ?? "",
+                        domain: errorDomain,
                         code: response.statusCode,
                         userInfo: userInfo
                     )
@@ -257,7 +260,7 @@ extension GitRouter {
     }
 
     @available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *)
-    func load<T: Codable>(
+    func load<T: Codable & Sendable>(
         _ session: GitURLSession = URLSession.shared,
         decoder: JSONDecoder = JSONDecoder(),
         expectedResultType _: T.Type
@@ -289,7 +292,7 @@ extension GitRouter {
     }
 
     @available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *)
-    func load<T: Codable>(
+    func load<T: Codable & Sendable>(
         _ session: GitURLSession = URLSession.shared,
         dateDecodingStrategy: JSONDecoder.DateDecodingStrategy?,
         expectedResultType: T.Type
@@ -306,12 +309,15 @@ extension GitRouter {
 
     func load(
         _ session: GitURLSession = URLSession.shared,
-        completion: @escaping (_ error: Error?) -> Void
+        completion: @escaping @Sendable (_ error: Error?) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
 
         guard let request = request() else {
             return nil
         }
+
+        let errorDomain = configuration?.errorDomain ?? ""
+        let errorKey = gitErrorKey
 
         let task = session.dataTask(with: request) { data, response, err in
             if let response = response as? HTTPURLResponse {
@@ -322,12 +328,12 @@ extension GitRouter {
                         options: .mutableContainers
                     ) as? [String: Any] {
 
-                        userInfo[gitErrorKey] = json as Any?
+                        userInfo[errorKey] = json as Any?
 
                     }
 
                     let error = NSError(
-                        domain: self.configuration?.errorDomain ?? "",
+                        domain: errorDomain,
                         code: response.statusCode,
                         userInfo: userInfo
                     )
@@ -345,7 +351,7 @@ extension GitRouter {
     }
 }
 
-private extension CharacterSet {
+nonisolated private extension CharacterSet {
 
     /// https://github.com/Alamofire/Alamofire/blob/3.5rameterEncoding.swift#L220-L225
     static func URLQueryAllowedCharacterSet() -> CharacterSet {
@@ -360,7 +366,7 @@ private extension CharacterSet {
     }
 }
 
-extension HTTPURLResponse {
+nonisolated extension HTTPURLResponse {
 
     /// Checks what kind of HTTP response we get from the server
     var wasSuccessful: Bool {

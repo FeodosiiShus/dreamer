@@ -10,7 +10,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
-class GitHubPullRequest: Codable {
+nonisolated struct GitHubPullRequest: Codable, Sendable {
     private(set) var id: Int = -1
     var url: URL?
 
@@ -73,7 +73,7 @@ class GitHubPullRequest: Codable {
         case draft
     }
 
-    class Branch: Codable {
+    nonisolated struct Branch: Codable, Sendable {
         var label: String?
         var ref: String?
         var sha: String?
@@ -98,7 +98,7 @@ extension GitHubAccount {
         owner: String,
         repository: String,
         number: Int,
-        completion: @escaping (_ response: Result<GitHubPullRequest, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitHubPullRequest, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitHubPullRequestRouter.readPullRequest(configuration, owner, repository, "\(number)")
 
@@ -139,7 +139,7 @@ extension GitHubAccount {
         state: GitHubOpenness = .open,
         sort: GitSortType = .created,
         direction: GitSortDirection = .desc,
-        completion: @escaping (_ response: Result<[GitHubPullRequest], Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<[GitHubPullRequest], Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitHubPullRequestRouter.readPullRequests(
             configuration,

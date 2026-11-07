@@ -7,9 +7,9 @@
 
 import Foundation
 
-extension SearchIndexer {
+nonisolated extension SearchIndexer {
     /// Manager for SearchIndexer object that supports async calls to the index
-    class AsyncManager {
+    nonisolated final class AsyncManager: Sendable {
         /// An instance of the SearchIndexer
         let index: SearchIndexer
         private let addQueue = DispatchQueue(label: "dev.dreamder.Dreamder.AddFilesToIndex", attributes: .concurrent)
@@ -19,7 +19,7 @@ extension SearchIndexer {
             self.index = index
         }
 
-        class TextFile {
+        nonisolated final class TextFile: Sendable {
             let url: URL
             let text: String
 
@@ -61,7 +61,7 @@ extension SearchIndexer {
         ///     print(result)
         /// }
         /// ```
-        func search(
+        @concurrent func search(
             query: String,
             _ maxResults: Int,
             timeout: TimeInterval = 1.0
@@ -89,7 +89,7 @@ extension SearchIndexer {
         ///   the index when the operation is complete. Default is `false`.
         ///
         /// - Returns: An array of booleans indicating the success of adding each file to the index.
-        func addText(
+        @concurrent func addText(
             files: [TextFile],
             flushWhenComplete: Bool = false
         ) async -> [Bool] {
@@ -127,7 +127,7 @@ extension SearchIndexer {
         /// - Returns: An array of booleans indicating the success of adding each file to the index.
         /// - Warning: Prefer using `addText` when possible as SearchKit does not have the ability
         ///  to read every file type. For example, it is often not possible to read Swift files.
-        func addFiles(
+        @concurrent func addFiles(
             urls: [URL],
             flushWhenComplete: Bool = false
         ) async -> [Bool] {

@@ -32,7 +32,7 @@ extension GitLabAccount {
         sort: GitLabSort = GitLabSort.descending,
         search: String = "",
         simple: Bool = false,
-        completion: @escaping (_ response: Result<[GitLabProject], Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<[GitLabProject], Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitLabProjectRouter.readAuthenticatedProjects(
             configuration: configuration,
@@ -70,7 +70,7 @@ extension GitLabAccount {
     func project(
         _ session: GitURLSession = URLSession.shared,
         id: String,
-        completion: @escaping (_ response: Result<GitLabProject, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitLabProject, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitLabProjectRouter.readSingleProject(configuration: configuration, id: id)
 
@@ -114,7 +114,7 @@ extension GitLabAccount {
         sort: GitLabSort = GitLabSort.descending,
         search: String = "",
         simple: Bool = false,
-        completion: @escaping (_ response: Result<GitLabProject, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitLabProject, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitLabProjectRouter.readVisibleProjects(
             configuration: configuration,
@@ -168,7 +168,7 @@ extension GitLabAccount {
         sort: GitLabSort = GitLabSort.descending,
         search: String = "",
         simple: Bool = false,
-        completion: @escaping (_ response: Result<GitLabProject, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitLabProject, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitLabProjectRouter.readOwnedProjects(
             configuration: configuration,
@@ -222,7 +222,7 @@ extension GitLabAccount {
         sort: GitLabSort = GitLabSort.descending,
         search: String = "",
         simple: Bool = false,
-        completion: @escaping (_ response: Result<GitLabProject, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitLabProject, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitLabProjectRouter.readStarredProjects(
             configuration: configuration,
@@ -276,7 +276,7 @@ extension GitLabAccount {
         sort: GitLabSort = GitLabSort.descending,
         search: String = "",
         simple: Bool = false,
-        completion: @escaping (_ response: Result<GitLabProject, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitLabProject, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitLabProjectRouter.readAllProjects(
             configuration: configuration,
@@ -318,7 +318,7 @@ extension GitLabAccount {
         id: String,
         page: String = "1",
         perPage: String = "20",
-        completion: @escaping (_ response: Result<GitLabEvent, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitLabEvent, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitLabProjectRouter.readProjectEvents(
             configuration: configuration,

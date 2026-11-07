@@ -28,6 +28,6 @@ extension ProjectNavigatorViewController: NSMenuDelegate {
                 menu.item = nil
             }
         }
-        menu.update()
+        menu.rebuild()
     }
 }

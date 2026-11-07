@@ -7,7 +7,7 @@
 
 import Foundation
 
-class GitLabAvatarURL: Codable {
+nonisolated struct GitLabAvatarURL: Codable, Sendable {
     var url: URL?
 
     init(_ json: [String: AnyObject]) {

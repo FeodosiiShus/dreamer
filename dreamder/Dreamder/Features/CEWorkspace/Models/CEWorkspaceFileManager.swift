@@ -75,11 +75,17 @@ final class CEWorkspaceFileManager {
         self.loadChildrenForFile(self.workspaceItem)
 
         fsEventStream = DirectoryEventStream(directory: self.folderUrl.path) { [weak self] events in
-            self?.fileSystemEventReceived(events: events)
+            Task { @MainActor [weak self] in
+                self?.fileSystemEventReceived(events: events)
+            }
         }
 
         Task {
-            try await self.sourceControlManager?.validate()
+            do {
+                try await self.sourceControlManager?.validate()
+            } catch {
+                self.logger.error("Failed to validate source control: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -222,7 +228,7 @@ final class CEWorkspaceFileManager {
         flattenedFileItems = [workspaceItem.id: workspaceItem]
     }
 
-    deinit {
+    isolated deinit {
         fsEventStream?.cancel()
         observers.removeAllObjects()
     }

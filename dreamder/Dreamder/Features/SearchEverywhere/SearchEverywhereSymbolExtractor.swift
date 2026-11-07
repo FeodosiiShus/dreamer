@@ -1,6 +1,6 @@
 import Foundation
 
-enum SearchEverywhereSymbolKind: String, Hashable, CaseIterable {
+nonisolated enum SearchEverywhereSymbolKind: String, Hashable, CaseIterable, Sendable {
     case classType
     case structType
     case enumType
@@ -46,7 +46,7 @@ enum SearchEverywhereSymbolKind: String, Hashable, CaseIterable {
     }
 }
 
-struct ExtractedSymbol: Equatable {
+nonisolated struct ExtractedSymbol: Equatable, Sendable {
     let name: String
     let kind: SearchEverywhereSymbolKind
     let line: Int
@@ -59,7 +59,7 @@ struct SearchEverywhereSymbol: Hashable {
     let line: Int
 }
 
-enum SymbolExtractor {
+nonisolated enum SymbolExtractor {
     static let textFileExtensions: Set<String> = [
         "swift", "ts", "tsx", "js", "jsx", "mjs", "cjs", "java", "kt", "kts",
         "py", "go", "rs"

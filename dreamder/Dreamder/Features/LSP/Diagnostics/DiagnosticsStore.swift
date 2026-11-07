@@ -1,7 +1,7 @@
 import Foundation
 
-struct WorkspaceDiagnostic: Identifiable, Hashable {
-    enum Severity: Int, Comparable, CaseIterable {
+nonisolated struct WorkspaceDiagnostic: Identifiable, Hashable, Sendable {
+    nonisolated enum Severity: Int, Comparable, CaseIterable, Sendable {
         case error = 1
         case warning = 2
         case information = 3

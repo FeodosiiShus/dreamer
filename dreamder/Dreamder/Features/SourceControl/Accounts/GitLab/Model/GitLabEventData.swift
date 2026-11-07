@@ -7,7 +7,7 @@
 
 import Foundation
 
-class GitLabEventData: Codable {
+nonisolated struct GitLabEventData: Codable, Sendable {
     var objectKind: String?
     var eventName: String?
     var before: String?

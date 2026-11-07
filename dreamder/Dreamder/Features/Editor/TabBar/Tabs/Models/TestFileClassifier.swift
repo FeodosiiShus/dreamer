@@ -1,6 +1,6 @@
 import Foundation
 
-enum TestFileClassifier {
+nonisolated enum TestFileClassifier {
     private static let testMarkers: Set<Substring> = ["spec", "test"]
 
     static func isTestFile(_ url: URL) -> Bool {

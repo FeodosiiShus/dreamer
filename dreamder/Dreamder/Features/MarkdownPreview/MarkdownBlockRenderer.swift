@@ -1,6 +1,6 @@
 import Foundation
 
-enum MarkdownBlockRenderer {
+nonisolated enum MarkdownBlockRenderer {
     enum TableAlignment {
         case none
         case left

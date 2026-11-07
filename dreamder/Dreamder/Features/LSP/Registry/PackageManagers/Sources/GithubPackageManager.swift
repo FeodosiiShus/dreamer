@@ -84,7 +84,7 @@ final class GithubPackageManager: PackageManagerProtocol {
             confirmation: .none
         ) { model in
             do {
-                try await model.createDirectoryStructure(for: packagePath)
+                try model.createDirectoryStructure(for: packagePath)
             } catch {
                 throw PackageManagerError.initializationFailed(error.localizedDescription)
             }
@@ -103,7 +103,7 @@ final class GithubPackageManager: PackageManagerProtocol {
             confirmation: .none
         ) { model in
             do {
-                await model.status("Downloading \(url)")
+                model.status("Downloading \(url)")
                 let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 120.0)
                 // TODO: Progress Updates
                 let (tempURL, response) = try await URLSession.shared.download(for: request)
@@ -161,14 +161,14 @@ final class GithubPackageManager: PackageManagerProtocol {
             let packagePath = downloadPath.appending(path: fileName)
 
             if packagePath.pathExtension == "tar" || packagePath.pathExtension == ".zip" {
-                await model.status("Decompressing \(fileName)")
-                try await FileManager.default.unzipItem(at: packagePath, to: downloadPath, progress: model.progress)
+                model.status("Decompressing \(fileName)")
+                try FileManager.default.unzipItem(at: packagePath, to: downloadPath, progress: model.progress)
                 if FileManager.default.fileExists(atPath: packagePath.path(percentEncoded: false)) {
                     try FileManager.default.removeItem(at: packagePath)
                 }
-                await model.status("Decompressed to '\(downloadPath.path(percentEncoded: false))'")
+                model.status("Decompressed to '\(downloadPath.path(percentEncoded: false))'")
             } else if packagePath.lastPathComponent.hasSuffix(".tar.gz") {
-                await model.status("Decompressing \(fileName) using `tar`")
+                model.status("Decompressing \(fileName) using `tar`")
                 _ = try await model.executeInDirectory(
                     in: packagePath.deletingLastPathComponent().path(percentEncoded: false),
                     [
@@ -178,7 +178,7 @@ final class GithubPackageManager: PackageManagerProtocol {
                     ]
                 )
             } else if packagePath.pathExtension == "gz" {
-                await model.status("Decompressing \(fileName) using `gunzip`")
+                model.status("Decompressing \(fileName) using `gunzip`")
                 _ = try await model.executeInDirectory(
                     in: packagePath.deletingLastPathComponent().path(percentEncoded: false),
                     [

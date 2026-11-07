@@ -9,7 +9,7 @@ import Foundation
 
 /// Given a list of file URLs, asynchronously fetches their contents and returns them iteratively.
 /// Returns files as a ``SearchIndexer/AsyncManager/TextFile`` struct, used to index workspaces.
-struct AsyncFileIterator: AsyncSequence, AsyncIteratorProtocol {
+nonisolated struct AsyncFileIterator: AsyncSequence, AsyncIteratorProtocol {
     typealias TextFile = SearchIndexer.AsyncManager.TextFile
     typealias Element = (TextFile, Int)
 
@@ -27,7 +27,7 @@ struct AsyncFileIterator: AsyncSequence, AsyncIteratorProtocol {
 
         while currentIdx < fileURLs.count {
             let fileURL = fileURLs[currentIdx]
-            if let content = try? String(contentsOf: fileURL) {
+            if let content = try? String(contentsOf: fileURL, encoding: .utf8) {
                 return (TextFile(url: fileURL.standardizedFileURL, text: content), currentIdx)
             }
             currentIdx += 1

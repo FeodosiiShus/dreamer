@@ -4,10 +4,7 @@ import Testing
 
 @Suite
 struct CEWorkspaceFileIconTests {
-    private static let goTeal = Color(red: 0.02, green: 0.675, blue: 0.757, opacity: 1.0)
-    private static let makefileRed = Color(red: 0.937, green: 0.325, blue: 0.314, opacity: 1.0)
-
-    private static let iconNames: [(FileIcon.FileType, String)] = [
+    static let iconNames: [(FileIcon.FileType, String)] = [
         (.swift, "swift"),
         (.json, "doc.json"),
         (.yml, "doc.json"),
@@ -30,7 +27,7 @@ struct CEWorkspaceFileIconTests {
         (.gitignore, "arrow.triangle.branch")
     ]
 
-    private static let fileNames: [(String, FileIcon.FileType)] = [
+    static let fileNames: [(String, FileIcon.FileType)] = [
         ("Package.swift", .swift),
         ("index.ts", .ts),
         ("Package.resolved", .resolved),
@@ -65,6 +62,22 @@ struct CEWorkspaceFileIconTests {
     }
 
     @Test
+    func fileTypeRawValuesMatchNamesUsedForLookup() {
+        #expect(FileIcon.FileType(rawValue: "Makefile") == .Makefile)
+        #expect(FileIcon.FileType(rawValue: "LICENSE") == .LICENSE)
+        #expect(FileIcon.FileType(rawValue: "text") == .txt)
+        #expect(FileIcon.FileType(rawValue: "txt") == nil)
+        #expect(FileIcon.FileType(rawValue: "SWIFT") == nil)
+    }
+}
+
+@MainActor
+@Suite
+struct CEWorkspaceFileColorAndWorkspaceFileTests {
+    private static let goTeal = Color(red: 0.02, green: 0.675, blue: 0.757, opacity: 1.0)
+    private static let makefileRed = Color(red: 0.937, green: 0.325, blue: 0.314, opacity: 1.0)
+
+    @Test
     func iconColorPerFileType() {
         #expect(FileIcon.iconColor(fileType: .swift) == .orange)
         #expect(FileIcon.iconColor(fileType: .html) == .orange)
@@ -91,16 +104,7 @@ struct CEWorkspaceFileIconTests {
         #expect(FileIcon.iconColor(fileType: .txt) == Color.steel)
     }
 
-    @Test
-    func fileTypeRawValuesMatchNamesUsedForLookup() {
-        #expect(FileIcon.FileType(rawValue: "Makefile") == .Makefile)
-        #expect(FileIcon.FileType(rawValue: "LICENSE") == .LICENSE)
-        #expect(FileIcon.FileType(rawValue: "text") == .txt)
-        #expect(FileIcon.FileType(rawValue: "txt") == nil)
-        #expect(FileIcon.FileType(rawValue: "SWIFT") == nil)
-    }
-
-    @Test(arguments: fileNames)
+    @Test(arguments: CEWorkspaceFileIconTests.fileNames)
     func workspaceFileTypeFromName(name: String, expected: FileIcon.FileType) {
         let file = CEWorkspaceFile(url: URL(fileURLWithPath: "/tmp/\(name)"))
         #expect(file.type == expected)

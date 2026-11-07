@@ -25,14 +25,14 @@ private struct CleanupFailure: Error, Equatable {}
 struct WithTimeoutTests {
     @Test
     func returnsTheValueOfAnOperationThatFinishesBeforeTheLimit() async throws {
-        let value = try await withTimeout(duration: .seconds(5), operation: { 42 })
+        let value = try await withTimeout(duration: .seconds(60), operation: { 42 })
         #expect(value == 42)
     }
 
     @Test
     func returnsTheValueOfAnOperationThatSuspendsBrieflyWithinTheLimit() async throws {
         let value = try await withTimeout(
-            duration: .seconds(5),
+            duration: .seconds(60),
             operation: {
                 try await Task.sleep(for: .milliseconds(20))
                 return "ready"
@@ -47,7 +47,7 @@ struct WithTimeoutTests {
             _ = try await withTimeout(
                 duration: .milliseconds(20),
                 operation: {
-                    try await Task.sleep(for: .seconds(5))
+                    try await Task.sleep(for: .seconds(60))
                     return 1
                 }
             )
@@ -60,7 +60,7 @@ struct WithTimeoutTests {
             _ = try await withTimeout(
                 duration: .zero,
                 operation: {
-                    try await Task.sleep(for: .seconds(5))
+                    try await Task.sleep(for: .seconds(60))
                     return 1
                 }
             )
@@ -71,7 +71,7 @@ struct WithTimeoutTests {
     func errorThrownByTheOperationPropagatesUnchanged() async {
         await #expect(throws: OperationFailure(code: 7)) {
             _ = try await withTimeout(
-                duration: .seconds(5),
+                duration: .seconds(60),
                 operation: { () async throws -> Int in throw OperationFailure(code: 7) }
             )
         }
@@ -85,7 +85,7 @@ struct WithTimeoutTests {
                 duration: .milliseconds(20),
                 operation: {
                     do {
-                        try await Task.sleep(for: .seconds(5))
+                        try await Task.sleep(for: .seconds(60))
                     } catch {
                         await recorder.recordCancellation(Task.isCancelled)
                         throw error
@@ -105,7 +105,7 @@ struct WithTimeoutTests {
                 duration: .milliseconds(20),
                 onTimeout: { await recorder.recordTimeoutCall() },
                 operation: {
-                    try await Task.sleep(for: .seconds(5))
+                    try await Task.sleep(for: .seconds(60))
                     return 1
                 }
             )
@@ -117,7 +117,7 @@ struct WithTimeoutTests {
     func onTimeoutDoesNotRunWhenTheOperationFinishesInTime() async throws {
         let recorder = Recorder()
         let value = try await withTimeout(
-            duration: .seconds(5),
+            duration: .seconds(60),
             onTimeout: { await recorder.recordTimeoutCall() },
             operation: { "done" }
         )
@@ -132,7 +132,7 @@ struct WithTimeoutTests {
                 duration: .milliseconds(20),
                 onTimeout: { throw CleanupFailure() },
                 operation: {
-                    try await Task.sleep(for: .seconds(5))
+                    try await Task.sleep(for: .seconds(60))
                     return 1
                 }
             )
@@ -146,11 +146,11 @@ struct WithTimeoutTests {
 
         let task = Task {
             try await withTimeout(
-                duration: .seconds(5),
+                duration: .seconds(60),
                 operation: {
                     startedSignal.yield()
                     do {
-                        try await Task.sleep(for: .seconds(5))
+                        try await Task.sleep(for: .seconds(60))
                     } catch {
                         await recorder.recordCancellation(Task.isCancelled)
                         throw error

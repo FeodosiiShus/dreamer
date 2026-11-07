@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension String {
+nonisolated extension String {
     var bitbucketQueryParameters: [String: String] {
         let parametersArray = components(separatedBy: "&")
         var parameters = [String: String]()

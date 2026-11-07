@@ -7,13 +7,13 @@
 
 import Foundation
 
-enum GitLabVisibilityLevel: Int {
+nonisolated enum GitLabVisibilityLevel: Int {
     case `private` = 0
     case `internal` = 10
     case `public` = 20
 }
 
-class GitLabProject: Codable {
+nonisolated struct GitLabProject: Codable, Sendable {
     let id: Int
     let owner: GitLabUser
     var name: String?

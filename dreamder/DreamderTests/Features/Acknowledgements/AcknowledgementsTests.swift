@@ -8,6 +8,7 @@
 import XCTest
 @testable import Dreamder
 
+@MainActor
 final class AcknowledgementsTests: XCTestCase {
 
     var model: AcknowledgementsViewModel!

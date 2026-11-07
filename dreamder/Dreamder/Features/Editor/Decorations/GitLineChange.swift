@@ -1,6 +1,6 @@
 import Foundation
 
-struct GitLineChange: Equatable {
+nonisolated struct GitLineChange: Equatable, Sendable {
     enum Kind: Equatable {
         case added
         case modified

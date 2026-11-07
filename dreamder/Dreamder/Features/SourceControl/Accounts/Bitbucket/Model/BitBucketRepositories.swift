@@ -8,18 +8,18 @@
 import Foundation
 
 // TODO: DOCS (Nanashi Li)
-class BitBucketRepositories: Codable {
-    var id: String
-    var owner: BitBucketUser
-    var name: String?
-    var fullName: String?
-    var isPrivate: Bool
-    var repositoryDescription: String?
-    var gitURL: String?
-    var sshURL: String?
-    var cloneURL: String?
-    var size: Int
-    var scm: String?
+nonisolated struct BitBucketRepositories: Codable, Sendable {
+    let id: String
+    let owner: BitBucketUser
+    let name: String?
+    let fullName: String?
+    let isPrivate: Bool
+    let repositoryDescription: String?
+    let gitURL: String?
+    let sshURL: String?
+    let cloneURL: String?
+    let size: Int
+    let scm: String?
 
     enum CodingKeys: String, CodingKey {
         case id = "uuid"
@@ -36,7 +36,7 @@ class BitBucketRepositories: Codable {
     }
 }
 
-enum BitbucketPaginatedResponse<T> {
+nonisolated enum BitbucketPaginatedResponse<T: Sendable>: Sendable {
     case success(values: T, nextParameters: [String: String])
     case failure(Error)
 }
@@ -47,7 +47,7 @@ extension BitBucketAccount {
         _ session: GitURLSession = URLSession.shared,
         userName: String? = nil,
         nextParameters: [String: String] = [:],
-        completion: @escaping (_ response: BitbucketPaginatedResponse<[BitBucketRepositories]>) -> Void
+        completion: @escaping @Sendable (_ response: BitbucketPaginatedResponse<[BitBucketRepositories]>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = BitBucketRepositoryRouter.readRepositories(configuration, userName, nextParameters)
 
@@ -71,7 +71,7 @@ extension BitBucketAccount {
         _ session: GitURLSession = URLSession.shared,
         owner: String,
         name: String,
-        completion: @escaping (_ response: Result<BitBucketRepositories, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<BitBucketRepositories, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = BitBucketRepositoryRouter.readRepository(configuration, owner, name)
 

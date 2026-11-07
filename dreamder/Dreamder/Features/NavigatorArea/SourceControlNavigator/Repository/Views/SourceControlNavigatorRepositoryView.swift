@@ -88,7 +88,14 @@ struct SourceControlNavigatorRepositoryView: View {
                 Button("Apply") {
                     if let stashEntry = stashEntryToApply {
                         Task {
-                            try await sourceControlManager.applyStashEntry(stashEntry: stashEntry)
+                            do {
+                                try await sourceControlManager.applyStashEntry(stashEntry: stashEntry)
+                            } catch {
+                                await sourceControlManager.showAlertForError(
+                                    title: "Failed to apply stash",
+                                    error: error
+                                )
+                            }
                             applyStashedChangesIsPresented = false
                             stashEntryToApply = nil
                         }
@@ -97,8 +104,15 @@ struct SourceControlNavigatorRepositoryView: View {
                 Button("Apply and Delete") {
                     if let stashEntry = stashEntryToApply {
                         Task {
-                            try await sourceControlManager.applyStashEntry(stashEntry: stashEntry)
-                            try await sourceControlManager.deleteStashEntry(stashEntry: stashEntry)
+                            do {
+                                try await sourceControlManager.applyStashEntry(stashEntry: stashEntry)
+                                try await sourceControlManager.deleteStashEntry(stashEntry: stashEntry)
+                            } catch {
+                                await sourceControlManager.showAlertForError(
+                                    title: "Failed to apply stash",
+                                    error: error
+                                )
+                            }
                             applyStashedChangesIsPresented = false
                             stashEntryToApply = nil
                         }

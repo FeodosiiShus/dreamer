@@ -37,9 +37,11 @@ struct DreamderApp: App {
                     GitCloneButton(dismissWindow: dismissWindow)
                     OpenFileOrFolderButton(dismissWindow: dismissWindow)
                 },
-                onDrop: { url, dismissWindow in
-                    Task {
-                        await DreamderDocumentController.shared.openDocument(at: url, onCompletion: { dismissWindow() })
+                onDrop: { url, _ in
+                    MainActor.assumeIsolated {
+                        DreamderDocumentController.shared.openDocument(at: url, onCompletion: {
+                            NSApp.windows.first { $0.identifier?.rawValue == DefaultSceneID.welcome }?.close()
+                        })
                     }
                 }
             )

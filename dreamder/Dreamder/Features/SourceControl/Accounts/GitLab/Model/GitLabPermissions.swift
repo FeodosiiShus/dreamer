@@ -7,7 +7,7 @@
 
 import Foundation
 
-class GitLabPermissions: Codable {
+nonisolated struct GitLabPermissions: Codable, Sendable {
     var projectAccess: GitLabProjectAccess?
     var groupAccess: GitLabGroupAccess?
 

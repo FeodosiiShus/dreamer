@@ -1,43 +1,48 @@
 import Foundation
 import LanguageClient
 import LanguageServerProtocol
+import Synchronization
 
-final class InitializationGatedConnection: ServerConnection, @unchecked Sendable {
+nonisolated final class InitializationGatedConnection: ServerConnection, Sendable {
+    private struct State {
+        var isOpen = false
+        var pending: [ServerEvent] = []
+        var forwardTask: Task<Void, Never>?
+    }
+
     let eventSequence: EventSequence
 
-    private let inner: any ServerConnection
+    private let inner: any ServerConnection & Sendable
     private let continuation: EventSequence.Continuation
-    private let lock = NSLock()
-    private var isOpen = false
-    private var pending: [ServerEvent] = []
-    private var forwardTask: Task<Void, Never>?
+    private let state = Mutex(State())
 
-    init(_ inner: any ServerConnection) {
+    init(_ inner: any ServerConnection & Sendable) {
         self.inner = inner
         (eventSequence, continuation) = EventSequence.makeStream()
         let events = inner.eventSequence
-        forwardTask = Task { [weak self] in
+        let task = Task { [weak self] in
             for await event in events {
                 self?.receive(event)
             }
             self?.continuation.finish()
         }
+        state.withLock { $0.forwardTask = task }
     }
 
     deinit {
-        forwardTask?.cancel()
+        state.withLock { $0.forwardTask }?.cancel()
         continuation.finish()
     }
 
     func open() {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !isOpen else { return }
-        isOpen = true
-        for event in pending {
-            continuation.yield(event)
+        state.withLock { state in
+            guard !state.isOpen else { return }
+            state.isOpen = true
+            for event in state.pending {
+                continuation.yield(event)
+            }
+            state.pending.removeAll()
         }
-        pending.removeAll()
     }
 
     func sendNotification(_ notif: ClientNotification) async throws {
@@ -49,12 +54,12 @@ final class InitializationGatedConnection: ServerConnection, @unchecked Sendable
     }
 
     private func receive(_ event: ServerEvent) {
-        lock.lock()
-        defer { lock.unlock() }
-        if !isOpen, case .request = event {
-            pending.append(event)
-            return
+        state.withLock { state in
+            if !state.isOpen, case .request = event {
+                state.pending.append(event)
+                return
+            }
+            continuation.yield(event)
         }
-        continuation.yield(event)
     }
 }

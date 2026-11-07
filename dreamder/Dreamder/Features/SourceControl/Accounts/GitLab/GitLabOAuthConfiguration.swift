@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct GitLabOAuthConfiguration: GitRouterConfiguration {
+nonisolated struct GitLabOAuthConfiguration: GitRouterConfiguration {
     let provider = SourceControlAccount.Provider.gitlab
     var apiEndpoint: String?
     var accessToken: String?
@@ -38,7 +38,7 @@ struct GitLabOAuthConfiguration: GitRouterConfiguration {
     func authorize(
         _ session: GitURLSession = URLSession.shared,
         code: String,
-        completion: @escaping (_ config: GitLabTokenConfiguration) -> Void
+        completion: @escaping @Sendable (_ config: GitLabTokenConfiguration) -> Void
     ) {
         let request = GitLabOAuthRouter.accessToken(self, code, redirectURI).URLRequest
         if let request {
@@ -72,7 +72,7 @@ struct GitLabOAuthConfiguration: GitRouterConfiguration {
     func handleOpenURL(
         _ session: GitURLSession = URLSession.shared,
         url: URL,
-        completion: @escaping (_ config: GitLabTokenConfiguration) -> Void
+        completion: @escaping @Sendable (_ config: GitLabTokenConfiguration) -> Void
     ) {
         if let code = url.absoluteString.components(separatedBy: "=").last {
             authorize(session, code: code) { (config) in

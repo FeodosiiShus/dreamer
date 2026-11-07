@@ -104,7 +104,7 @@ struct BranchesPopupRowView: View {
             guard !buffer.isEmpty else { return }
             var text = Text(buffer).font(Islands.uiFont)
             text = text.foregroundColor(bufferHighlighted ? Islands.searchMatch : Islands.foreground)
-            result = result + text
+            result = Text("\(result)\(text)")
             buffer = ""
         }
         for (index, character) in characters.enumerated() {

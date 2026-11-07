@@ -9,6 +9,7 @@ import Foundation
 import XCTest
 @testable import Dreamder
 
+@MainActor
 final class CEWorkspaceFileManagerUnitTests: XCTestCase {
     let typeOfExtensions = ["json", "txt", "swift", "js", "py", "md"]
     var directory: URL!

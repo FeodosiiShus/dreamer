@@ -10,7 +10,7 @@ import Foundation
 /// Represents the currently logged in user.
 ///
 /// Do not initialize this struct, instead use ``CurrentUser/getCurrentUser()`` to create and fill in the information.
-struct CurrentUser {
+nonisolated struct CurrentUser: Sendable {
     /// The user's username.
     let name: String
     /// The path to the user's shell executable.

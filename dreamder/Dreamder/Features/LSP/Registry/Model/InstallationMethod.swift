@@ -8,7 +8,7 @@
 import Foundation
 
 /// Installation method enum with all supported types
-enum InstallationMethod: Equatable {
+nonisolated enum InstallationMethod: Equatable, Sendable {
     /// For standard package manager installations
     case standardPackage(source: PackageSource)
     /// For packages that need to be built from source with custom build steps
@@ -51,7 +51,7 @@ enum InstallationMethod: Equatable {
         }
     }
 
-    func packageManager(installPath: URL) -> PackageManagerProtocol? {
+    @MainActor func packageManager(installPath: URL) -> PackageManagerProtocol? {
         switch packageManagerType {
         case .npm:
             return NPMPackageManager(installationDirectory: installPath)

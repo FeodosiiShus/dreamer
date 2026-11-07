@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum FileEncoding: CaseIterable {
+nonisolated enum FileEncoding: CaseIterable, Sendable {
     case utf8
     case utf16BE
     case utf16LE

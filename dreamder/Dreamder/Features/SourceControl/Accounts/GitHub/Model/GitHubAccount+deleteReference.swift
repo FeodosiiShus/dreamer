@@ -27,7 +27,7 @@ extension GitHubAccount {
         owner: String,
         repository: String,
         ref: String,
-        completion: @escaping (_ response: Error?) -> Void
+        completion: @escaping @Sendable (_ response: Error?) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitHubRouter.deleteReference(configuration, owner, repository, ref)
         return router.load(session, completion: completion)

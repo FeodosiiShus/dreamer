@@ -6,7 +6,7 @@
 //
 import Foundation
 
-extension URL {
+nonisolated extension URL {
 
     var URLParameters: [String: String] {
         guard let components = URLComponents(url: self, resolvingAgainstBaseURL: false) else { return [:] }

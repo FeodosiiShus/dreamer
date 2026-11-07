@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum BitBucketUserRouter: GitRouter {
+nonisolated enum BitBucketUserRouter: GitRouter {
     case readAuthenticatedUser(GitRouterConfiguration)
     case readEmails(GitRouterConfiguration)
 

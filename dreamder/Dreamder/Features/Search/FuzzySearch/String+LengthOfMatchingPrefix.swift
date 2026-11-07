@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension String {
+nonisolated extension String {
     /// Returns the length of the matching prefix content or normalised content at the specified index.
     ///
     /// - Parameters:

@@ -12,7 +12,7 @@ import Foundation
 /// Some APIs provide additional data for new (preview) APIs if a custom header is added to the request.
 ///
 /// - Note: Preview APIs are subject to change.
-enum GitHubPreviewHeader {
+nonisolated enum GitHubPreviewHeader {
     /// The `Reactions` preview header provides reactions in `Comment`s.
     case reactions
 

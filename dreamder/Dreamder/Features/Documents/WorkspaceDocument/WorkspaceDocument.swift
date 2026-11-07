@@ -7,7 +7,7 @@
 
 import AppKit
 import SwiftUI
-import Combine
+@preconcurrency import Combine
 import Foundation
 import LanguageServerProtocol
 
@@ -66,7 +66,7 @@ final class WorkspaceDocument: NSDocument, ObservableObject, NSToolbarDelegate {
             .store(in: &cancellables)
     }
 
-    deinit {
+    isolated deinit {
         cancellables.forEach { $0.cancel() }
         NotificationCenter.default.removeObserver(self)
     }

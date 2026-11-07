@@ -1,6 +1,6 @@
 import Foundation
 
-enum MergeSideChange: String, Equatable {
+nonisolated enum MergeSideChange: String, Equatable, Sendable {
     case modified
     case added
     case deleted
@@ -20,12 +20,12 @@ enum MergeSideChange: String, Equatable {
     }
 }
 
-enum MergeSideChoice: Equatable {
+nonisolated enum MergeSideChoice: Equatable, Sendable {
     case yours
     case theirs
 }
 
-struct MergeConflictEntry: Identifiable, Equatable {
+nonisolated struct MergeConflictEntry: Identifiable, Equatable, Sendable {
     let path: String
     let statusCodes: String
     let ours: MergeSideChange
@@ -49,7 +49,7 @@ struct MergeConflictEntry: Identifiable, Equatable {
     }
 }
 
-enum MergeConflictStatusParser {
+nonisolated enum MergeConflictStatusParser {
     static func parse(_ output: String) -> [MergeConflictEntry] {
         output
             .split(separator: "\u{0}", omittingEmptySubsequences: true)

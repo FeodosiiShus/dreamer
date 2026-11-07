@@ -6,8 +6,9 @@
 //
 
 import Foundation
+import Synchronization
 
-enum FSEvent: String {
+nonisolated enum FSEvent: String, Sendable {
     case changeInDirectory
     case rootChanged
     case itemChangedOwner
@@ -33,14 +34,14 @@ enum FSEvent: String {
 /// The `callback` function will be called with all events that happened since the last event notification,
 /// effectively batching all notifications every `debounceDuration`. This callback may not be called on a
 /// predictable dispatch queue.
-class DirectoryEventStream {
-    typealias EventCallback = ([Event]) -> Void
+nonisolated final class DirectoryEventStream: Sendable {
+    typealias EventCallback = @Sendable ([Event]) -> Void
 
-    private var streamRef: FSEventStreamRef?
-    private var callback: EventCallback
+    private let streamRef: Mutex<FSEventStreamRef?>
+    private let callback: EventCallback
     private let debounceDuration: TimeInterval
 
-    struct Event {
+    struct Event: Sendable {
         let path: String
         let eventType: FSEvent
     }
@@ -56,7 +57,18 @@ class DirectoryEventStream {
     init(directory: String, debounceDuration: TimeInterval = 0.1, callback: @escaping EventCallback) {
         self.debounceDuration = debounceDuration
         self.callback = callback
-        let selfPtr = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        self.streamRef = Mutex(nil)
+        streamRef.withLock { stream in
+            stream = Self.makeStream(owner: self, directory: directory, debounceDuration: debounceDuration)
+        }
+    }
+
+    private static func makeStream(
+        owner: DirectoryEventStream,
+        directory: String,
+        debounceDuration: TimeInterval
+    ) -> sending FSEventStreamRef? {
+        let selfPtr = UnsafeMutableRawPointer(Unmanaged.passUnretained(owner).toOpaque())
 
         var context = FSEventStreamContext(
             version: 0,
@@ -70,7 +82,7 @@ class DirectoryEventStream {
         let cfDirectory = directory as CFString
         let pathsToWatch = [cfDirectory] as CFArray
 
-        if let ref = FSEventStreamCreate(
+        guard let ref = FSEventStreamCreate(
             kCFAllocatorDefault,
             // swiflint:ignore:next opening_brace
             { streamRef, clientCallBackInfo, numEvents, eventPaths, eventFlags, eventIds in
@@ -95,31 +107,29 @@ class DirectoryEventStream {
                 // Useful for us, always sends after the debounce duration.
                 | kFSEventStreamCreateFlagNoDefer
             )
-        ) {
-            self.streamRef = ref
-            FSEventStreamSetDispatchQueue(ref, DispatchQueue.global(qos: .default))
-            FSEventStreamStart(ref)
+        ) else {
+            return nil
         }
+        FSEventStreamSetDispatchQueue(ref, DispatchQueue.global(qos: .default))
+        FSEventStreamStart(ref)
+        return ref
     }
 
     deinit {
-        if let streamRef {
-            FSEventStreamStop(streamRef)
-            FSEventStreamInvalidate(streamRef)
-            FSEventStreamRelease(streamRef)
-        }
-        streamRef = nil
+        cancel()
     }
 
     /// Cancels the events watcher.
     /// This class will have to be re-initialized to begin streaming events again.
     public func cancel() {
-        if let streamRef {
-            FSEventStreamStop(streamRef)
-            FSEventStreamInvalidate(streamRef)
-            FSEventStreamRelease(streamRef)
+        streamRef.withLock { ref in
+            if let current = ref {
+                FSEventStreamStop(current)
+                FSEventStreamInvalidate(current)
+                FSEventStreamRelease(current)
+            }
+            ref = nil
         }
-        streamRef = nil
     }
 
     /// Handler for the fs event stream.

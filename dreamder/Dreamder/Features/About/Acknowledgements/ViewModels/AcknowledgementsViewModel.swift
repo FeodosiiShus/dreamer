@@ -27,7 +27,7 @@ final class AcknowledgementsViewModel: ObservableObject {
         self.acknowledgements.removeAll()
         do {
             if let bundlePath = Bundle.main.path(forResource: "Package", ofType: "resolved") {
-                let jsonData = Data(try String(contentsOfFile: bundlePath).utf8)
+                let jsonData = Data(try String(contentsOfFile: bundlePath, encoding: .utf8).utf8)
                 let parsedJSON = try JSONDecoder().decode(AcknowledgementObject.self, from: jsonData)
                 for dependency in parsedJSON.pins.sorted(by: { $0.identity < $1.identity })
                 where dependency.identity.range(

@@ -73,7 +73,7 @@ final class PipPackageManager: PackageManagerProtocol {
 
     func initialize(in packagePath: URL) -> PackageManagerInstallStep {
         PackageManagerInstallStep(name: "Initialize Directory Structure", confirmation: .none) { model in
-            try await model.createDirectoryStructure(for: packagePath)
+            try model.createDirectoryStructure(for: packagePath)
             try await model.executeInDirectory(in: packagePath.path(percentEncoded: false), ["python -m venv venv"])
 
             let requirementsPath = packagePath.appending(path: "requirements.txt")
@@ -129,7 +129,7 @@ final class PipPackageManager: PackageManagerProtocol {
                 ["\(pipCommand)", "freeze"]
             )
 
-            await model.status("Writing requirements to requirements.txt")
+            model.status("Writing requirements to requirements.txt")
             let requirementsContent = freezeOutput.joined(separator: "\n") + "\n"
             try requirementsContent.write(to: requirementsPath, atomically: true, encoding: .utf8)
         }

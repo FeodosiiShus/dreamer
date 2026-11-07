@@ -62,13 +62,13 @@ extension WorkspaceDocument.SearchState {
                     guard await self.isCurrentIndexRun(generation) else { return }
                     await MainActor.run {
                         self.indexStatus = .indexing(progress: progress)
+                        let updateInfo: [String: Any] = [
+                            "id": uuidString,
+                            "action": "update",
+                            "percentage": progress
+                        ]
+                        NotificationCenter.default.post(name: .taskNotification, object: nil, userInfo: updateInfo)
                     }
-                    let updateInfo: [String: Any] = [
-                        "id": uuidString,
-                        "action": "update",
-                        "percentage": progress
-                    ]
-                    NotificationCenter.default.post(name: .taskNotification, object: nil, userInfo: updateInfo)
                 }
             }
             asyncController.index.flush()
@@ -78,21 +78,21 @@ extension WorkspaceDocument.SearchState {
             await MainActor.run {
                 self.indexStatus = .done
                 self.indexingNotificationID = nil
-            }
-            let updateInfo: [String: Any] = [
-                "id": uuidString,
-                "action": "update",
-                "title": "Finished indexing",
-                "isLoading": false
-            ]
-            NotificationCenter.default.post(name: .taskNotification, object: nil, userInfo: updateInfo)
+                let updateInfo: [String: Any] = [
+                    "id": uuidString,
+                    "action": "update",
+                    "title": "Finished indexing",
+                    "isLoading": false
+                ]
+                NotificationCenter.default.post(name: .taskNotification, object: nil, userInfo: updateInfo)
 
-            let deleteInfo = [
-                "id": uuidString,
-                "action": "deleteWithDelay",
-                "delay": 4.0
-            ]
-            NotificationCenter.default.post(name: .taskNotification, object: nil, userInfo: deleteInfo)
+                let deleteInfo: [String: Any] = [
+                    "id": uuidString,
+                    "action": "deleteWithDelay",
+                    "delay": 4.0
+                ]
+                NotificationCenter.default.post(name: .taskNotification, object: nil, userInfo: deleteInfo)
+            }
         }
     }
 
@@ -102,7 +102,7 @@ extension WorkspaceDocument.SearchState {
         }
     }
 
-    static func fileURLs(at url: URL, excluding exclusions: ExclusionRules) -> [URL] {
+    nonisolated static func fileURLs(at url: URL, excluding exclusions: ExclusionRules) -> [URL] {
         guard let enumerator = FileManager.default.enumerator(
             at: url,
             includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
@@ -132,7 +132,7 @@ extension WorkspaceDocument.SearchState {
     func getFileContent(from filePaths: [URL]) async -> [SearchIndexer.AsyncManager.TextFile] {
         var textFiles = [SearchIndexer.AsyncManager.TextFile]()
         for file in filePaths {
-            if let content = try? String(contentsOf: file) {
+            if let content = try? String(contentsOf: file, encoding: .utf8) {
                 textFiles.append(
                     SearchIndexer.AsyncManager.TextFile(url: file.standardizedFileURL, text: content)
                 )

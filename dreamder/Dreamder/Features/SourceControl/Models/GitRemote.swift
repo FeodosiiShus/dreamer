@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct GitRemote: Hashable {
+nonisolated struct GitRemote: Hashable, Sendable {
     let name: String
     let pushLocation: String
     let fetchLocation: String

@@ -8,8 +8,8 @@
 import OSLog
 import LanguageServerProtocol
 
-class LanguageServerLogContainer: UtilityAreaOutputSource {
-    struct LanguageServerMessage: UtilityAreaOutputMessage {
+class LanguageServerLogContainer: @MainActor UtilityAreaOutputSource {
+    struct LanguageServerMessage: @MainActor UtilityAreaOutputMessage {
         let log: LogMessageParams
         var id: UUID = UUID()
 

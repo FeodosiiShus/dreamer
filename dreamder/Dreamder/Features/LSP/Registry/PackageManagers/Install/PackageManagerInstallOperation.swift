@@ -128,6 +128,7 @@ final class PackageManagerInstallOperation: ObservableObject, Identifiable {
         try Task.checkCancellation()
         accumulatedOutput.append(OutputItem(isStepDivider: true, contents: "Step \(currentStepIdx + 1): \(task.name)"))
 
+        let handler = task.handler
         await withTaskGroup(of: Void.self) { group in
             group.addTask {
                 for await outputItem in model.outputStream {
@@ -144,7 +145,7 @@ final class PackageManagerInstallOperation: ObservableObject, Identifiable {
             }
             group.addTask {
                 do {
-                    try await task.handler(model)
+                    try await handler(model)
                 } catch {
                     await MainActor.run {
                         self.error = error

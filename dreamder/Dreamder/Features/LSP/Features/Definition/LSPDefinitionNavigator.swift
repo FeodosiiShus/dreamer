@@ -2,13 +2,13 @@ import CodeEditSourceEditor
 import Foundation
 import LanguageServerProtocol
 
-struct LSPDefinitionTarget: Equatable {
+nonisolated struct LSPDefinitionTarget: Equatable, Sendable {
     let uri: String
     let range: LSPRange
     let selectionRange: LSPRange
 }
 
-enum LSPDefinitionMapping {
+nonisolated enum LSPDefinitionMapping {
     typealias LocationResponse = ThreeTypeOption<Location, [Location], [LocationLink]>
 
     static func targets(from response: LocationResponse?) -> [LSPDefinitionTarget] {

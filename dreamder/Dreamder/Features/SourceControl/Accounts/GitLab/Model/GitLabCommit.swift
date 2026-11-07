@@ -7,7 +7,7 @@
 
 import Foundation
 
-class GitLabCommit: Codable {
+nonisolated struct GitLabCommit: Codable, Sendable {
     var id: String
     var shortID: String?
     var title: String?
@@ -41,7 +41,7 @@ class GitLabCommit: Codable {
     }
 }
 
-class GitLabCommitStats: Codable {
+nonisolated struct GitLabCommitStats: Codable, Sendable {
     var additions: Int?
     var deletions: Int?
     var total: Int?
@@ -53,7 +53,7 @@ class GitLabCommitStats: Codable {
     }
 }
 
-class GitLabCommitDiff: Codable {
+nonisolated struct GitLabCommitDiff: Codable, Sendable {
     var diff: String?
     var newPath: String?
     var oldPath: String?
@@ -75,7 +75,7 @@ class GitLabCommitDiff: Codable {
     }
 }
 
-class GitLabCommitComment: Codable {
+nonisolated struct GitLabCommitComment: Codable, Sendable {
     var note: String?
     var author: GitLabUser?
 
@@ -85,7 +85,7 @@ class GitLabCommitComment: Codable {
     }
 }
 
-class GitLabCommitStatus: Codable {
+nonisolated struct GitLabCommitStatus: Codable, Sendable {
     var status: String?
     var createdAt: Date?
     var startedAt: Date?
@@ -131,7 +131,7 @@ extension GitLabAccount {
         refName: String = "",
         since: String = "",
         until: String = "",
-        completion: @escaping (_ response: Result<GitLabCommit, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitLabCommit, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitLabCommitRouter.readCommits(
             self.configuration,
@@ -167,7 +167,7 @@ extension GitLabAccount {
         _ session: GitURLSession = URLSession.shared,
         id: String,
         sha: String,
-        completion: @escaping (_ response: Result<GitLabCommit, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitLabCommit, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitLabCommitRouter.readCommit(self.configuration, id: id, sha: sha)
 
@@ -197,7 +197,7 @@ extension GitLabAccount {
         _ session: GitURLSession = URLSession.shared,
         id: String,
         sha: String,
-        completion: @escaping (_ response: Result<GitLabCommitDiff, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitLabCommitDiff, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitLabCommitRouter.readCommitDiffs(self.configuration, id: id, sha: sha)
 
@@ -227,7 +227,7 @@ extension GitLabAccount {
         _ session: GitURLSession = URLSession.shared,
         id: String,
         sha: String,
-        completion: @escaping (_ response: Result<GitLabCommitComment, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitLabCommitComment, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitLabCommitRouter.readCommitComments(self.configuration, id: id, sha: sha)
 
@@ -265,7 +265,7 @@ extension GitLabAccount {
         stage: String = "",
         name: String = "",
         all: Bool = false,
-        completion: @escaping (_ response: Result<GitLabCommitStatus, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitLabCommitStatus, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitLabCommitRouter.readCommitStatuses(
             self.configuration, id: id,

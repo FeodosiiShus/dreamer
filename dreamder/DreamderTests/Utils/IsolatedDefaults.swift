@@ -2,15 +2,18 @@ import Foundation
 import Testing
 
 nonisolated enum IsolatedDefaults {
-    @TaskLocal static var current: UserDefaults?
+    @TaskLocal static var currentSuiteName: String?
 
     static func makeSuiteName() -> String {
         "dreamder.tests.isolated.\(UUID().uuidString)"
     }
 
     static func require() throws -> UserDefaults {
-        guard let current else { throw IsolatedDefaultsError.outsideIsolatedScope }
-        return current
+        guard let currentSuiteName else { throw IsolatedDefaultsError.outsideIsolatedScope }
+        guard let defaults = UserDefaults(suiteName: currentSuiteName) else {
+            throw IsolatedDefaultsError.suiteUnavailable(currentSuiteName)
+        }
+        return defaults
     }
 }
 
@@ -35,7 +38,7 @@ nonisolated func removeIsolatedDefaults(_ defaults: UserDefaults, suiteName: Str
 nonisolated func withIsolatedDefaults<T>(_ body: (UserDefaults) async throws -> T) async throws -> T {
     let (defaults, suiteName) = try makeIsolatedDefaults()
     defer { removeIsolatedDefaults(defaults, suiteName: suiteName) }
-    return try await IsolatedDefaults.$current.withValue(defaults) {
+    return try await IsolatedDefaults.$currentSuiteName.withValue(suiteName) {
         try await body(defaults)
     }
 }
@@ -43,7 +46,7 @@ nonisolated func withIsolatedDefaults<T>(_ body: (UserDefaults) async throws -> 
 nonisolated func withIsolatedDefaults<T>(_ body: (UserDefaults) throws -> T) throws -> T {
     let (defaults, suiteName) = try makeIsolatedDefaults()
     defer { removeIsolatedDefaults(defaults, suiteName: suiteName) }
-    return try IsolatedDefaults.$current.withValue(defaults) {
+    return try IsolatedDefaults.$currentSuiteName.withValue(suiteName) {
         try body(defaults)
     }
 }

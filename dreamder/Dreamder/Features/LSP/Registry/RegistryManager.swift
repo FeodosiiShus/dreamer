@@ -59,7 +59,7 @@ final class RegistryManager: ObservableObject {
         }
     }
 
-    deinit {
+    isolated deinit {
         cleanupTimer?.invalidate()
     }
 

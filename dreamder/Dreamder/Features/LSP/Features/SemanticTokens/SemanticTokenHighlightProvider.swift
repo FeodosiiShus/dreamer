@@ -7,9 +7,15 @@
 
 import Foundation
 import LanguageServerProtocol
-import CodeEditSourceEditor
+@preconcurrency import CodeEditSourceEditor
 import CodeEditTextView
 import CodeEditLanguages
+import OSLog
+
+private let semanticTokenLogger = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "",
+    category: "SemanticTokenHighlightProvider"
+)
 
 /// Provides semantic token information from a language server for a source editor view.
 ///
@@ -62,7 +68,11 @@ final class SemanticTokenHighlightProvider<
         tokenMap = server.highlightMap
         guard textView != nil else { return }
         Task {
-            try await self.documentDidChange()
+            do {
+                try await self.documentDidChange()
+            } catch {
+                semanticTokenLogger.debug("Semantic token refresh failed: \(error)")
+            }
         }
     }
 
@@ -148,7 +158,7 @@ final class SemanticTokenHighlightProvider<
     private func applyEntireResponse(_ data: SemanticTokens, callback: EditCallback?) async {
         storage.setData(data)
         lastEditCallback = nil // Don't use this callback again.
-        await callback?(.success(IndexSet(integersIn: documentRange)))
+        callback?(.success(IndexSet(integersIn: documentRange)))
     }
 
     // MARK: - Highlight Provider Conformance
@@ -157,7 +167,11 @@ final class SemanticTokenHighlightProvider<
         // Send off a request to get the initial token data
         self.textView = textView
         Task {
-            try await self.documentDidChange()
+            do {
+                try await self.documentDidChange()
+            } catch {
+                semanticTokenLogger.debug("Initial semantic token request failed: \(error)")
+            }
         }
     }
 

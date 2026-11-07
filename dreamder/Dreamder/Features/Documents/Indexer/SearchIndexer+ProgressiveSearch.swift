@@ -7,9 +7,9 @@
 
 import Foundation
 
-extension SearchIndexer {
+nonisolated extension SearchIndexer {
     /// Object representing the search results
-    public class SearchResult {
+    nonisolated public final class SearchResult: Sendable {
         /// The identifying url for the document
         let url: URL
 
@@ -32,9 +32,9 @@ extension SearchIndexer {
 
     /// A class for creating and managing a progressive search.
     /// A search starts on creation and can be cancelled at any time.
-    public class ProgressiveSearch {
+    nonisolated public final class ProgressiveSearch: Sendable {
         /// A class representing the results of a search request.
-        public class Results {
+        nonisolated public final class Results: Sendable {
             /// Create a search result
             ///
             /// - Parameters:
@@ -53,15 +53,32 @@ extension SearchIndexer {
         }
 
         private let options: SKSearchOptions
-        private let search: SKSearch
         private let index: SearchIndexer
         private let query: String
+        private let searchID: Int?
 
         init(options: SKSearchOptions, index: SearchIndexer, query: String) {
             self.options = options
-            self.search = SKSearchCreate(index.index, query as CFString, options).takeRetainedValue()
             self.index = index
             self.query = query
+            self.searchID = index.withState { state -> Int? in
+                guard let skIndex = state.index else {
+                    return nil
+                }
+                let search = SKSearchCreate(skIndex, query as CFString, options).takeRetainedValue()
+                let id = state.nextSearchID
+                state.nextSearchID += 1
+                state.searches[id] = search
+                return id
+            }
+        }
+
+        deinit {
+            if let searchID {
+                index.withState { state in
+                    state.searches[searchID] = nil
+                }
+            }
         }
 
         /// Retrieves the next chunk of search results in a progressive search.
@@ -79,33 +96,47 @@ extension SearchIndexer {
             limit: Int = 10,
             timeout: TimeInterval = 1.0
         ) -> (ProgressiveSearch.Results) {
-            guard self.index.index != nil else {
-                return Results(moreResultsAvailable: false, results: [])
+            let noResults = Results(moreResultsAvailable: false, results: [])
+            guard let searchID else {
+                return noResults
             }
 
-            var scores: [Float] = Array(repeating: 0.0, count: limit)
-            var urls: [Unmanaged<CFURL>?] = Array(repeating: nil, count: limit)
-            var documentIDs: [SKDocumentID] = Array(repeating: 0, count: limit)
-            var foundCount = 0
-
-            let hasMore = SKSearchFindMatches(self.search, limit, &documentIDs, &scores, timeout, &foundCount)
-            SKIndexCopyDocumentURLsForDocumentIDs(self.index.index, foundCount, &documentIDs, &urls)
-
-            let partialResult: [SearchResult] = zip(urls[0..<foundCount], scores)
-                .compactMap { (cfurl, score) -> SearchResult? in
-                    guard let url  = cfurl?.takeRetainedValue() as URL? else {
-                        return nil
-                    }
-
-                    return SearchResult(url: url, score: score)
+            return index.withState { state -> Results in
+                guard let skIndex = state.index, let search = state.searches[searchID] else {
+                    return noResults
                 }
 
-            return Results(moreResultsAvailable: hasMore, results: partialResult)
+                var scores: [Float] = Array(repeating: 0.0, count: limit)
+                var urls: [Unmanaged<CFURL>?] = Array(repeating: nil, count: limit)
+                var documentIDs: [SKDocumentID] = Array(repeating: 0, count: limit)
+                var foundCount = 0
+
+                let hasMore = SKSearchFindMatches(search, limit, &documentIDs, &scores, timeout, &foundCount)
+                SKIndexCopyDocumentURLsForDocumentIDs(skIndex, foundCount, &documentIDs, &urls)
+
+                let partialResult: [SearchResult] = zip(urls[0..<foundCount], scores)
+                    .compactMap { (cfurl, score) -> SearchResult? in
+                        guard let url  = cfurl?.takeRetainedValue() as URL? else {
+                            return nil
+                        }
+
+                        return SearchResult(url: url, score: score)
+                    }
+
+                return Results(moreResultsAvailable: hasMore, results: partialResult)
+            }
         }
 
         /// Cancel an active search
         public func cancel() {
-            SKSearchCancel(self.search)
+            guard let searchID else {
+                return
+            }
+            index.withState { state in
+                if let search = state.searches[searchID] {
+                    SKSearchCancel(search)
+                }
+            }
         }
     }
 }

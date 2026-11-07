@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension URL {
+nonisolated extension URL {
     /// Compare a URL using its path components.
     /// - Parameter other: The URL to compare to
     /// - Returns: `true` if the URL points to the same path on disk. Regardless of query parameters, trailing

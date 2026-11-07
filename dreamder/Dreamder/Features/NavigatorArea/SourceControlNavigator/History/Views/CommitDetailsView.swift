@@ -16,7 +16,7 @@ struct CommitDetailsView: View {
 
     @State var selection: CEWorkspaceFile?
 
-    func updateCommitChanges() async throws {
+    func updateCommitChanges() async {
         if let commit = commit {
             let changes = await sourceControlManager
                 .getCommitChangedFiles(commitSHA: commit.commitHash)
@@ -64,7 +64,7 @@ struct CommitDetailsView: View {
         }
         .onAppear {
             Task {
-                try await updateCommitChanges()
+                await updateCommitChanges()
             }
         }
     }

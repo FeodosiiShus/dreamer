@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import Dreamder
 
+@MainActor
 @Suite
 struct SearchResultMatchModelTests {
     private static let boldFont = NSFont.systemFont(ofSize: 13, weight: .bold)

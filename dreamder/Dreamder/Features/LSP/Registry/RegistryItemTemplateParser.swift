@@ -12,7 +12,7 @@ import Foundation
 /// Example:
 /// "protolint_{{ version | strip_prefix \"v\" }}_darwin_arm64.tar.gz" will be parsed into:
 /// protolint_0.53.0_darwin_arm64.tar.gz
-enum RegistryItemTemplateParser {
+nonisolated enum RegistryItemTemplateParser {
 
     enum TemplateError: Error {
         case invalidFilter(String)

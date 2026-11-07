@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum GitHubUserRouter: GitRouter {
+nonisolated enum GitHubUserRouter: GitRouter {
     case readAuthenticatedUser(GitRouterConfiguration)
     case readUser(String, GitRouterConfiguration)
 

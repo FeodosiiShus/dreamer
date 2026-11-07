@@ -7,7 +7,7 @@
 
 import Cocoa
 import SwiftUI
-import Combine
+@preconcurrency import Combine
 
 final class DreamderWindowController: NSWindowController, NSToolbarDelegate, ObservableObject, NSWindowDelegate {
     @Published var toolbarCollapsed: Bool = false
@@ -53,7 +53,7 @@ final class DreamderWindowController: NSWindowController, NSToolbarDelegate, Obs
         registerCommands()
     }
 
-    deinit {
+    isolated deinit {
         cancellables.forEach({ $0.cancel() })
         cancellables.removeAll()
     }

@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct GitBranch: Hashable, Identifiable {
+nonisolated struct GitBranch: Hashable, Identifiable {
     let name: String
     let longName: String
     let upstream: String?

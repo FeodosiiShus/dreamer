@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import Dreamder
 
+@MainActor
 @Suite
 struct MarkdownPreviewLayoutStoreTests {
     private func makeDefaults() -> (UserDefaults, String) {

@@ -8,7 +8,7 @@
 import Foundation
 
 /// A `RegistryItem` represents an entry in the Registry that saves language servers, DAPs, linters and formatters.
-struct RegistryItem: Codable {
+nonisolated struct RegistryItem: Codable, Sendable {
     let name: String
     let description: String
     let homepage: String
@@ -79,6 +79,6 @@ struct RegistryItem: Codable {
     }
 }
 
-extension RegistryItem: FuzzySearchable {
+nonisolated extension RegistryItem: FuzzySearchable {
     var searchableString: String { name }
 }

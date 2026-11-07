@@ -14,7 +14,7 @@ extension LanguageServer {
     /// - Throws: Throws errors produced by the language server connection.
     func openDocument(_ document: DocumentType) async throws {
         do {
-            guard resolveOpenCloseSupport(), let content = await getIsolatedDocumentContent(document) else {
+            guard resolveOpenCloseSupport(), let content = getIsolatedDocumentContent(document) else {
                 return
             }
             logger.debug("Opening Document \(content.uri, privacy: .private)")
@@ -29,7 +29,7 @@ extension LanguageServer {
             )
             try await lspInstance.textDocumentDidOpen(DidOpenTextDocumentParams(textDocument: textDocument))
 
-            await updateIsolatedDocument(document)
+            updateIsolatedDocument(document)
             await requestPullDiagnosticsIfSupported(for: content.uri)
         } catch {
             logger.warning("addDocument: Error \(error)")
@@ -46,7 +46,7 @@ extension LanguageServer {
             logger.debug("Closing document \(uri, privacy: .private)")
 
             openFiles.removeDocument(for: uri)
-            await clearIsolatedDocument(document)
+            clearIsolatedDocument(document)
 
             let params = DidCloseTextDocumentParams(textDocument: TextDocumentIdentifier(uri: uri))
             try await lspInstance.textDocumentDidClose(params)
@@ -86,7 +86,7 @@ extension LanguageServer {
 
             switch resolveDocumentSyncKind() {
             case .full:
-                guard let content = await getIsolatedDocumentContent(document) else {
+                guard let content = getIsolatedDocumentContent(document) else {
                     logger.error("Failed to get isolated document content")
                     return
                 }
@@ -122,7 +122,7 @@ extension LanguageServer {
         do {
             let report = try await requestPullDiagnostics(document: uri)
             guard report.kind == .full, let items = report.items else { return }
-            await LSPDiagnosticsPublisher.publish(items, forDocument: uri, workspacePath: rootPath.path)
+            LSPDiagnosticsPublisher.publish(items, forDocument: uri, workspacePath: rootPath.path)
         } catch {
             logger.warning("Failed to pull diagnostics for \(uri, privacy: .private): \(error)")
         }

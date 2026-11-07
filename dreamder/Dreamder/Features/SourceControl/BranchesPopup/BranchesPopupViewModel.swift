@@ -21,7 +21,7 @@ final class BranchesPopupViewModel: ObservableObject {
     private let dismissPopup: () -> Void
 
     var dialogs = BranchesPopupDialogs.live
-    var notify: (BranchesPopupNotificationRequest) -> Void = BranchesPopupNotifications.post
+    var notify: @MainActor (BranchesPopupNotificationRequest) -> Void = BranchesPopupNotifications.post
     var presentRefActions: ((BranchesPopupRow) -> Void)?
     var comparePresenter: ((WorkspaceDocument, String, String) -> Void)?
     var openConflicts: (() -> Void)?
@@ -882,6 +882,7 @@ final class BranchesPopupViewModel: ObservableObject {
     }
 
     private func deleteLocalBranch(_ ref: BranchesPopupRef) {
+        weak let restorer = self
         track {
             do {
                 let tip = try await self.sourceControlManager.branchOpsRevision(ref.name)
@@ -905,7 +906,7 @@ final class BranchesPopupViewModel: ObservableObject {
                         title: "Deleted Branch: \(ref.name)",
                         description: "Branch '\(ref.name)' was deleted.",
                         actionTitle: "Restore",
-                        action: { [weak self] in self?.restoreBranch(name: ref.name, tip: tip) }
+                        action: { restorer?.restoreBranch(name: ref.name, tip: tip) }
                     )
                 )
             } catch {
@@ -961,6 +962,7 @@ final class BranchesPopupViewModel: ObservableObject {
     }
 
     private func deleteTag(_ ref: BranchesPopupRef) {
+        weak let restorer = self
         track {
             do {
                 let tip = try await self.sourceControlManager.branchOpsRevision(ref.name)
@@ -971,7 +973,7 @@ final class BranchesPopupViewModel: ObservableObject {
                         title: "Deleted Tag: \(ref.name)",
                         description: "Tag '\(ref.name)' was deleted.",
                         actionTitle: "Restore",
-                        action: { [weak self] in self?.restoreTag(name: ref.name, tip: tip) }
+                        action: { restorer?.restoreTag(name: ref.name, tip: tip) }
                     )
                 )
             } catch {

@@ -7,7 +7,7 @@
 
 import Foundation
 
-class GitLabUser: Codable {
+nonisolated struct GitLabUser: Codable, Sendable {
     var id: Int
     var username: String?
     var state: String?
@@ -64,7 +64,7 @@ extension GitLabAccount {
     @discardableResult
     func me(
         _ session: GitURLSession = URLSession.shared,
-        completion: @escaping (_ response: Result<GitLabUser, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitLabUser, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitLabUserRouter.readAuthenticatedUser(self.configuration)
 

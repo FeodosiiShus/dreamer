@@ -351,7 +351,7 @@ extension SettingsData {
             ]
             let urls = fileNames.compactMap { Bundle.main.url(forResource: $0, withExtension: "ttf") }
             guard !urls.isEmpty else { return }
-            _ = CTFontManagerRegisterFontsForURLs(urls as CFArray, .process, nil)
+            CTFontManagerRegisterFontURLs(urls as CFArray, .process, true, nil)
         }()
     }
 }

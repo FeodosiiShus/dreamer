@@ -17,7 +17,7 @@ struct BitBucketAccount {
     }
 }
 
-extension GitRouter {
+nonisolated extension GitRouter {
     internal var URLRequest: Foundation.URLRequest? {
         request()
     }

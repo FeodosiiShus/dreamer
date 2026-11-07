@@ -49,7 +49,7 @@ final class CargoPackageManager: PackageManagerProtocol {
 
     func initialize(in packagePath: URL) -> PackageManagerInstallStep {
         PackageManagerInstallStep(name: "Initialize Directory Structure", confirmation: .none) { model in
-            try await model.createDirectoryStructure(for: packagePath)
+            try model.createDirectoryStructure(for: packagePath)
         }
     }
 

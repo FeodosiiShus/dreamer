@@ -1,7 +1,7 @@
 import Foundation
 
-struct GitLogRef: Hashable, Identifiable {
-    enum Kind: String, Hashable {
+nonisolated struct GitLogRef: Hashable, Identifiable, Sendable {
+    enum Kind: String, Hashable, Sendable {
         case head
         case branch
         case remote
@@ -14,7 +14,7 @@ struct GitLogRef: Hashable, Identifiable {
     var id: String { "\(kind.rawValue):\(name)" }
 }
 
-struct GitLogCommit: Identifiable, Hashable {
+nonisolated struct GitLogCommit: Identifiable, Hashable, Sendable {
     let hash: String
     let parents: [String]
     let authorName: String
@@ -40,7 +40,7 @@ struct GitLogCommit: Identifiable, Hashable {
     }
 }
 
-struct GitLogBranchFilter: Hashable, Identifiable {
+nonisolated struct GitLogBranchFilter: Hashable, Identifiable, Sendable {
     let ref: String?
     let title: String
 

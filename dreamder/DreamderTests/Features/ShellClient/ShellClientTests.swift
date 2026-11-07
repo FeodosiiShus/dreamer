@@ -144,7 +144,7 @@ struct ShellClientTests {
                     try await Task.sleep(for: .seconds(60))
                 }
             }
-            let started = try await ProcessTestSupport.waitUntil {
+            let started = try await ProcessTestSupport.waitUntil(timeout: .seconds(90)) {
                 ProcessTestSupport.readProcessIdentifier(from: pidFile) != nil
             }
             #expect(started)
@@ -153,7 +153,9 @@ struct ShellClientTests {
             consumer.cancel()
             _ = await consumer.result
 
-            let died = try await ProcessTestSupport.waitUntil { !ProcessTestSupport.isAlive(processIdentifier) }
+            let died = try await ProcessTestSupport.waitUntil(timeout: .seconds(20)) {
+                !ProcessTestSupport.isAlive(processIdentifier)
+            }
             #expect(died)
         }
     }

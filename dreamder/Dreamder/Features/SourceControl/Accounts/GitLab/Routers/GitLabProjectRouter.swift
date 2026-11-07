@@ -7,14 +7,14 @@
 
 import Foundation
 
-enum GitLabVisibility: String {
+nonisolated enum GitLabVisibility: String {
     case visbilityPublic = "public"
     case visibilityInternal = "interal"
     case visibilityPrivate = "private"
     case all = ""
 }
 
-enum GitLabOrderBy: String {
+nonisolated enum GitLabOrderBy: String {
     case id = "id"
     case name = "name"
     case path = "path"
@@ -23,12 +23,12 @@ enum GitLabOrderBy: String {
     case lastActvityDate = "last_activity_at"
 }
 
-enum GitLabSort: String {
+nonisolated enum GitLabSort: String {
     case ascending = "asc"
     case descending = "desc"
 }
 
-enum GitLabProjectRouter: GitRouter {
+nonisolated enum GitLabProjectRouter: GitRouter {
     case readAuthenticatedProjects(
         configuration: GitRouterConfiguration,
         page: String,

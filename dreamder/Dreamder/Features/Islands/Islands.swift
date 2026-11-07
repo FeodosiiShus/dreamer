@@ -133,7 +133,7 @@ enum IntelliJIcon {
         NSImage(named: name)
     }
 
-    static func fileIcon(for fileName: String) -> String {
+    nonisolated static func fileIcon(for fileName: String) -> String {
         let lower = fileName.lowercased()
         switch (lower as NSString).pathExtension {
         case "swift": return "fileTypes/swiftLang"

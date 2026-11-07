@@ -107,7 +107,7 @@ struct ProjectNavigatorOutlineView: NSViewControllerRepresentable {
             controller?.shouldSendSelectionUpdate = true
         }
 
-        deinit {
+        isolated deinit {
             workspace?.workspaceFileManager?.removeObserver(self)
         }
     }

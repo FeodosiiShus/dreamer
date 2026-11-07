@@ -27,7 +27,7 @@ struct IsolatedDefaultsTests {
 
     @Test
     func requireFailsOutsideAnIsolatedScope() {
-        IsolatedDefaults.$current.withValue(nil) {
+        IsolatedDefaults.$currentSuiteName.withValue(nil) {
             #expect(throws: IsolatedDefaultsError.outsideIsolatedScope) {
                 try IsolatedDefaults.require()
             }
@@ -38,7 +38,8 @@ struct IsolatedDefaultsTests {
     func closureFormExposesTheSuiteAsCurrent() throws {
         try withIsolatedDefaults { defaults in
             defaults.set("x", forKey: "closure.key")
-            #expect(IsolatedDefaults.current === defaults)
+            let current = try IsolatedDefaults.require()
+            #expect(current.string(forKey: "closure.key") == "x")
             #expect(defaults.string(forKey: "closure.key") == "x")
         }
     }
@@ -72,11 +73,11 @@ struct TemporaryDirectoryTests {
     }
 
     @Test
-    func directoryIsRemovedWhenTheBodyThrows() async throws {
+    func directoryIsRemovedWhenTheBodyThrows() throws {
         struct Failure: Error {}
         var captured: URL?
-        await #expect(throws: Failure.self) {
-            try await withTempDir { dir in
+        #expect(throws: Failure.self) {
+            try withTempDir { dir in
                 captured = dir
                 throw Failure()
             }

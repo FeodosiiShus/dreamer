@@ -40,9 +40,13 @@ struct EditorLayoutView: View {
                    .transformEnvironment(\.isEditorLayoutAtEdge) { belowToolbar in
                        calcIsAtEdge(current: &belowToolbar, index: index)
                    }
-                   .environment(\.splitEditor) { [weak data] edge, newEditor in
-                       data?.split(edge, at: index, new: newEditor)
-                   }
+                   .environment(\.splitEditor, splitAction(at: index))
+            }
+        }
+
+        func splitAction(at index: Int) -> (Edge, Editor) -> Void {
+            { [weak data] edge, newEditor in
+                data?.split(edge, at: index, new: newEditor)
             }
         }
 

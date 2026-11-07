@@ -24,7 +24,7 @@ struct GitTestRouter: GitRouter {
     var configuration: GitRouterConfiguration?
 }
 
-struct GitTestPayload: Codable, Equatable {
+struct GitTestPayload: Codable, Equatable, Sendable {
     let id: Int
     let name: String
 }
@@ -74,7 +74,7 @@ final class FakeGitSession: GitURLSession {
 
     func dataTask(
         with request: URLRequest,
-        completionHandler: @escaping (Data?, URLResponse?, Error?) -> Void
+        completionHandler: @escaping @Sendable (Data?, URLResponse?, Error?) -> Void
     ) -> GitURLSessionDataTaskProtocol {
         dataRequests.append(request)
         let (data, response, error) = (replyData, replyResponse, replyError)
@@ -84,7 +84,7 @@ final class FakeGitSession: GitURLSession {
     func uploadTask(
         with request: URLRequest,
         fromData bodyData: Data?,
-        completionHandler: @escaping (Data?, URLResponse?, Error?) -> Void
+        completionHandler: @escaping @Sendable (Data?, URLResponse?, Error?) -> Void
     ) -> GitURLSessionDataTaskProtocol {
         uploadRequests.append(request)
         uploadBodies.append(bodyData)

@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum GitHubOpenness: String, Codable {
+nonisolated enum GitHubOpenness: String, Codable, Sendable {
     case open
     case closed
     case all

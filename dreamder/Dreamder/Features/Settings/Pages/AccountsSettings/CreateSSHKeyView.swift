@@ -33,11 +33,11 @@ struct CreateSSHKeyView: View {
                             .tag(KeyType.ecdsa)
                         Divider()
                         Group {
-                            Text(KeyType.rsa.rawValue) + Text(" (less secure)").foregroundColor(.secondary)
+                            Text("\(KeyType.rsa.rawValue)\(Text(" (less secure)").foregroundColor(.secondary))")
                         }
                         .tag(KeyType.rsa)
                         Group {
-                            Text(KeyType.dsa.rawValue) + Text(" (less secure)").foregroundColor(.secondary)
+                            Text("\(KeyType.dsa.rawValue)\(Text(" (less secure)").foregroundColor(.secondary))")
                         }
                         .tag(KeyType.dsa)
                     }

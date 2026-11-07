@@ -1,6 +1,6 @@
 import Foundation
 
-enum MarkdownHTMLRenderer {
+nonisolated enum MarkdownHTMLRenderer {
     static func bodyHTML(from markdown: String) -> String {
         MarkdownBlockRenderer.render(markdown)
     }

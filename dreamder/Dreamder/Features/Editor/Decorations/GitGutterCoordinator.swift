@@ -216,7 +216,7 @@ final class GitGutterCoordinator: TextViewCoordinator {
         }
     }
 
-    private static func markers(headText: String?, currentText: String) -> [GitLineChange] {
+    private nonisolated static func markers(headText: String?, currentText: String) -> [GitLineChange] {
         guard let headText else {
             return GitLineChange.wholeFileAdded(lineCount: TextDiff.lines(in: currentText).count)
         }

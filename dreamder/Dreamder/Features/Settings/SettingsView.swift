@@ -117,7 +117,7 @@ class SettingsViewModel: ObservableObject {
         keyDownEventMonitor = nil
     }
 
-    deinit {
+    isolated deinit {
         removeKeyDownMonitor()
     }
 }

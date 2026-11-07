@@ -9,13 +9,13 @@ import SwiftUI
 import CodeEditKit
 import ExtensionFoundation
 
-enum NavigatorTab: WorkspacePanelTab {
+nonisolated enum NavigatorTab: WorkspacePanelTab {
     case project
     case sourceControl
     case search
     case uiExtension(endpoint: AppExtensionIdentity, data: ResolvedSidebar.SidebarStore)
 
-    var systemImage: String {
+    nonisolated var systemImage: String {
         switch self {
         case .project:
             return "folder"
@@ -35,7 +35,7 @@ enum NavigatorTab: WorkspacePanelTab {
         return title
     }
 
-    var title: String {
+    nonisolated var title: String {
         switch self {
         case .project:
             return "Project"
@@ -48,6 +48,7 @@ enum NavigatorTab: WorkspacePanelTab {
         }
     }
 
+    @MainActor
     var body: some View {
         switch self {
         case .project:
@@ -61,6 +62,7 @@ enum NavigatorTab: WorkspacePanelTab {
         }
     }
 
+    @MainActor
     @ViewBuilder
     func bottomView(workspace: WorkspaceDocument) -> some View {
         switch self {

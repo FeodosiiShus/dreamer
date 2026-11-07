@@ -27,9 +27,21 @@ final class ProjectNavigatorMenu: NSMenu {
     }
 
     @available(*, unavailable)
-    required init(coder: NSCoder) {
-        self.sender = ProjectNavigatorViewController()
+    nonisolated override init(title: String) {
+        self.sender = MainActor.assumeIsolated { ProjectNavigatorViewController() }
+        super.init(title: title)
+    }
+
+    @available(*, unavailable)
+    nonisolated required init(coder: NSCoder) {
+        self.sender = MainActor.assumeIsolated { ProjectNavigatorViewController() }
         super.init(coder: coder)
+    }
+
+    /// Updates the menu for the selected item and hides it if no item is provided.
+    func rebuild() {
+        removeAllItems()
+        setupMenu()
     }
 
     /// Creates a `NSMenuItem` depending on the given arguments
@@ -237,12 +249,6 @@ final class ProjectNavigatorMenu: NSMenu {
         workspace?.excludedDirectories?.cancelExclusion(item.url)
         sender.outlineView.reloadItem(item, reloadChildren: false)
         workspace?.searchState?.addProjectToIndex()
-    }
-
-    /// Updates the menu for the selected item and hides it if no item is provided.
-    override func update() {
-        removeAllItems()
-        setupMenu()
     }
 }
 

@@ -17,6 +17,7 @@ import LanguageServerProtocol
 /// 
 /// For *unit* tests with the language server class, add tests to the `LanguageServer+DocumentObjects` test class as
 /// it's cleaner and makes correct use of the mock document type.
+@MainActor
 final class LanguageServerCodeFileDocumentTests: XCTestCase {
     // Test opening documents in Dreamder triggers creating a language server,
     // further opened documents don't create new servers

@@ -20,12 +20,7 @@ import LanguageServerProtocol
 /// keeps an async stream around for the duration of its lifetime. The stream is sent edit notifications, which are then
 /// chunked into 250ms timed groups before being sent to the ``LanguageServer``.
 class LSPContentCoordinator<DocumentType: LanguageServerDocument>: TextViewCoordinator, TextViewDelegate {
-    // Required to avoid a large_tuple lint error
-    private struct SequenceElement: Sendable {
-        let uri: String
-        let range: LSPRange
-        let string: String
-    }
+    private typealias SequenceElement = LSPContentSequenceElement
 
     private var editedRange: LSPRange?
     private var sequenceContinuation: AsyncStream<SequenceElement>.Continuation?
@@ -54,7 +49,7 @@ class LSPContentCoordinator<DocumentType: LanguageServerDocument>: TextViewCoord
             self.sequenceContinuation = continuation
         }
 
-        task = Task.detached { [weak self] in
+        task = Task { [weak self] in
             // Send edit events every 250ms
             for await events in stream.chunked(by: .repeating(every: .milliseconds(250), clock: .continuous)) {
                 guard !Task.isCancelled, self != nil else { return }
@@ -95,7 +90,13 @@ class LSPContentCoordinator<DocumentType: LanguageServerDocument>: TextViewCoord
         sequenceContinuation = nil
     }
 
-    deinit {
+    isolated deinit {
         destroy()
     }
+}
+
+nonisolated private struct LSPContentSequenceElement: Sendable {
+    let uri: String
+    let range: LSPRange
+    let string: String
 }

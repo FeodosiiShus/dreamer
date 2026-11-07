@@ -6,25 +6,58 @@
 //
 
 import Foundation
+import Synchronization
 
 /// Indexer using SKIndex
-public class SearchIndexer {
-    let modifyIndexQueue = DispatchQueue(label: "dev.dreamder.Dreamder.ModifySearchIndex")
+nonisolated public final class SearchIndexer: Sendable {
+    struct State {
+        var index: SKIndex?
+        var store: NSMutableData?
+        var fileURL: URL?
+        var searches: [Int: SKSearch] = [:]
+        var nextSearchID = 0
+    }
 
-    var index: SKIndex?
+    private let state: Mutex<State>
 
-    init(index: SKIndex) {
-        self.index = index
+    init(state: sending State) {
+        self.state = Mutex(state)
     }
 
     deinit {
         self.close()
     }
 
+    func withState<R: Sendable>(_ body: (inout State) -> R) -> R {
+        state.withLock { body(&$0) }
+    }
+
+    /// The file url where the index is located, nil for in-memory indexes
+    public var fileURL: URL? {
+        withState { $0.fileURL }
+    }
+
+    /// Returns a copy of the index as data, nil for indexes that are not memory based
+    public func getAsData() -> Data? {
+        flush()
+        return withState { state -> Data? in
+            state.store?.copy() as? Data
+        }
+    }
+
+    /// Flush, compact, i.e. apply all changes and write the content of a file based index to the file
+    public func save() {
+        guard fileURL != nil else { return }
+        flush()
+        compact()
+    }
+
     /// Flush any pending commands to the search index. Flush should always be called before performing a search
     public func flush() {
-        if let index = self.index {
-            SKIndexFlush(index)
+        withState { state in
+            if let index = state.index {
+                _ = SKIndexFlush(index)
+            }
         }
     }
 
@@ -32,17 +65,19 @@ public class SearchIndexer {
     ///
     /// - Warning: Do NOT call on the main thread
     public func compact() {
-        if let index = self.index {
-            SKIndexCompact(index)
+        withState { state in
+            if let index = state.index {
+                _ = SKIndexCompact(index)
+            }
         }
     }
 
     /// Remove any documents that have no search terms
     public func cleanUp() -> Int {
-        let allDocs = self.fullDocuments(termState: .empty)
+        let emptyDocumentURLs = self.fullDocuments(termState: .empty).map(\.url)
         var removedCount = 0
-        for docID in allDocs {
-            _ = self.remove(document: docID.document)
+        for url in emptyDocumentURLs {
+            _ = self.removeDocument(url: url)
             removedCount += 1
         }
         return removedCount
@@ -50,31 +85,36 @@ public class SearchIndexer {
 
     /// Close the index
     public func close() {
-        if let index = self.index {
-            SKIndexClose(index)
-            self.index = nil
+        withState { state in
+            if let index = state.index {
+                state.searches.removeAll()
+                SKIndexClose(index)
+                state.index = nil
+            }
         }
     }
 
-    /// Call  once at application launch to tell Search Kit to use the Spotlight metadata importers.
-    lazy var dataExtractorLoaded: Bool = {
+    private static let extractorsLoaded: Bool = {
         SKLoadDefaultExtractorPlugIns()
         return true
     }()
 
+    /// Call  once at application launch to tell Search Kit to use the Spotlight metadata importers.
+    var dataExtractorLoaded: Bool {
+        Self.extractorsLoaded
+    }
+
     /// Stop words for the index, 
     /// these are common words which should be ignored because they are not useful for searching
-    private(set) lazy var stopWords: Set<String> = {
-        var stopWords: Set<String> = []
-        if let index = self.index,
-           let properties = SKIndexGetAnalysisProperties(self.index).takeRetainedValue() as? [String: Any],
-           let newStopWords = properties[kSKStopWords as String] as? Set<String> {
-            stopWords = newStopWords
+    static func stopWords(of index: SKIndex) -> Set<String> {
+        guard let properties = SKIndexGetAnalysisProperties(index).takeUnretainedValue() as? [String: Any],
+              let stopWords = properties[kSKStopWords as String] as? Set<String> else {
+            return []
         }
         return stopWords
-    }()
+    }
 
-    public enum IndexType: UInt32 {
+    nonisolated public enum IndexType: UInt32 {
         /// Unknown index type (kSKIndexUnknown)
         case unknown = 0
         /// Inverted index, mapping terms to documents (kSKIndexInverted)
@@ -92,7 +132,7 @@ public class SearchIndexer {
     /// - `proximityIndexing`: A Boolean flag indicating whether or not Search Kit should use proximity indexing.
     /// - `stopWords`: A set of stop-words — words not to index.
     /// - `minTermLength`: The minimum term length to index (defaults to 1).
-    public class CreateProperties {
+    nonisolated public struct CreateProperties: Sendable {
         /// The type of the index to be created
         private(set) var indexType: SKIndexType = kSKIndexInverted
         /// Whether the index should use proximity indexing

@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension String {
+nonisolated extension String {
 
     /// Percent-encodes a string to be URL-safe
     ///

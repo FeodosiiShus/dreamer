@@ -1,6 +1,6 @@
 import Foundation
 
-enum BranchesPopupMatcher {
+nonisolated enum BranchesPopupMatcher {
     static func matches(query: String, candidate: String) -> Bool {
         ranges(query: query, candidate: candidate) != nil
     }
@@ -62,7 +62,7 @@ enum BranchesPopupMatcher {
         return indices
     }
 
-    private struct Match {
+    nonisolated private struct Match {
         let indices: [Int]
         let score: Int
         let end: Int

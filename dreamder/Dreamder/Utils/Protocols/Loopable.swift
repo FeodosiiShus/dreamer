@@ -9,11 +9,11 @@ import Foundation
 
 /// Loopable protocol implements a method that will return all child
 /// properties and their associated values of a `Type`
-protocol Loopable {
+nonisolated protocol Loopable {
     func allProperties() throws -> [String: Any]
 }
 
-extension Loopable {
+nonisolated extension Loopable {
 
     /// returns all child properties and their associated values of `self`
     ///

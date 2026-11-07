@@ -34,8 +34,11 @@ class SplitViewItem: ObservableObject {
 
     private func createObservers() -> [NSKeyValueObservation] {
         [
-            item.observe(\.isCollapsed) { [weak self] item, _ in
-                self?.collapsed.wrappedValue = item.isCollapsed
+            item.observe(\.isCollapsed) { [weak self] _, _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.collapsed.wrappedValue = self.item.isCollapsed
+                }
             }
         ]
     }

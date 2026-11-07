@@ -5,7 +5,7 @@
 //  Created by Khan Winter on 8/15/25.
 //
 
-extension RegistryItem {
+nonisolated extension RegistryItem {
     struct Source: Codable {
         let id: String
         let asset: AssetContainer?

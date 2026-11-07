@@ -1,6 +1,6 @@
 import CoreGraphics
 
-enum EditorTabOverflow {
+nonisolated enum EditorTabOverflow {
     static func hiddenTabs(
         openedTabs: [CEWorkspaceFile.ID],
         frames: [CEWorkspaceFile.ID: CGRect],

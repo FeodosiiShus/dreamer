@@ -8,7 +8,7 @@
 import Foundation
 import CryptoKit
 
-extension String {
+nonisolated extension String {
 
     /// Returns a SHA256 encrypted String of the input String
     ///

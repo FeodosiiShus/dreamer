@@ -7,7 +7,6 @@
 
 import Foundation
 import ExtensionFoundation
-import CollectionConcurrencyKit
 import GRDB
 
 /// Discovery of available extension endpoints.
@@ -16,7 +15,7 @@ final class ExtensionDiscovery: ObservableObject {
     static var shared = ExtensionDiscovery()
 
     /// Endpoint used by extensions.
-    static var endPointIdentifier = "dreamder.extension"
+    nonisolated static let endPointIdentifier: StaticString = "dreamder.extension"
 
     private static var dbURL = URL.libraryDirectory
         .appending(path: "Preferences/com.apple.LaunchServices/com.apple.LaunchServices.SettingsStore.sql")
@@ -40,11 +39,13 @@ final class ExtensionDiscovery: ObservableObject {
     private func discover() -> Task<Void, Never> {
         Task { [weak self] in
             do {
-                let sequence = try AppExtensionIdentity.matching(appExtensionPointIDs: Self.endPointIdentifier)
+                let monitor = try await AppExtensionPoint.Monitor(
+                    appExtensionPoint: AppExtensionPoint(identifier: Self.endPointIdentifier)
+                )
 
-                for await endpoints in sequence {
+                for await state in Observations({ monitor.state }) {
                     guard !Task.isCancelled && self != nil else { return }
-                    await self?.updateExtensions(endpoints: endpoints, shouldRestartExisting: true)
+                    await self?.updateExtensions(endpoints: state.identities, shouldRestartExisting: true)
                 }
             } catch {
                 print("Error while searching for extensions: \(error.localizedDescription)")
@@ -52,14 +53,36 @@ final class ExtensionDiscovery: ObservableObject {
         }
     }
 
+    @concurrent
+    private static func loadDetails(
+        for endpoints: [AppExtensionIdentity]
+    ) async -> [(endpoint: AppExtensionIdentity, details: ExtensionInfo.Details)] {
+        await withTaskGroup(of: (Int, ExtensionInfo.Details?).self) { group in
+            for (index, endpoint) in endpoints.enumerated() {
+                group.addTask {
+                    (index, try? await ExtensionInfo.loadDetails(for: endpoint))
+                }
+            }
+
+            var loaded: [(index: Int, details: ExtensionInfo.Details)] = []
+            for await (index, details) in group {
+                if let details {
+                    loaded.append((index, details))
+                }
+            }
+            return loaded
+                .sorted { $0.index < $1.index }
+                .map { (endpoint: endpoints[$0.index], details: $0.details) }
+        }
+    }
+
     private func updateExtensions(endpoints: [AppExtensionIdentity], shouldRestartExisting: Bool = false) async {
-        let extensions = await endpoints.concurrentCompactMap {
-            try? await ExtensionInfo(endpoint: $0)
+        let loaded = await Self.loadDetails(for: endpoints)
+        let extensions = loaded.compactMap {
+            try? ExtensionInfo(endpoint: $0.endpoint, details: $0.details)
         }
 
-        await MainActor.run {
-            self.extensions = extensions
-        }
+        self.extensions = extensions
 
         if shouldRestartExisting {
             self.extensions.filter(\.isDebug)
@@ -75,40 +98,43 @@ final class ExtensionDiscovery: ObservableObject {
     /// Warning: This function will continue to run and won't return. Therefore, it should be ran in a separate `Task`.
     private func availabilityOverview() -> Task<Void, Never> {
         Task { [weak self] in
-            for await availability in AppExtensionIdentity.availabilityUpdates {
-                guard !Task.isCancelled && self != nil else { return }
-                do {
-                    if availability.disabledCount > 0 {
-                        print("Found \(availability.disabledCount) disabled extensions, trying to activate...")
-                        try await self?.activateDisabledExtensions()
+            do {
+                let monitor = try await AppExtensionPoint.Monitor(
+                    appExtensionPoint: AppExtensionPoint(identifier: Self.endPointIdentifier)
+                )
+
+                for await availability in Observations({ monitor.state }) {
+                    guard !Task.isCancelled && self != nil else { return }
+                    do {
+                        if availability.disabledCount > 0 {
+                            print("Found \(availability.disabledCount) disabled extensions, trying to activate...")
+                            try await self?.activateDisabledExtensions()
+                        }
+
+                        if availability.unapprovedCount > 0 {
+                            print("Found \(availability.unapprovedCount) unapproved extensions, trying to activate...")
+
+                            let identifiers = [("com.tweety.TestDreamder.AutoActivatedExtension", "2MMGJGVTB4")]
+                            try await self?.activateUnapprovedExtensions(with: identifiers)
+                        }
+
+                        await self?.updateExtensions(endpoints: monitor.state.identities)
+                    } catch {
+                        print("Could not auto-activate extensions.")
                     }
-
-                    if availability.unapprovedCount > 0 {
-                        print("Found \(availability.disabledCount) unapproved extensions, trying to activate...")
-
-                        let identifiers = [("com.tweety.TestDreamder.AutoActivatedExtension", "2MMGJGVTB4")]
-                        try await self?.activateUnapprovedExtensions(with: identifiers)
-                    }
-
-                    let sequence = try AppExtensionIdentity.matching(appExtensionPointIDs: Self.endPointIdentifier)
-
-                    let extensions = await sequence.first { _ in true }
-
-                    guard let extensions else { return }
-                    await self?.updateExtensions(endpoints: extensions)
-                } catch {
-                    print("Could not auto-activate extensions.")
                 }
+            } catch {
+                print("Error while observing extension availability: \(error.localizedDescription)")
             }
         }
     }
 
-    struct SettingsStoreRecord: Codable, TableRecord, FetchableRecord, PersistableRecord {
+    nonisolated struct SettingsStoreRecord: Codable, TableRecord, FetchableRecord, PersistableRecord {
         var identifier: String
         var timestamp: String
         var userElection: Int
 
-        static var databaseTableName: String = "Election"
+        nonisolated static let databaseTableName: String = "Election"
     }
 
     private func activateDisabledExtensions() async throws {

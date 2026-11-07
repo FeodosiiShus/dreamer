@@ -147,7 +147,6 @@ extension NSDocumentController {
         let dialog = NSOpenPanel()
 
         dialog.title = "Open Workspace or File"
-        dialog.showsResizeIndicator = true
         dialog.showsHiddenFiles = false
         dialog.canChooseFiles = true
         dialog.canChooseDirectories = true

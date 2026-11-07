@@ -60,7 +60,7 @@ final class KeybindingManager {
 }
 
 /// Wrapper for KeyboardShortcut. It contains name, keybindings.
-struct KeyboardShortcutWrapper: Codable, Hashable {
+nonisolated struct KeyboardShortcutWrapper: Codable, Hashable, Sendable {
     var keyboardShortcut: KeyboardShortcut {
         return KeyboardShortcut.init(.init(Character(keybinding)), modifiers: parsedModifier)
     }

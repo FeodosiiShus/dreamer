@@ -131,7 +131,7 @@ class GitCloneViewModel: ObservableObject {
     ) async {
         guard let gitClient else { return }
 
-        await setIsCloning(true)
+        setIsCloning(true)
 
         do {
             for try await progress in gitClient.cloneRepository(remoteUrl: remoteUrl, localPath: localPath) {
@@ -159,7 +159,7 @@ class GitCloneViewModel: ObservableObject {
             }
         }
 
-        await setIsCloning(false)
+        setIsCloning(false)
     }
 
     private func deleteTemporaryFolder(localPath: URL) {
@@ -178,7 +178,6 @@ class GitCloneViewModel: ObservableObject {
 
     private func getPath(saveName: String) -> URL? {
         let dialog = NSSavePanel()
-        dialog.showsResizeIndicator = true
         dialog.showsHiddenFiles = false
         dialog.showsTagField = false
         dialog.prompt = "Clone"

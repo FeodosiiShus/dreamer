@@ -16,7 +16,9 @@ final class EditorBackgroundCoordinator: TextViewCoordinator {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.applyTransparency()
+                MainActor.assumeIsolated {
+                    self?.applyTransparency()
+                }
             }
         }
         applyTransparency()

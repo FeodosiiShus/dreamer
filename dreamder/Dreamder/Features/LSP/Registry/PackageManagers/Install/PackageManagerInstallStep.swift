@@ -10,5 +10,5 @@ struct PackageManagerInstallStep: Identifiable {
     var id: String { name }
     let name: String
     let confirmation: InstallStepConfirmation
-    let handler: (_ model: PackageManagerProgressModel) async throws -> Void
+    let handler: @MainActor (_ model: PackageManagerProgressModel) async throws -> Void
 }

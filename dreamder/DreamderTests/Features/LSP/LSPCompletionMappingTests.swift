@@ -3,7 +3,7 @@ import LanguageServerProtocol
 import Testing
 @testable import Dreamder
 
-@Suite("LSP completion mapping")
+@MainActor @Suite("LSP completion mapping")
 struct LSPCompletionMappingTests {
     private func item(
         label: String,

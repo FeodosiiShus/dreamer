@@ -9,6 +9,7 @@ import Testing
 import Foundation
 @testable import Dreamder
 
+@MainActor
 @Suite
 struct EditorStateRestorationTests {
     @Test

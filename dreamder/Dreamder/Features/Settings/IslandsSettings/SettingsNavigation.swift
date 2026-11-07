@@ -1,13 +1,13 @@
 import Foundation
 
-struct SettingsPageNode: Hashable, Identifiable {
+nonisolated struct SettingsPageNode: Hashable, Identifiable, Sendable {
     let name: SettingsPage.Name
     let matchingSettings: [String]
 
     var id: SettingsPage.Name { name }
 }
 
-struct SettingsCategoryNode: Hashable, Identifiable {
+nonisolated struct SettingsCategoryNode: Hashable, Identifiable, Sendable {
     let category: SettingsPage.Category
     let pages: [SettingsPageNode]
 
@@ -15,7 +15,7 @@ struct SettingsCategoryNode: Hashable, Identifiable {
 }
 
 enum SettingsNavigation {
-    static var defaultPage: SettingsPage.Name {
+    nonisolated static var defaultPage: SettingsPage.Name {
         .general
     }
 
@@ -27,7 +27,7 @@ enum SettingsNavigation {
         )
     }
 
-    static func filter(
+    nonisolated static func filter(
         categories: [SettingsPage.Category] = SettingsPage.Category.allCases,
         searchKeys: [SettingsPage.Name: [String]],
         query: String,
@@ -52,7 +52,7 @@ enum SettingsNavigation {
         }
     }
 
-    static func visiblePageNames(_ nodes: [SettingsCategoryNode]) -> [SettingsPage.Name] {
+    nonisolated static func visiblePageNames(_ nodes: [SettingsCategoryNode]) -> [SettingsPage.Name] {
         nodes.flatMap { $0.pages.map(\.name) }
     }
 
@@ -70,7 +70,7 @@ enum SettingsNavigation {
         return keys
     }()
 
-    private static func unique(_ values: [String]) -> [String] {
+    private nonisolated static func unique(_ values: [String]) -> [String] {
         var seen = Set<String>()
         return values.filter { seen.insert($0).inserted }
     }

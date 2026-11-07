@@ -10,7 +10,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
-class GitHubRepositories: Codable {
+nonisolated struct GitHubRepositories: Codable, Sendable {
     private(set) var id: Int = -1
     private(set) var owner = GitHubUser()
     var name: String?
@@ -61,7 +61,7 @@ extension GitHubAccount {
         owner: String? = nil,
         page: String = "1",
         perPage: String = "100",
-        completion: @escaping (_ response: Result<[GitHubRepositories], Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<[GitHubRepositories], Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router: GitHubRepositoryRouter
         if let owner {
@@ -97,7 +97,7 @@ extension GitHubAccount {
         _ session: GitURLSession = URLSession.shared,
         owner: String,
         name: String,
-        completion: @escaping (_ response: Result<GitHubRepositories, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitHubRepositories, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitHubRepositoryRouter.readRepository(configuration, owner, name)
 

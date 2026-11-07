@@ -148,9 +148,11 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
                 parameters: executionParams,
                 terminationHandler: { [weak logContainer] in
                     languageServerLogger.debug("Terminated data channel for \(languageId.rawValue)")
-                    logContainer?.appendLog(
-                        LogMessageParams(type: .error, message: "Data Channel Terminated Unexpectedly")
-                    )
+                    Task { @MainActor in
+                        logContainer?.appendLog(
+                            LogMessageParams(type: .error, message: "Data Channel Terminated Unexpectedly")
+                        )
+                    }
                 }
             )
             return (JSONRPCServerConnection(dataChannel: channel), process)
@@ -300,7 +302,7 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
 }
 
 /// Represents a language server binary.
-struct LanguageServerBinary: Codable {
+nonisolated struct LanguageServerBinary: Codable, Sendable {
     /// The path to the language server binary.
     let execPath: String
     /// The arguments to pass to the language server binary.

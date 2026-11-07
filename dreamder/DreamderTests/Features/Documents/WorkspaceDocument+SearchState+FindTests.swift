@@ -8,6 +8,7 @@
 import XCTest
 @testable import Dreamder
 
+@MainActor
 final class FindTests: XCTestCase {
     private var directory: URL!
     private var files: [CEWorkspaceFile] = []
@@ -21,8 +22,8 @@ final class FindTests: XCTestCase {
     override func setUp() async throws {
         directory = try makeTempDirectory()
 
-        mockWorkspace = try await WorkspaceDocument(for: directory, withContentsOf: directory, ofType: "")
-        searchState = await mockWorkspace.searchState
+        mockWorkspace = try WorkspaceDocument(for: directory, withContentsOf: directory, ofType: "")
+        searchState = mockWorkspace.searchState
 
         // Add a few files
         let folder1 = directory.appending(path: "Folder 2")
@@ -51,7 +52,7 @@ final class FindTests: XCTestCase {
         files[1].parent = parent1
         files[2].parent = parent2
 
-        await mockWorkspace.searchState?.addProjectToIndex()
+        mockWorkspace.searchState?.addProjectToIndex()
 
         // The following code also tests whether the workspace is indexed correctly
         // Wait until the index is up to date and flushed

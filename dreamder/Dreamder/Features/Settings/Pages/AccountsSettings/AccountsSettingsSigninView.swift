@@ -188,21 +188,25 @@ struct AccountsSettingsSigninView: View {
             case .github, .githubEnterprise:
                 let config = GitHubTokenConfiguration(personalAccessToken, url: configURL)
                 GitHubAccount(config).me { response in
-                    switch response {
-                    case .success:
-                        handleGitRequestSuccess()
-                    case .failure(let error):
-                        handleGitRequestFailed(error)
+                    Task { @MainActor in
+                        switch response {
+                        case .success:
+                            handleGitRequestSuccess()
+                        case .failure(let error):
+                            handleGitRequestFailed(error)
+                        }
                     }
                 }
             case .gitlab, .gitlabSelfHosted:
                 let config = GitLabTokenConfiguration(personalAccessToken, url: configURL)
                 GitLabAccount(config).me { response in
-                    switch response {
-                    case .success:
-                        handleGitRequestSuccess()
-                    case .failure(let error):
-                        handleGitRequestFailed(error)
+                    Task { @MainActor in
+                        switch response {
+                        case .success:
+                            handleGitRequestSuccess()
+                        case .failure(let error):
+                            handleGitRequestFailed(error)
+                        }
                     }
                 }
             default:

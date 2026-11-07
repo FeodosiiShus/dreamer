@@ -38,7 +38,8 @@ enum BranchesPopupPrompt {
     }
 
     static func branchDialog(_ request: BranchesPopupBranchDialogRequest) -> BranchesPopupBranchDialogResult? {
-        BranchesPopupBranchDialogController(request: request).run()
+        let controller = BranchesPopupBranchDialogController(request: request)
+        return withExtendedLifetime(controller) { controller.run() }
     }
 
     static func unmergedDelete(name: String, commits: [String]) -> BranchesPopupDeleteBranchDecision {

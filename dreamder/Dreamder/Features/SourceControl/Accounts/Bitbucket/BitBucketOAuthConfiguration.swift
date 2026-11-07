@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct BitBucketOAuthConfiguration: GitRouterConfiguration {
+nonisolated struct BitBucketOAuthConfiguration: GitRouterConfiguration {
     let provider = SourceControlAccount.Provider.bitbucketCloud
     var apiEndpoint: String?
     var accessToken: String?
@@ -51,7 +51,7 @@ struct BitBucketOAuthConfiguration: GitRouterConfiguration {
     func authorize(
         _ session: GitURLSession,
         code: String,
-        completion: @escaping (_ config: BitBucketTokenConfiguration) -> Void
+        completion: @escaping @Sendable (_ config: BitBucketTokenConfiguration) -> Void
     ) {
         let request = BitBucketOAuthRouter.accessToken(self, code).URLRequest
 
@@ -90,7 +90,7 @@ struct BitBucketOAuthConfiguration: GitRouterConfiguration {
     func handleOpenURL(
         _ session: GitURLSession = URLSession.shared,
         url: URL,
-        completion: @escaping (_ config: BitBucketTokenConfiguration) -> Void
+        completion: @escaping @Sendable (_ config: BitBucketTokenConfiguration) -> Void
     ) {
         let params = url.bitbucketURLParameters()
 

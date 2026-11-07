@@ -13,7 +13,7 @@ import CodeEditSourceEditor
 /// # Theme
 ///
 /// The model structure of themes for the editor & terminal emulator
-struct Theme: Identifiable, Codable, Equatable, Hashable, Loopable {
+nonisolated struct Theme: Identifiable, Codable, Equatable, Hashable, Loopable, Sendable {
     enum CodingKeys: String, CodingKey {
         case author, license, distributionURL, name, displayName, editor, terminal, version
         case appearance = "type"
@@ -96,7 +96,7 @@ extension Theme {
     /// The type of the theme
     /// - **dark**: this is a theme for dark system appearance
     /// - **light**: this is a theme for light system appearance
-    enum ThemeType: String, Codable, Hashable {
+    nonisolated enum ThemeType: String, Codable, Hashable, Sendable {
         case dark
         case light
     }
@@ -108,7 +108,7 @@ extension Theme {
     ///
     /// As of now it only includes the colors `hex` string and
     /// an accessor for a `SwiftUI` `Color`.
-    struct Attributes: Codable, Equatable, Hashable, Loopable {
+    nonisolated struct Attributes: Codable, Equatable, Hashable, Loopable, Sendable {
 
         /// The 24-bit hex string of the color (e.g. #123456)
         var color: String
@@ -171,7 +171,7 @@ extension Theme {
 
 extension Theme {
     /// The editor colors of the theme
-    struct EditorColors: Codable, Hashable, Loopable {
+    nonisolated struct EditorColors: Codable, Hashable, Loopable, Sendable {
 
         var editorTheme: EditorTheme {
             get {
@@ -324,7 +324,7 @@ extension Theme {
 
 extension Theme {
     /// The terminal emulator colors of the theme
-    struct TerminalColors: Codable, Hashable, Loopable {
+    nonisolated struct TerminalColors: Codable, Hashable, Loopable, Sendable {
         var text: Attributes
         var boldText: Attributes
         var cursor: Attributes

@@ -68,41 +68,7 @@ struct PopoverPresenter<ContentView: View>: NSViewRepresentable {
         Coordinator(isPresented: $isPresented)
     }
 
-    class Coordinator: NSObject, NSPopoverDelegate {
-        @Binding var isPresented: Bool
-        var popover: NSPopover?
-
-        init(isPresented: Binding<Bool>) {
-            _isPresented = isPresented
-            super.init()
-        }
-
-        func startObservingWindow(_ window: NSWindow) {
-            /// Observe when the window loses focus
-            NotificationCenter.default.addObserver(
-                forName: NSWindow.didResignKeyNotification,
-                object: window,
-                queue: .main
-            ) { [weak self] _ in
-                guard let self = self else { return }
-                /// The parent window is no longer focused, close the popover
-                DispatchQueue.main.async {
-                    self.isPresented = false
-                    self.popover?.close()
-                }
-            }
-        }
-
-        func popoverWillClose(_ notification: Notification) {
-            DispatchQueue.main.async {
-                self.isPresented = false
-            }
-        }
-
-        func popoverDidClose(_ notification: Notification) {
-            popover = nil
-        }
-    }
+    typealias Coordinator = PopoverPresenterCoordinator
 
     private func edgeToNSRectEdge(_ edge: Edge) -> NSRectEdge {
         switch edge {
@@ -111,6 +77,42 @@ struct PopoverPresenter<ContentView: View>: NSViewRepresentable {
         case .bottom: return .maxY
         case .trailing: return .maxX
         }
+    }
+}
+
+final class PopoverPresenterCoordinator: NSObject, NSPopoverDelegate {
+    @Binding var isPresented: Bool
+    var popover: NSPopover?
+
+    init(isPresented: Binding<Bool>) {
+        _isPresented = isPresented
+        super.init()
+    }
+
+    func startObservingWindow(_ window: NSWindow) {
+        /// Observe when the window loses focus
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                /// The parent window is no longer focused, close the popover
+                self.isPresented = false
+                self.popover?.close()
+            }
+        }
+    }
+
+    func popoverWillClose(_ notification: Notification) {
+        DispatchQueue.main.async {
+            self.isPresented = false
+        }
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        popover = nil
     }
 }
 

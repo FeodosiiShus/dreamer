@@ -136,7 +136,7 @@ final class MemoryIndexingTests: XCTestCase {
         index.close()
 
         // Load the saved index
-        guard let loadedIndex = SearchIndexer.Memory(data: savedIndex!) else {
+        guard let loadedIndex = SearchIndexer.Memory.loadFromData(data: savedIndex!) else {
             XCTFail("Failed to create an index")
             return
         }

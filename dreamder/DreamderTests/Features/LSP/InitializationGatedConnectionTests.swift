@@ -6,7 +6,7 @@ import Testing
 
 @Suite
 struct InitializationGatedConnectionTests {
-    private final class Source: ServerConnection, @unchecked Sendable {
+    private final class Source: ServerConnection, Sendable {
         let eventSequence: EventSequence
         let continuation: EventSequence.Continuation
 

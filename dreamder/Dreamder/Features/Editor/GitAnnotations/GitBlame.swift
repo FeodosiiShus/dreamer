@@ -1,6 +1,6 @@
 import Foundation
 
-struct GitBlameLine: Equatable {
+nonisolated struct GitBlameLine: Equatable {
     static let uncommittedHash = "0000000000000000000000000000000000000000"
 
     let line: Int
@@ -18,8 +18,8 @@ struct GitBlameLine: Equatable {
     }
 }
 
-enum GitBlameParser {
-    private struct Metadata {
+nonisolated enum GitBlameParser {
+    nonisolated private struct Metadata {
         var author = ""
         var date = Date(timeIntervalSince1970: 0)
         var summary = ""
@@ -100,7 +100,7 @@ enum GitBlameParser {
     }
 }
 
-enum GitBlameRelativeDate {
+nonisolated enum GitBlameRelativeDate {
     static let posixLocale = Locale(identifier: "en_US_POSIX")
 
     static func string(

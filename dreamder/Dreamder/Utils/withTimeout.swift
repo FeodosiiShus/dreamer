@@ -16,7 +16,7 @@ struct TimedOutError: Error, Equatable {}
 /// - Returns: Returns the result of `operation` if it completed in time.
 /// - Throws: Throws ``TimedOutError`` if the timeout expires before `operation` completes.
 ///   If `operation` throws an error before the timeout expires, that error is propagated to the caller.
-public func withTimeout<R>(
+public func withTimeout<R: Sendable>(
     duration: Duration,
     onTimeout: @escaping @Sendable () async throws -> Void = { },
     operation: @escaping @Sendable () async throws -> R

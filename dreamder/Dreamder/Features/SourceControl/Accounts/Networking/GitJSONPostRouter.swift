@@ -13,19 +13,19 @@ import FoundationNetworking
 #endif
 
 // TODO: DOCS (Nanashi Li)
-protocol GitJSONPostRouter: GitRouter {
+nonisolated protocol GitJSONPostRouter: GitRouter {
 
     func postJSON<T>(
         _ session: GitURLSession,
         expectedResultType: T.Type,
-        completion: @escaping (_ json: T?, _ error: Error?) -> Void
+        completion: @escaping @Sendable (_ json: T?, _ error: Error?) -> Void
     ) -> GitURLSessionDataTaskProtocol?
 
-    func post<T: Codable>(
+    func post<T: Codable & Sendable>(
         _ session: GitURLSession,
         decoder: JSONDecoder,
         expectedResultType: T.Type,
-        completion: @escaping (_ json: T?, _ error: Error?) -> Void
+        completion: @escaping @Sendable (_ json: T?, _ error: Error?) -> Void
     ) -> GitURLSessionDataTaskProtocol?
 
     #if !canImport(FoundationNetworking)
@@ -33,7 +33,7 @@ protocol GitJSONPostRouter: GitRouter {
     func postJSON<T>(_ session: GitURLSession, expectedResultType: T.Type) async throws -> T?
 
     @available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *)
-    func post<T: Codable>(
+    func post<T: Codable & Sendable>(
         _ session: GitURLSession,
         decoder: JSONDecoder,
         expectedResultType: T.Type
@@ -41,11 +41,11 @@ protocol GitJSONPostRouter: GitRouter {
     #endif
 }
 
-extension GitJSONPostRouter {
+nonisolated extension GitJSONPostRouter {
     func postJSON<T>(
         _ session: GitURLSession = URLSession.shared,
         expectedResultType _: T.Type,
-        completion: @escaping (_ json: T?, _ error: Error?) -> Void
+        completion: @escaping @Sendable (_ json: T?, _ error: Error?) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
 
         guard let request = request() else {
@@ -61,6 +61,9 @@ extension GitJSONPostRouter {
             return nil
         }
 
+        let errorDomain = configuration?.errorDomain ?? ""
+        let errorKey = gitErrorKey
+
         let task = session.uploadTask(with: request, fromData: data) { data, response, error in
             if let response = response as? HTTPURLResponse {
                 if !response.wasSuccessful {
@@ -69,13 +72,13 @@ extension GitJSONPostRouter {
                         with: data,
                         options: .mutableContainers
                     ) as? [String: Any] {
-                        userInfo[gitErrorKey] = json as Any?
+                        userInfo[errorKey] = json as Any?
                     } else if let data, let string = String(data: data, encoding: .utf8) {
-                        userInfo[gitErrorKey] = string as Any?
+                        userInfo[errorKey] = string as Any?
                     }
 
                     let error = NSError(
-                        domain: self.configuration?.errorDomain ?? "",
+                        domain: errorDomain,
                         code: response.statusCode,
                         userInfo: userInfo
                     )
@@ -134,11 +137,11 @@ extension GitJSONPostRouter {
     }
     #endif
 
-    func post<T: Codable>(
+    func post<T: Codable & Sendable>(
         _ session: GitURLSession = URLSession.shared,
         decoder: JSONDecoder = JSONDecoder(),
         expectedResultType _: T.Type,
-        completion: @escaping (_ json: T?, _ error: Error?) -> Void
+        completion: @escaping @Sendable (_ json: T?, _ error: Error?) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
 
         guard let request = request() else {
@@ -153,6 +156,9 @@ extension GitJSONPostRouter {
             return nil
         }
 
+        let errorDomain = configuration?.errorDomain ?? ""
+        let errorKey = gitErrorKey
+
         let task = session.uploadTask(with: request, fromData: data) { data, response, error in
             if let response = response as? HTTPURLResponse, !response.wasSuccessful {
                 var userInfo = [String: Any]()
@@ -160,12 +166,12 @@ extension GitJSONPostRouter {
                     with: data,
                     options: .mutableContainers
                 ) as? [String: Any] {
-                    userInfo[gitErrorKey] = json as Any?
+                    userInfo[errorKey] = json as Any?
                 } else if let data, let string = String(data: data, encoding: String.Encoding.utf8) {
-                    userInfo[gitErrorKey] = string as Any?
+                    userInfo[errorKey] = string as Any?
                 }
                 let error = NSError(
-                    domain: self.configuration?.errorDomain ?? "",
+                    domain: errorDomain,
                     code: response.statusCode,
                     userInfo: userInfo
                 )
@@ -194,7 +200,7 @@ extension GitJSONPostRouter {
 
     #if !canImport(FoundationNetworking)
     @available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *)
-    func post<T: Codable>(
+    func post<T: Codable & Sendable>(
         _ session: GitURLSession,
         decoder: JSONDecoder = JSONDecoder(),
         expectedResultType _: T.Type

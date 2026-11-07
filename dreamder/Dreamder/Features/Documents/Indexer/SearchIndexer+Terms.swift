@@ -7,9 +7,9 @@
 
 import Foundation
 
-extension SearchIndexer {
+nonisolated extension SearchIndexer {
     /// A class to contain a term and the count of times it appears
-    public class TermCount {
+    nonisolated public final class TermCount: Sendable {
         /// A term within the document
         public let term: String
 
@@ -23,7 +23,7 @@ extension SearchIndexer {
     }
 
     /// A enum to specify the state of the document
-    public enum TermState: Int {
+    nonisolated public enum TermState: Int {
         /// All document states
         case all = 0
         /// Only documents that have no terms
@@ -42,12 +42,16 @@ extension SearchIndexer {
 
     /// Returns the number of terms for the specified document url
     public func termCount(for url: URL) -> Int {
-        if let index = self.index,
-           let document = SKDocumentCreateWithURL(url as CFURL) {
+        guard let document = SKDocumentCreateWithURL(url as CFURL) else {
+            return 0
+        }
+        return withState { state -> Int in
+            guard let index = state.index else {
+                return 0
+            }
             let documentID = SKIndexGetDocumentID(index, document.takeUnretainedValue())
             return SKIndexGetDocumentTermCount(index, documentID)
         }
-        return 0
     }
 
     /// Is the specified document empty (ie. it has no terms)
@@ -61,30 +65,33 @@ extension SearchIndexer {
     /// - Returns: An array of the terms and corresponding counts located in the document.
     ///            Returns an empty array if the document cannot be located.
     public func terms(for url: URL) -> [TermCount] {
-        guard let index = self.index else {
-            return []
-        }
-
-        var result = [TermCount]()
-
         let document = SKDocumentCreateWithURL(url as CFURL).takeRetainedValue()
-        let documentID = SKIndexGetDocumentID(index, document)
+        return withState { state -> [TermCount] in
+            guard let index = state.index else {
+                return []
+            }
 
-        guard let termVals = SKIndexCopyTermIDArrayForDocumentID(index, documentID),
-              let terms = termVals.takeRetainedValue() as? [CFIndex] else {
-            return []
-        }
+            var result = [TermCount]()
 
-        for term in terms {
-            if let termVal = SKIndexCopyTermStringForTermID(index, term) {
-                let termString = termVal.takeUnretainedValue() as String
-                if !self.stopWords.contains(termString) {
-                    let count = SKIndexGetDocumentTermFrequency(index, documentID, term) as Int
-                    result.append(TermCount(term: termString, count: count))
+            let documentID = SKIndexGetDocumentID(index, document)
+
+            guard let termVals = SKIndexCopyTermIDArrayForDocumentID(index, documentID),
+                  let terms = termVals.takeRetainedValue() as? [CFIndex] else {
+                return []
+            }
+
+            let stopWords = Self.stopWords(of: index)
+            for term in terms {
+                if let termVal = SKIndexCopyTermStringForTermID(index, term) {
+                    let termString = termVal.takeUnretainedValue() as String
+                    if !stopWords.contains(termString) {
+                        let count = SKIndexGetDocumentTermFrequency(index, documentID, term) as Int
+                        result.append(TermCount(term: termString, count: count))
+                    }
                 }
             }
-        }
 
-        return result
+            return result
+        }
     }
 }

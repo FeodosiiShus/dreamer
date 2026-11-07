@@ -41,9 +41,16 @@ struct SourceControlPullView: View {
             .scrollContentBackground(.hidden)
             .onAppear {
                 Task {
-                    preferRebaseWhenPulling = try await gitConfig.get(key: "pull.rebase", global: true) ?? false
-                    if preferRebaseWhenPulling {
-                        sourceControlManager.operationRebase = true
+                    do {
+                        preferRebaseWhenPulling = try await gitConfig.get(key: "pull.rebase", global: true) ?? false
+                        if preferRebaseWhenPulling {
+                            sourceControlManager.operationRebase = true
+                        }
+                    } catch {
+                        await sourceControlManager.showAlertForError(
+                            title: "Failed to read pull settings",
+                            error: error
+                        )
                     }
                 }
             }

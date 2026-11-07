@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import Dreamder
 
+@MainActor
 @Suite
 struct SearchEverywhereRecentFileListTests {
     private func url(_ path: String) -> URL {
@@ -82,6 +83,7 @@ struct SearchEverywhereActionTitleTests {
     }
 }
 
+@MainActor
 @Suite
 struct SearchEverywhereRecentSectionTests {
     @Test

@@ -77,6 +77,16 @@ struct UtilityAreaTerminalView: View {
         return utilityAreaViewModel.terminals.first(where: { $0.id == selectedTerminalID })
     }
 
+    private func titleChangeHandler(for terminal: UtilityAreaTerminal) -> (String) -> Void {
+        { [weak terminal, weak utilityAreaViewModel] newTitle in
+            guard let id = terminal?.id else { return }
+            // This can be called whenever, even in a view update so it needs to be dispatched.
+            DispatchQueue.main.async { [weak utilityAreaViewModel] in
+                utilityAreaViewModel?.updateTerminal(id, title: newTitle)
+            }
+        }
+    }
+
     /// Estimate the font's height for keeping the terminal aligned with the bottom.
     /// - Parameter nsFont: The font being used in the terminal.
     /// - Returns: The height in pixels of the font.
@@ -107,13 +117,7 @@ struct UtilityAreaTerminalView: View {
                                 url: selectedTerminal.url,
                                 terminalID: selectedTerminal.id,
                                 shellType: selectedTerminal.shell,
-                                onTitleChange: { [weak selectedTerminal] newTitle in
-                                    guard let id = selectedTerminal?.id else { return }
-                                    // This can be called whenever, even in a view update so it needs to be dispatched.
-                                    DispatchQueue.main.async { [weak utilityAreaViewModel] in
-                                        utilityAreaViewModel?.updateTerminal(id, title: newTitle)
-                                    }
-                                }
+                                onTitleChange: titleChangeHandler(for: selectedTerminal)
                             )
                             .frame(height: max(0, constrainedHeight - 1))
                             .id(selectedTerminal.id)

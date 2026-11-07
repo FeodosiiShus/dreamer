@@ -1,6 +1,6 @@
 import Foundation
 
-enum IndentGuides {
+nonisolated enum IndentGuides {
     static func indentationColumns(of line: String, tabWidth: Int) -> Int {
         guard tabWidth > 0 else { return 0 }
         var columns = 0

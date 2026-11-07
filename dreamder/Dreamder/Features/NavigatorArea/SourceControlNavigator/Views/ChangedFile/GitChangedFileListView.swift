@@ -31,12 +31,19 @@ struct GitChangedFileListView: View {
                     .labelsHidden()
                     .onChange(of: staged) { _, newStaged in
                         Task {
-                            if changedFile.isStaged != newStaged {
-                                if newStaged {
-                                    try await sourceControlManager.add([changedFile.fileURL])
-                                } else {
-                                    try await sourceControlManager.reset([changedFile.fileURL])
+                            do {
+                                if changedFile.isStaged != newStaged {
+                                    if newStaged {
+                                        try await sourceControlManager.add([changedFile.fileURL])
+                                    } else {
+                                        try await sourceControlManager.reset([changedFile.fileURL])
+                                    }
                                 }
+                            } catch {
+                                await sourceControlManager.showAlertForError(
+                                    title: newStaged ? "Failed to stage" : "Failed to unstage",
+                                    error: error
+                                )
                             }
                         }
                     }

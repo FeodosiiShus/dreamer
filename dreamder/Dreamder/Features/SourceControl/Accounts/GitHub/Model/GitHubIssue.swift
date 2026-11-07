@@ -10,7 +10,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
-class GitHubIssue: Codable {
+nonisolated struct GitHubIssue: Codable, Sendable {
     private(set) var id: Int = -1
     var url: URL?
     var repositoryURL: URL?
@@ -69,7 +69,7 @@ extension GitHubAccount {
         state: GitHubOpenness = .open,
         page: String = "1",
         perPage: String = "100",
-        completion: @escaping (_ response: Result<[GitHubIssue], Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<[GitHubIssue], Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitHubIssueRouter.readAuthenticatedIssues(configuration, page, perPage, state)
 
@@ -102,7 +102,7 @@ extension GitHubAccount {
         _ session: GitURLSession = URLSession.shared,
         owner: String, repository: String,
         number: Int,
-        completion: @escaping (_ response: Result<GitHubIssue, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitHubIssue, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitHubIssueRouter.readIssue(configuration, owner, repository, number)
 
@@ -140,7 +140,7 @@ extension GitHubAccount {
         state: GitHubOpenness = .open,
         page: String = "1",
         perPage: String = "100",
-        completion: @escaping (_ response: Result<[GitHubIssue], Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<[GitHubIssue], Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitHubIssueRouter.readIssues(configuration, owner, repository, page, perPage, state)
 
@@ -183,7 +183,7 @@ extension GitHubAccount {
         body: String? = nil,
         assignee: String? = nil,
         labels: [String] = [],
-        completion: @escaping (_ response: Result<GitHubIssue, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitHubIssue, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
 
         let router = GitHubIssueRouter.postIssue(configuration, owner, repository, title, body, assignee, labels)
@@ -230,7 +230,7 @@ extension GitHubAccount {
         body: String? = nil,
         assignee: String? = nil,
         state: GitHubOpenness? = nil,
-        completion: @escaping (_ response: Result<GitHubIssue, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitHubIssue, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
 
         let router = GitHubIssueRouter.patchIssue(
@@ -267,7 +267,7 @@ extension GitHubAccount {
         repository: String,
         number: Int,
         body: String,
-        completion: @escaping (_ response: Result<GitHubComment, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitHubComment, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
 
         let router = GitHubIssueRouter.commentIssue(configuration, owner, repository, number, body)
@@ -308,7 +308,7 @@ extension GitHubAccount {
         number: Int,
         page: String = "1",
         perPage: String = "100",
-        completion: @escaping (_ response: Result<[GitHubComment], Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<[GitHubComment], Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
 
         let router = GitHubIssueRouter.readIssueComments(configuration, owner, repository, number, page, perPage)
@@ -344,7 +344,7 @@ extension GitHubAccount {
         repository: String,
         number: Int,
         body: String,
-        completion: @escaping (_ response: Result<GitHubComment, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitHubComment, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
 
         let router = GitHubIssueRouter.patchIssueComment(configuration, owner, repository, number, body)

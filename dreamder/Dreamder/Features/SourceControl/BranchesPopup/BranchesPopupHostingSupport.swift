@@ -1,3 +1,4 @@
+@preconcurrency import ObjectiveC
 import AppKit
 import SwiftUI
 
@@ -104,23 +105,29 @@ final class BranchesPopupPanel: NSPanel, NSWindowDelegate {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.menuTracking = true
+            MainActor.assumeIsolated {
+                self?.menuTracking = true
+            }
         })
         menuObservers.append(center.addObserver(
             forName: Notification.Name("NSMenuDidEndTrackingNotification"),
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard let self else { return }
-            self.menuTracking = false
-            DispatchQueue.main.async {
-                guard self.isVisible, !self.isKeyWindow else { return }
-                self.close()
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.menuTracking = false
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        guard self.isVisible, !self.isKeyWindow else { return }
+                        self.close()
+                    }
+                }
             }
         })
     }
 
-    deinit {
+    isolated deinit {
         for observer in menuObservers {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -244,7 +251,7 @@ final class BranchesPopupKeyMonitor {
         monitor = nil
     }
 
-    deinit {
+    isolated deinit {
         remove()
         for observer in menuObservers {
             NotificationCenter.default.removeObserver(observer)
@@ -259,15 +266,19 @@ final class BranchesPopupKeyMonitor {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.menuTrackingCount += 1
+            MainActor.assumeIsolated {
+                self?.menuTrackingCount += 1
+            }
         })
         menuObservers.append(center.addObserver(
             forName: Notification.Name("NSMenuDidEndTrackingNotification"),
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard let self else { return }
-            self.menuTrackingCount = max(0, self.menuTrackingCount - 1)
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.menuTrackingCount = max(0, self.menuTrackingCount - 1)
+            }
         })
     }
 }

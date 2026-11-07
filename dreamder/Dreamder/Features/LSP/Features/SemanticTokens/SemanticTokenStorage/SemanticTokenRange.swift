@@ -6,7 +6,7 @@
 //
 
 /// Represents the range of a semantic token.
-struct SemanticTokenRange {
+nonisolated struct SemanticTokenRange: Sendable {
     let line: UInt32
     let char: UInt32
     let length: UInt32

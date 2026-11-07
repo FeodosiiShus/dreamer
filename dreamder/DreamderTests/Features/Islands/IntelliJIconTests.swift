@@ -2,6 +2,7 @@ import AppKit
 import Testing
 @testable import Dreamder
 
+@MainActor
 @Suite
 struct IntelliJIconTests {
     @Test(arguments: [

@@ -10,6 +10,7 @@ import SwiftUI
 import Testing
 @testable import Dreamder
 
+@MainActor
 @Suite
 struct CodeFileDocumentTests {
     let defaultString = "func test() { }"

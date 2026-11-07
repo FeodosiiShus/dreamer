@@ -7,7 +7,7 @@
 
 import LanguageServerProtocol
 
-extension SemanticToken {
+nonisolated extension SemanticToken {
     var startPosition: Position {
         Position(line: Int(line), character: Int(char))
     }

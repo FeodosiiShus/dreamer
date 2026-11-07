@@ -158,7 +158,7 @@ final class TaskNotificationHandler: ObservableObject {
             .store(in: &cancellables)
     }
 
-    deinit {
+    isolated deinit {
         NotificationCenter.default.removeObserver(self, name: .taskNotification, object: nil)
     }
 
@@ -247,6 +247,6 @@ final class TaskNotificationHandler: ObservableObject {
     }
 }
 
-extension Notification.Name {
+nonisolated extension Notification.Name {
     static let taskNotification = Notification.Name("taskNotification")
 }

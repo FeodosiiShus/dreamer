@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension Theme: FuzzySearchable {
+nonisolated extension Theme: FuzzySearchable {
     var searchableString: String {
         return id
     }

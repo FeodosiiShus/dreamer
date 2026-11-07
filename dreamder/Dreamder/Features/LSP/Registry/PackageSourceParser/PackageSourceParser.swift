@@ -8,7 +8,7 @@
 import Foundation
 
 /// Parser for package source IDs
-enum PackageSourceParser {
+nonisolated enum PackageSourceParser {
     static func parseGithubPackage(_ entry: RegistryItem) -> InstallationMethod {
         // Format: pkg:github/OWNER/REPO@COMMIT_HASH
         let pkgPrefix = "pkg:github/"

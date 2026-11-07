@@ -7,7 +7,7 @@
 
 import Foundation
 
-class GitLabGroupAccess: Codable {
+nonisolated struct GitLabGroupAccess: Codable, Sendable {
     var accessLevel: Int?
     var notificationLevel: Int?
 

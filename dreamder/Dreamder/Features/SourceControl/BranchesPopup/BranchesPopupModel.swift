@@ -1,6 +1,6 @@
 import Foundation
 
-struct GitTag: Hashable, Identifiable {
+nonisolated struct GitTag: Hashable, Identifiable {
     let name: String
     let objectName: String
 
@@ -20,8 +20,8 @@ struct GitTag: Hashable, Identifiable {
     }
 }
 
-struct BranchesPopupRef: Hashable, Identifiable {
-    enum Kind: Hashable {
+nonisolated struct BranchesPopupRef: Hashable, Identifiable {
+    nonisolated enum Kind: Hashable {
         case local
         case remote
         case tag
@@ -75,7 +75,7 @@ struct BranchesPopupRef: Hashable, Identifiable {
     }
 }
 
-enum BranchesPopupActionID: String, CaseIterable, Hashable, Identifiable {
+nonisolated enum BranchesPopupActionID: String, CaseIterable, Hashable, Identifiable {
     case updateProject
     case commit
     case push
@@ -119,7 +119,7 @@ enum BranchesPopupActionID: String, CaseIterable, Hashable, Identifiable {
     }
 }
 
-enum BranchesPopupOngoingAction: String, CaseIterable, Hashable, Identifiable {
+nonisolated enum BranchesPopupOngoingAction: String, CaseIterable, Hashable, Identifiable {
     case rebaseAbort
     case mergeAbort
     case cherryPickAbort
@@ -152,7 +152,7 @@ enum BranchesPopupOngoingAction: String, CaseIterable, Hashable, Identifiable {
     }
 }
 
-enum BranchesPopupSectionID: String, Hashable, CaseIterable, Identifiable {
+nonisolated enum BranchesPopupSectionID: String, Hashable, CaseIterable, Identifiable {
     case recent
     case local
     case remote
@@ -170,7 +170,7 @@ enum BranchesPopupSectionID: String, Hashable, CaseIterable, Identifiable {
     }
 }
 
-enum BranchesPopupItemID: Hashable {
+nonisolated enum BranchesPopupItemID: Hashable {
     case section(BranchesPopupSectionID)
     case group(BranchesPopupSectionID, String)
     case ref(BranchesPopupSectionID, String)
@@ -179,8 +179,8 @@ enum BranchesPopupItemID: Hashable {
     case separator(String)
 }
 
-struct BranchesPopupNode: Identifiable, Hashable {
-    enum Kind: Hashable {
+nonisolated struct BranchesPopupNode: Identifiable, Hashable {
+    nonisolated enum Kind: Hashable {
         case ref
         case group
     }
@@ -193,14 +193,14 @@ struct BranchesPopupNode: Identifiable, Hashable {
     let children: [BranchesPopupNode]
 }
 
-struct BranchesPopupSection: Identifiable, Hashable {
+nonisolated struct BranchesPopupSection: Identifiable, Hashable {
     let id: BranchesPopupSectionID
     let nodes: [BranchesPopupNode]
 
     var title: String { id.title }
 }
 
-struct BranchesPopupTreeInput {
+nonisolated struct BranchesPopupTreeInput {
     var localBranches: [GitBranch]
     var remoteBranches: [GitBranch]
     var tags: [GitTag]
@@ -213,7 +213,7 @@ struct BranchesPopupTreeInput {
     var groupsByDirectory: Bool = true
 }
 
-enum BranchesPopupTreeBuilder {
+nonisolated enum BranchesPopupTreeBuilder {
     static func build(_ input: BranchesPopupTreeInput) -> [BranchesPopupSection] {
         let query = input.query.trimmingCharacters(in: .whitespaces)
         let isSearching = !query.isEmpty
@@ -391,7 +391,7 @@ enum BranchesPopupTreeBuilder {
         )
     }
 
-    private struct RefEntry {
+    nonisolated private struct RefEntry {
         let ref: BranchesPopupRef
         let path: [String]
     }
@@ -469,7 +469,7 @@ enum BranchesPopupTreeBuilder {
     }
 }
 
-enum BranchesPopupReflogParser {
+nonisolated enum BranchesPopupReflogParser {
     static func recentBranchNames(from output: String, limit: Int) -> [String] {
         var names: [String] = []
         var seenNames = Set<String>()
@@ -489,7 +489,7 @@ enum BranchesPopupReflogParser {
     }
 }
 
-enum BranchesPopupRowKind: Hashable {
+nonisolated enum BranchesPopupRowKind: Hashable {
     case action
     case separator
     case section
@@ -497,7 +497,7 @@ enum BranchesPopupRowKind: Hashable {
     case ref
 }
 
-struct BranchesPopupRow: Identifiable, Hashable {
+nonisolated struct BranchesPopupRow: Identifiable, Hashable {
     let id: BranchesPopupItemID
     let kind: BranchesPopupRowKind
     let title: String

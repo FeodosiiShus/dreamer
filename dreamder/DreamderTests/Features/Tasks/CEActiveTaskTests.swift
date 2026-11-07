@@ -45,7 +45,11 @@ class CEActiveTaskTests {
         }
 
         let output = try #require(activeTask.output)
-        #expect(output.getBufferAsString().contains("Testing"))
+        await waitForExpectation(timeout: .seconds(90)) {
+            output.getBufferAsString().contains("Testing")
+        } onTimeout: {
+            Issue.record("Output never contained the environment value. \(output.getBufferAsString())")
+        }
     }
 
     @Test(arguments: [Shell.zsh, Shell.bash])

@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum GitHubRepositoryRouter: GitRouter {
+nonisolated enum GitHubRepositoryRouter: GitRouter {
     case readRepositories(GitRouterConfiguration, String, String, String)
     case readAuthenticatedRepositories(GitRouterConfiguration, String, String)
     case readRepository(GitRouterConfiguration, String, String)

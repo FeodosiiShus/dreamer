@@ -5,7 +5,7 @@
 //  Created by Abe Malla on 3/12/25.
 //
 
-extension PackageSourceParser {
+nonisolated extension PackageSourceParser {
     static func parseGolangPackage(_ entry: RegistryItem) -> InstallationMethod {
         // Format: pkg:golang/PACKAGE@VERSION#SUBPATH?PARAMS
         let pkgPrefix = "pkg:golang/"

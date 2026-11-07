@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum GitHubPullRequestRouter: GitJSONPostRouter {
+nonisolated enum GitHubPullRequestRouter: GitJSONPostRouter {
     case readPullRequest(GitRouterConfiguration, String, String, String)
     case readPullRequests(
         GitRouterConfiguration, String, String, String?, String?, GitHubOpenness, GitSortType, GitSortDirection

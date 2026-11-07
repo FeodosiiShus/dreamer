@@ -14,6 +14,7 @@ import LanguageServerProtocol
 
 @testable import Dreamder
 
+@MainActor
 final class LanguageServerDocumentObjectsTests: XCTestCase {
     final class MockDocumentType: LanguageServerDocument {
         var content: NSTextStorage?

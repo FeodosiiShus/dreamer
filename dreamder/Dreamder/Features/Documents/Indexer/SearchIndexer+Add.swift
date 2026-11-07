@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension SearchIndexer {
+nonisolated extension SearchIndexer {
     /// Add some text to the index for a given URL
     ///
     /// - Parameters:
@@ -16,13 +16,15 @@ extension SearchIndexer {
     ///   - canReplace: if true, can attempt to replace an existing document with the new one.
     /// - Returns: true if the text was successfully added to the index, false otherwise
     public func addFileWithText(_ url: URL, text: String, canReplace: Bool = true) -> Bool {
-        guard let index = self.index,
-              let document = SKDocumentCreateWithURL(url as CFURL) else {
+        guard let document = SKDocumentCreateWithURL(url as CFURL) else {
             return false
         }
 
-        return modifyIndexQueue.sync {
-            SKIndexAddDocumentWithText(index, document.takeRetainedValue(), text as CFString, canReplace)
+        return withState { state -> Bool in
+            guard let index = state.index else {
+                return false
+            }
+            return SKIndexAddDocumentWithText(index, document.takeRetainedValue(), text as CFString, canReplace)
         }
     }
 
@@ -58,15 +60,17 @@ extension SearchIndexer {
     ///   Be cautious when relying solely on the return value to determine if the document was replaced.
     public func addFile(fileURL: URL, mimeType: String? = nil, canReplace: Bool = true) -> Bool {
         guard self.dataExtractorLoaded,
-              let index = self.index,
               let document = SKDocumentCreateWithURL(fileURL as CFURL) else {
             return false
         }
         // Try to detect the mime type if it wasn't specified
         let mime = mimeType ?? self.detectMimeType(fileURL)
 
-        return modifyIndexQueue.sync {
-            SKIndexAddDocument(index, document.takeRetainedValue(), mime as CFString?, canReplace)
+        return withState { state -> Bool in
+            guard let index = state.index else {
+                return false
+            }
+            return SKIndexAddDocument(index, document.takeRetainedValue(), mime as CFString?, canReplace)
         }
     }
 
@@ -127,11 +131,15 @@ extension SearchIndexer {
     /// - Returns:
     ///     The indexing state of the document. Returns `kSKDocumentStateNotIndexed` if the document is not indexed.
     public func documentState(_ url: URL) -> SKDocumentIndexState {
-        if let index = self.index,
-           let document = SKDocumentCreateWithURL(url as CFURL) {
+        guard let document = SKDocumentCreateWithURL(url as CFURL) else {
+            return kSKDocumentStateNotIndexed
+        }
+        return withState { state -> SKDocumentIndexState in
+            guard let index = state.index else {
+                return kSKDocumentStateNotIndexed
+            }
             return SKIndexGetDocumentState(index, document.takeUnretainedValue())
         }
-        return kSKDocumentStateNotIndexed
     }
 
     /// Checks if a document at the specified URL is indexed.

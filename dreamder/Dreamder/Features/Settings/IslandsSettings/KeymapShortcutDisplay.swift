@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum KeymapShortcutDisplay {
+nonisolated enum KeymapShortcutDisplay {
     static func shortcut(for binding: KeyboardShortcutWrapper) -> String {
         let modifiers = binding.parsedModifier
         var symbols = ""

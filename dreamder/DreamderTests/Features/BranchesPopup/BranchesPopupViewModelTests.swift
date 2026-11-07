@@ -12,6 +12,7 @@ struct BranchesPopupViewModelTests {
     private let defaults = UserDefaults(suiteName: "dreamder.tests.branches.\(UUID().uuidString)") ?? .standard
     private let registry = Registry()
 
+    @MainActor
     private final class Harness {
         let fixture: GitMergeFixture
         let manager: SourceControlManager

@@ -19,12 +19,14 @@ enum Limiter {
     ///   - id: A unique identifier for the debounced action.
     ///   - duration: The debounce duration in seconds.
     ///   - action: The action to be executed after the debounce period.
-    static func debounce(id: AnyHashable, duration: TimeInterval, action: @escaping () -> Void) {
+    static func debounce(id: AnyHashable, duration: TimeInterval, action: @escaping @MainActor () -> Void) {
         // Cancel any existing debounce timer for the given ID
         debounceTimers[id]?.invalidate()
         // Start a new debounce timer for the given ID
         debounceTimers[id] = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { _ in
-            action()
+            MainActor.assumeIsolated {
+                action()
+            }
         }
     }
 }

@@ -7,7 +7,7 @@
 
 import Foundation
 
-class GitLabNamespace: Codable {
+nonisolated struct GitLabNamespace: Codable, Sendable {
     var id: Int?
     var name: String?
     var path: String?

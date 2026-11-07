@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension String {
+nonisolated extension String {
     /// Escapes the string so it's an always-valid directory
     func escapedDirectory() -> String {
         "\"\(self.escapedQuotes())\""

@@ -8,7 +8,7 @@
 import Foundation
 
 /// A protocol defining the requirements for an object that can be searched using fuzzy matching.
-protocol FuzzySearchable {
+nonisolated protocol FuzzySearchable: Sendable {
     var searchableString: String { get }
 
     /// Performs a fuzzy search on the conforming object's searchable string.
@@ -21,7 +21,7 @@ protocol FuzzySearchable {
     func fuzzyMatch(query: String, characters: FuzzySearchString) -> FuzzySearchMatchResult
 }
 
-extension FuzzySearchable {
+nonisolated extension FuzzySearchable {
     func fuzzyMatch(query: String, characters: FuzzySearchString) -> FuzzySearchMatchResult {
         let compareString = characters.characters
 

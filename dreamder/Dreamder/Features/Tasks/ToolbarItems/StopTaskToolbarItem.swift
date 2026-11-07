@@ -74,7 +74,7 @@ final class StopTaskToolbarItem: NSToolbarItem {
         taskManager?.terminateActiveTask()
     }
 
-    deinit {
+    isolated deinit {
         statusListener?.cancel()
         otherListeners.removeAll()
     }

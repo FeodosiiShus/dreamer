@@ -6,7 +6,7 @@
 //
 
 /// Package manager types supported by the system
-enum PackageManagerType: String, Codable {
+nonisolated enum PackageManagerType: String, Codable, Sendable {
     /// JavaScript
     case npm
     /// Rust

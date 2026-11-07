@@ -62,7 +62,7 @@ final class InlayHintAttachment: TextAttachment {
     }
 }
 
-enum InlayHintLayout {
+nonisolated enum InlayHintLayout {
     static func label(of hint: InlayHint) -> String {
         let text: String
         switch hint.label {
@@ -145,7 +145,7 @@ final class InlayHintCoordinator: TextViewCoordinator {
               self.controller === controller else {
             return
         }
-        apply(response ?? [], textView: textView, fontSize: max(controller.font.pointSize - 1, 9))
+        apply(response, textView: textView, fontSize: max(controller.font.pointSize - 1, 9))
     }
 
     @MainActor

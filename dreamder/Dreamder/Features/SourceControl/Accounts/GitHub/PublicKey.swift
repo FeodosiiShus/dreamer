@@ -16,7 +16,7 @@ extension GitHubAccount {
         _ session: GitURLSession = URLSession.shared,
         publicKey: String,
         title: String,
-        completion: @escaping (_ response: Result<String, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<String, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitHubPublicKeyRouter.postPublicKey(publicKey, title, configuration)
 
@@ -36,7 +36,7 @@ extension GitHubAccount {
     }
 }
 
-enum GitHubPublicKeyRouter: GitJSONPostRouter {
+nonisolated enum GitHubPublicKeyRouter: GitJSONPostRouter {
     case postPublicKey(String, String, GitRouterConfiguration)
 
     var configuration: GitRouterConfiguration? {

@@ -113,7 +113,7 @@ class IgnorePatternModel: ObservableObject {
                 return
             }
 
-            if let content = try? String(contentsOf: fileURL) {
+            if let content = try? String(contentsOf: fileURL, encoding: .utf8) {
                 patterns = content.split(separator: "\n")
                     .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty && !$0.starts(with: "#") }
@@ -153,7 +153,7 @@ class IgnorePatternModel: ObservableObject {
 
             do {
                 let fileURL = try await gitIgnoreURL()
-                guard let fileContent = try? String(contentsOf: fileURL) else {
+                guard let fileContent = try? String(contentsOf: fileURL, encoding: .utf8) else {
                     await writeAllPatterns()
                     return
                 }

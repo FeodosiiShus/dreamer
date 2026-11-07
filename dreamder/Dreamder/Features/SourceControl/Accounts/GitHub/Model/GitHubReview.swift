@@ -11,7 +11,7 @@ import FoundationNetworking
 #endif
 
 // TODO: DOCS (Nanashi Li)
-struct GitHubReview {
+nonisolated struct GitHubReview: Sendable {
     let body: String
     let commitID: String
     let id: Int
@@ -20,7 +20,7 @@ struct GitHubReview {
     let user: GitHubUser
 }
 
-extension GitHubReview: Codable {
+nonisolated extension GitHubReview: Codable {
     enum CodingKeys: String, CodingKey {
         case body
         case commitID = "commit_id"
@@ -32,7 +32,7 @@ extension GitHubReview: Codable {
 }
 
 extension GitHubReview {
-    enum State: String, Codable, Equatable {
+    nonisolated enum State: String, Codable, Equatable, Sendable {
         case approved = "APPROVED"
         case changesRequested = "CHANGES_REQUESTED"
         case comment = "COMMENTED"
@@ -49,7 +49,7 @@ extension GitHubAccount {
         owner: String,
         repository: String,
         pullRequestNumber: Int,
-        completion: @escaping (_ response: Result<[GitHubReview], Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<[GitHubReview], Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitHubReviewsRouter.listReviews(configuration, owner, repository, pullRequestNumber)
 

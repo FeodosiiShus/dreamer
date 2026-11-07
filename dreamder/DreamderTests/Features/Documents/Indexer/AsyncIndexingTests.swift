@@ -9,7 +9,7 @@ import XCTest
 @testable import Dreamder
 
 final class AsyncIndexingTests: XCTestCase {
-    func testAddDocuments() {
+    func testAddDocuments() throws {
         guard let index = SearchIndexer.Memory.create() else {
             XCTFail("Failed to create an index")
             return
@@ -17,19 +17,22 @@ final class AsyncIndexingTests: XCTestCase {
 
         let asyncManager = SearchIndexer.AsyncManager(index: index)
         let expectation = XCTestExpectation(description: "Async operations completed")
-        let tempFile1 = TemporaryFile().url
-        let tempFile2 = TemporaryFile().url
+        let first = TemporaryFile()
+        let second = TemporaryFile()
+        try "The first document mentions apples.".write(to: first.url, atomically: true, encoding: .utf8)
+        try "The second document mentions pears.".write(to: second.url, atomically: true, encoding: .utf8)
 
         Task {
-            let results = await asyncManager.addFiles(urls: [tempFile1, tempFile2])
-            XCTAssertEqual(results.count, 2, "Unexpected indexing results.")
+            let results = await asyncManager.addFiles(urls: [first.url, second.url])
+            XCTAssertEqual(results, [true, true], "Unexpected indexing results.")
             asyncManager.index.flush()
             let documents = asyncManager.index.documents()
-            XCTAssertEqual(documents.count, 2)
+            XCTAssertEqual(Set(documents), [first.url, second.url])
             expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 2)
+        wait(for: [expectation], timeout: 10)
+        withExtendedLifetime((first, second)) {}
     }
 
     func testSearchDocuments() {

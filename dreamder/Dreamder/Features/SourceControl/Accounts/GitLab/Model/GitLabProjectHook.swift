@@ -7,7 +7,7 @@
 
 import Foundation
 
-class GitLabProjectHook: Codable {
+nonisolated struct GitLabProjectHook: Codable, Sendable {
     var id: Int?
     var url: URL?
     var projectID: Int?
@@ -50,7 +50,7 @@ extension GitLabAccount {
     func projectHooks(
         _ session: GitURLSession = URLSession.shared,
         id: String,
-        completion: @escaping (_ response: Result<GitLabProjectHook, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitLabProjectHook, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitLabProjectRouter.readProjectHooks(configuration: configuration, id: id)
 
@@ -82,7 +82,7 @@ extension GitLabAccount {
         _ session: GitURLSession = URLSession.shared,
         id: String,
         hookId: String,
-        completion: @escaping (_ response: Result<GitLabProjectHook, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitLabProjectHook, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let router = GitLabProjectRouter.readProjectHook(
             configuration: configuration,

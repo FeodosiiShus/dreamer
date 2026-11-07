@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import Dreamder
 
+@MainActor
 @Suite(.serialized)
 struct IslandsDensityTests {
     private func withDensity(_ value: String?, _ body: () -> Void) {

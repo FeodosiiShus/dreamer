@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum GitLabCommitRouter: GitRouter {
+nonisolated enum GitLabCommitRouter: GitRouter {
     case readCommits(GitRouterConfiguration, id: String, refName: String, since: String, until: String)
     case readCommit(GitRouterConfiguration, id: String, sha: String)
     case readCommitDiffs(GitRouterConfiguration, id: String, sha: String)

@@ -2,10 +2,9 @@ import AppKit
 import Combine
 import CodeEditSourceEditor
 import CodeEditTextView
-import Synchronization
 
 final class GitBlameCoordinator: TextViewCoordinator {
-    private final class WeakBox: @unchecked Sendable {
+    private final class WeakBox {
         weak var coordinator: GitBlameCoordinator?
 
         init(_ coordinator: GitBlameCoordinator) {
@@ -13,11 +12,11 @@ final class GitBlameCoordinator: TextViewCoordinator {
         }
     }
 
-    private static let registry = Mutex<[ObjectIdentifier: WeakBox]>([:])
+    private static var registry: [ObjectIdentifier: WeakBox] = [:]
 
     static func coordinator(for editorInstance: EditorInstance) -> GitBlameCoordinator? {
-        let box = registry.withLock { entries in entries[ObjectIdentifier(editorInstance)] }
-        guard let coordinator = box?.coordinator, coordinator.editorInstance === editorInstance else { return nil }
+        guard let coordinator = registry[ObjectIdentifier(editorInstance)]?.coordinator,
+              coordinator.editorInstance === editorInstance else { return nil }
         return coordinator
     }
 
@@ -49,7 +48,7 @@ final class GitBlameCoordinator: TextViewCoordinator {
         register()
     }
 
-    deinit {
+    isolated deinit {
         observers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
@@ -112,19 +111,15 @@ final class GitBlameCoordinator: TextViewCoordinator {
     private func register() {
         guard let editorInstance else { return }
         let identifier = ObjectIdentifier(editorInstance)
-        Self.registry.withLock { entries in
-            entries = entries.filter { $0.value.coordinator != nil }
-            entries[identifier] = WeakBox(self)
-        }
+        Self.registry = Self.registry.filter { $0.value.coordinator != nil }
+        Self.registry[identifier] = WeakBox(self)
     }
 
     private func unregister() {
         guard let editorInstance else { return }
         let identifier = ObjectIdentifier(editorInstance)
-        Self.registry.withLock { entries in
-            if entries[identifier]?.coordinator === self {
-                entries.removeValue(forKey: identifier)
-            }
+        if Self.registry[identifier]?.coordinator === self {
+            Self.registry.removeValue(forKey: identifier)
         }
     }
 
@@ -164,7 +159,9 @@ final class GitBlameCoordinator: TextViewCoordinator {
                 object: controller,
                 queue: .main
             ) { [weak self] _ in
-                self?.refreshCoalescer.request()
+                MainActor.assumeIsolated {
+                    self?.refreshCoalescer.request()
+                }
             }
         )
     }

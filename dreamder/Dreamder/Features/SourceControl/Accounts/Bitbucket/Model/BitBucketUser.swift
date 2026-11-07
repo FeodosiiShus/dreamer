@@ -9,10 +9,10 @@ import Foundation
 import SwiftUI
 
 // TODO: DOCS (Nanashi Li)
-class BitBucketUser: Codable {
-    var id: String?
-    var login: String?
-    var name: String?
+nonisolated struct BitBucketUser: Codable, Sendable {
+    let id: String?
+    let login: String?
+    let name: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -21,11 +21,11 @@ class BitBucketUser: Codable {
     }
 }
 
-class BitBucketEmail: Codable {
-    var isPrimary: Bool
-    var isConfirmed: Bool
-    var type: String?
-    var email: String?
+nonisolated struct BitBucketEmail: Codable, Sendable {
+    let isPrimary: Bool
+    let isConfirmed: Bool
+    let type: String?
+    let email: String?
 
     enum CodingKeys: String, CodingKey {
         case isPrimary = "is_primary"
@@ -39,7 +39,7 @@ extension BitBucketAccount {
 
     func me(
         _ session: GitURLSession = URLSession.shared,
-        completion: @escaping (_ response: Result<BitBucketUser, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<BitBucketUser, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
 
             let router = BitBucketUserRouter.readAuthenticatedUser(configuration)
@@ -61,7 +61,7 @@ extension BitBucketAccount {
 
     func emails(
         _ session: GitURLSession = URLSession.shared,
-        completion: @escaping (_ response: Result<BitBucketEmail, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<BitBucketEmail, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
 
             let router = BitBucketUserRouter.readEmails(configuration)

@@ -107,7 +107,11 @@ extension CEWorkspaceFileManager {
         // If changes were stashed, refresh stashed entries
         if gitStashChange != nil {
             Task {
-                try await self.sourceControlManager?.refreshStashEntries()
+                do {
+                    try await self.sourceControlManager?.refreshStashEntries()
+                } catch {
+                    self.logger.error("Failed to refresh stash entries: \(error.localizedDescription)")
+                }
             }
         }
 
@@ -128,14 +132,22 @@ extension CEWorkspaceFileManager {
         // If git config changed, refresh remotes
         if gitConfigChange != nil {
             Task {
-                try await self.sourceControlManager?.refreshRemotes()
+                do {
+                    try await self.sourceControlManager?.refreshRemotes()
+                } catch {
+                    self.logger.error("Failed to refresh remotes: \(error.localizedDescription)")
+                }
             }
         }
 
         // If .git folder was added or removed, check if repository is valid
         if gitFolderChange != nil {
             Task {
-                try await self.sourceControlManager?.validate()
+                do {
+                    try await self.sourceControlManager?.validate()
+                } catch {
+                    self.logger.error("Failed to validate source control: \(error.localizedDescription)")
+                }
             }
         }
     }

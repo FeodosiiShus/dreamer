@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-class RegexFormatter: Formatter {
+nonisolated class RegexFormatter: Formatter {
     let regex: NSRegularExpression?
     let replacementTemplate: String
 

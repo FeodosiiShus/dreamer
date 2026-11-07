@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct SourceControlAccount: Codable, Identifiable, Hashable {
+nonisolated struct SourceControlAccount: Codable, Identifiable, Hashable, Sendable {
 
     var id: String
     var name: String
@@ -20,12 +20,12 @@ struct SourceControlAccount: Codable, Identifiable, Hashable {
     var sshKey: String
     var isTokenValid: Bool
 
-    enum URLProtocol: String, Codable, CaseIterable {
+    nonisolated enum URLProtocol: String, Codable, CaseIterable, Sendable {
         case https = "HTTPS"
         case ssh = "SSH"
     }
 
-    enum Provider: Codable, CaseIterable, Identifiable {
+    nonisolated enum Provider: Codable, CaseIterable, Identifiable, Sendable {
         case bitbucketCloud
         case bitbucketServer
         case github
@@ -101,7 +101,7 @@ struct SourceControlAccount: Codable, Identifiable, Hashable {
             }
         }
 
-        var iconResource: ImageResource {
+        @MainActor var iconResource: ImageResource {
             switch self {
             case .bitbucketCloud, .bitbucketServer:
                 return .bitBucketIcon
@@ -148,7 +148,7 @@ struct SourceControlAccount: Codable, Identifiable, Hashable {
         }
     }
 
-    enum AuthType {
+    nonisolated enum AuthType: Sendable {
         case token
         case password
     }

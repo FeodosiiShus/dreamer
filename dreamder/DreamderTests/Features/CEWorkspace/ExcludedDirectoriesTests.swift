@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import Dreamder
 
+@MainActor
 @Suite
 struct ExcludedDirectoriesTests {
     private let root = URL(fileURLWithPath: "/tmp/dreamder-exclusions-\(UUID().uuidString)", isDirectory: true)

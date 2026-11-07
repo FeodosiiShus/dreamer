@@ -10,11 +10,11 @@ import os
 
 /// Provides a single function for setting up shell integrations.
 /// See ``ShellIntegration/setUpIntegration(for:environment:)``
-enum ShellIntegration {
+nonisolated enum ShellIntegration {
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "ShellIntegration")
 
     /// Variable constants used by setup scripts.
-    enum Variables {
+    nonisolated enum Variables {
         static let shellLogin = "CE_SHELL_LOGIN"
         static let ceZDotDir = "CE_ZDOTDIR"
         static let userZDotDir = "USER_ZDOTDIR"
@@ -24,7 +24,7 @@ enum ShellIntegration {
     }
 
     /// Errors for shell integration setup.
-    enum Error: Swift.Error, LocalizedError {
+    nonisolated enum Error: Swift.Error, LocalizedError {
         case bashShellFileNotFound
         case zshShellFileNotFound
 

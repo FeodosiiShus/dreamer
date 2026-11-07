@@ -8,13 +8,13 @@
 import Foundation
 
 // TODO: DOCS (Nanashi Li)
-extension BitBucketAccount {
+nonisolated extension BitBucketAccount {
 
     func refreshToken(
         _ session: GitURLSession,
         oauthConfig: BitBucketOAuthConfiguration,
         refreshToken: String,
-        completion: @escaping (_ response: Result<BitBucketTokenConfiguration, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<BitBucketTokenConfiguration, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
         let request = BitBucketTokenRouter.refreshToken(oauthConfig, refreshToken).URLRequest
 

@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct GitHubComment: Codable {
+nonisolated struct GitHubComment: Codable, Sendable {
     let id: Int
     let url: URL
     let htmlURL: URL

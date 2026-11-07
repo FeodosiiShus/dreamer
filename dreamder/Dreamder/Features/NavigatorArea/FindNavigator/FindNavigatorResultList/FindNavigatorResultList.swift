@@ -50,7 +50,7 @@ struct FindNavigatorResultList: NSViewControllerRepresentable {
         var listener: AnyCancellable?
         var controller: FindNavigatorListViewController?
 
-        deinit {
+        isolated deinit {
             controller = nil
             listener?.cancel()
             listener = nil

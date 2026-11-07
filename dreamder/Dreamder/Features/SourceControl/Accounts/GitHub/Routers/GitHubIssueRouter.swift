@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum GitHubIssueRouter: GitJSONPostRouter {
+nonisolated enum GitHubIssueRouter: GitJSONPostRouter {
     case readAuthenticatedIssues(GitRouterConfiguration, String, String, GitHubOpenness)
     case readIssue(GitRouterConfiguration, String, String, Int)
     case readIssues(GitRouterConfiguration, String, String, String, String, GitHubOpenness)

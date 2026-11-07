@@ -64,6 +64,18 @@ struct ExtensionSceneView: NSViewControllerRepresentable {
             }
         }
 
+        private func publish(_ data: Data) {
+            guard let connection else { return }
+            let proxy = connection.remoteObjectProxyWithErrorHandler { error in
+                print(error)
+            }
+            guard let service = proxy as? EnvironmentPublisherObjc else {
+                print("Extension service does not conform to EnvironmentPublisherObjc")
+                return
+            }
+            service.publishEnvironment(data: data)
+        }
+
         func updateEnvironment(_ value: _CEEnvironment) {
             guard let newEnvironmentData = try? JSONEncoder().encode(value) else { return }
 
@@ -72,15 +84,7 @@ struct ExtensionSceneView: NSViewControllerRepresentable {
                 return
             }
 
-            Task {
-                do {
-                    try await connection?.withService { (service: EnvironmentPublisherObjc) in
-                        service.publishEnvironment(data: newEnvironmentData)
-                    }
-                } catch {
-                    print(error)
-                }
-            }
+            publish(newEnvironmentData)
         }
 
         func hostViewControllerWillDeactivate(_ viewController: EXHostViewController, error: Error?) {
@@ -97,11 +101,7 @@ struct ExtensionSceneView: NSViewControllerRepresentable {
                 connection?.remoteObjectInterface = .init(with: EnvironmentPublisherObjc.self)
                 connection?.resume()
                 if let toPublish {
-                    Task {
-                        try? await connection?.withService { (service: EnvironmentPublisherObjc) in
-                            service.publishEnvironment(data: toPublish)
-                        }
-                    }
+                    publish(toPublish)
                 }
             } catch {
                 print("Unable to create connection: \(String(describing: error))")

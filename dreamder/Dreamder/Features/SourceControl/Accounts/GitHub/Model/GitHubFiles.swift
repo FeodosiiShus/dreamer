@@ -9,7 +9,7 @@ import Foundation
 
 // TODO: DOCS (Nanashi Li)
 
-class GitHubFile: Codable {
+nonisolated struct GitHubFile: Codable, Sendable {
     private(set) var id: Int = -1
     var rawURL: URL?
     var filename: String?

@@ -7,7 +7,7 @@
 
 import Foundation
 
-class GitLabEvent: Codable {
+nonisolated struct GitLabEvent: Codable, Sendable {
     var title: String?
     var projectID: Int?
     var actionName: String?

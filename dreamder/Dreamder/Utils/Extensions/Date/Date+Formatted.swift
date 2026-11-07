@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension Date {
+nonisolated extension Date {
 
     /// Returns a formatted & localized string of a relative duration compared to the current date & time
     /// when the date is in `today` or `yesterday`. Otherwise it returns a formatted date in `short`
@@ -37,13 +37,13 @@ extension Date {
         return formatter.string(from: self)
     }
 
-    static var logFormatter: DateFormatter = {
+    @MainActor static var logFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss.SSSS"
         return formatter
     }()
 
-    func logFormatted() -> String {
+    @MainActor func logFormatted() -> String {
         Self.logFormatter.string(from: self)
     }
 }

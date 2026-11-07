@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension String {
+nonisolated extension String {
 
     /// Removes all `new-line` characters in a `String`
     /// - Returns: A String

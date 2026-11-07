@@ -7,7 +7,7 @@
 
 /// Generic package source information that applies to all installation methods.
 /// Takes all the necessary information from `RegistryItem`.
-struct PackageSource: Equatable, Codable {
+nonisolated struct PackageSource: Equatable, Codable, Sendable {
     /// The raw source ID string from the registry
     let sourceId: String
     /// The type of the package manager
@@ -45,7 +45,7 @@ struct PackageSource: Equatable, Codable {
         self.options = options
     }
 
-    enum GitReference: Equatable, Codable {
+    nonisolated enum GitReference: Equatable, Codable, Sendable {
         case tag(String)
         case revision(String)
     }

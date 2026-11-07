@@ -1,6 +1,6 @@
 import Foundation
 
-enum MergeLineStyle: Equatable {
+nonisolated enum MergeLineStyle: Equatable, Sendable {
     case unchanged
     case changed
     case inserted
@@ -8,8 +8,8 @@ enum MergeLineStyle: Equatable {
     case resolved
 }
 
-struct MergePaneChip: Equatable {
-    enum Kind: Equatable {
+nonisolated struct MergePaneChip: Equatable, Sendable {
+    nonisolated enum Kind: Equatable, Sendable {
         case acceptLeft
         case acceptRight
         case ignore
@@ -27,7 +27,7 @@ struct MergePaneChip: Equatable {
     }
 }
 
-struct MergePaneContent: Equatable {
+nonisolated struct MergePaneContent: Equatable, Sendable {
     var lines: [String] = []
     var styles: [MergeLineStyle] = []
     var chips: [Int: [MergePaneChip]] = [:]
@@ -37,15 +37,15 @@ struct MergePaneContent: Equatable {
     var text: String { lines.joined(separator: "\n") }
 }
 
-struct ThreeWayMerge: Equatable {
-    enum BlockKind: Equatable {
+nonisolated struct ThreeWayMerge: Equatable, Sendable {
+    nonisolated enum BlockKind: Equatable, Sendable {
         case ours
         case theirs
         case both
         case conflict
     }
 
-    enum Resolution: Equatable {
+    nonisolated enum Resolution: Equatable, Sendable {
         case unresolved
         case left
         case right
@@ -53,13 +53,13 @@ struct ThreeWayMerge: Equatable {
         case merged
     }
 
-    enum NonConflictingMode: Equatable {
+    nonisolated enum NonConflictingMode: Equatable, Sendable {
         case left
         case all
         case right
     }
 
-    struct Block: Equatable, Identifiable {
+    nonisolated struct Block: Equatable, Identifiable, Sendable {
         let id: Int
         let kind: BlockKind
         let baseRange: Range<Int>
@@ -299,7 +299,7 @@ struct ThreeWayMerge: Equatable {
         return content
     }
 
-    private enum PaneSide {
+    private nonisolated enum PaneSide {
         case left
         case right
     }

@@ -1,6 +1,6 @@
 import Foundation
 
-enum MergeOperation: Equatable {
+nonisolated enum MergeOperation: Equatable, Sendable {
     case merge(source: String, target: String)
     case rebase(branch: String, onto: String)
     case cherryPick(hash: String)
@@ -8,7 +8,7 @@ enum MergeOperation: Equatable {
     case unknown
 }
 
-struct MergeRepositoryState: Equatable {
+nonisolated struct MergeRepositoryState: Equatable, Sendable {
     var currentBranch: String = ""
     var mergeSource: String?
     var rebaseBranch: String?
@@ -18,7 +18,7 @@ struct MergeRepositoryState: Equatable {
     var hasStash: Bool = false
 }
 
-struct MergeConflictContext: Equatable {
+nonisolated struct MergeConflictContext: Equatable, Sendable {
     let operation: MergeOperation
     let yoursLabel: String
     let theirsLabel: String

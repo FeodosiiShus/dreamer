@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-struct BranchesCompareCommit: Identifiable, Hashable {
+nonisolated struct BranchesCompareCommit: Identifiable, Hashable {
     let hash: String
     let subject: String
     let author: String

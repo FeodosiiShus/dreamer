@@ -11,7 +11,7 @@ final class MergeScrollCoordinator: ObservableObject {
     private var registrations: [String: Registration] = [:]
     private var isSyncing = false
 
-    deinit {
+    isolated deinit {
         for registration in registrations.values {
             if let observer = registration.observer {
                 NotificationCenter.default.removeObserver(observer)

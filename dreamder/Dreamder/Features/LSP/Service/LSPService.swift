@@ -143,8 +143,8 @@ final class LSPService: ObservableObject {
             object: nil,
             queue: .main
         ) { notification in
+            guard let document = notification.object as? CodeFileDocument else { return }
             MainActor.assumeIsolated {
-                guard let document = notification.object as? CodeFileDocument else { return }
                 self.openDocument(document)
             }
         }
@@ -154,8 +154,8 @@ final class LSPService: ObservableObject {
             object: nil,
             queue: .main
         ) { notification in
+            guard let url = notification.object as? URL else { return }
             MainActor.assumeIsolated {
-                guard let url = notification.object as? URL else { return }
                 self.closeDocument(url)
             }
         }

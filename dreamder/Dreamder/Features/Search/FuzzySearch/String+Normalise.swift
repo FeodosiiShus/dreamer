@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension String {
+nonisolated extension String {
     /// Normalises the characters of the string by converting them to ASCII representation.
     /// Each character is transformed into its ASCII equivalent, and the resulting array
     /// of FuzzySearchCharacter objects contains both the original and normalised content.

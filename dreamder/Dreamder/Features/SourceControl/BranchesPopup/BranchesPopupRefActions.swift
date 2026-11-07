@@ -1,6 +1,6 @@
 import Foundation
 
-enum BranchesPopupRefAction: String, CaseIterable, Hashable, Identifiable {
+nonisolated enum BranchesPopupRefAction: String, CaseIterable, Hashable, Identifiable {
     case checkout
     case newBranch
     case checkoutAndRebase
@@ -22,7 +22,7 @@ enum BranchesPopupRefAction: String, CaseIterable, Hashable, Identifiable {
     var id: String { rawValue }
 }
 
-struct BranchesPopupRefActionContext {
+nonisolated struct BranchesPopupRefActionContext {
     let currentName: String
     let hasRemotes: Bool
     let isDetachedHead: Bool
@@ -41,12 +41,12 @@ struct BranchesPopupRefActionContext {
     }
 }
 
-enum BranchesPopupRefActionEntry: Hashable {
+nonisolated enum BranchesPopupRefActionEntry: Hashable {
     case action(BranchesPopupRefAction)
     case separator
 }
 
-enum BranchesPopupRefActions {
+nonisolated enum BranchesPopupRefActions {
     static func entries(
         for ref: BranchesPopupRef,
         context: BranchesPopupRefActionContext,

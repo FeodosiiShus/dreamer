@@ -5,7 +5,7 @@
 //  Created by Abe Malla on 3/12/25.
 //
 
-extension PackageSourceParser {
+nonisolated extension PackageSourceParser {
     static func parseNpmPackage(_ entry: RegistryItem) -> InstallationMethod {
         // Format: pkg:npm/PACKAGE@VERSION?PARAMS
         let pkgPrefix = "pkg:npm/"

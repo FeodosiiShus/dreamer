@@ -1,7 +1,7 @@
 import Foundation
 import LanguageServerProtocol
 
-enum LSPDiagnosticMapping {
+nonisolated enum LSPDiagnosticMapping {
     static func workspaceDiagnostic(from diagnostic: Diagnostic, fileURL: URL) -> WorkspaceDiagnostic {
         WorkspaceDiagnostic(
             fileURL: fileURL,

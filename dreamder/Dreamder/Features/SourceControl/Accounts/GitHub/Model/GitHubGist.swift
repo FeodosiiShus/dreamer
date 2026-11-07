@@ -10,7 +10,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
-class GitHubGist: Codable {
+nonisolated struct GitHubGist: Codable, Sendable {
     typealias GitHubFiles = [String: GitHubFile]
 
     private(set) var id: String?
@@ -64,7 +64,7 @@ extension GitHubAccount {
         _ session: GitURLSession = URLSession.shared,
         page: String = "1",
         perPage: String = "100",
-        completion: @escaping (_ response: Result<[GitHubGist], Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<[GitHubGist], Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
 
         let router = GitHubGistRouter.readAuthenticatedGists(configuration, page, perPage)
@@ -99,7 +99,7 @@ extension GitHubAccount {
         owner: String,
         page: String = "1",
         perPage: String = "100",
-        completion: @escaping (_ response: Result<[GitHubGist], Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<[GitHubGist], Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
 
         let router = GitHubGistRouter.readGists(configuration, owner, page, perPage)
@@ -130,7 +130,7 @@ extension GitHubAccount {
     func gist(
         _ session: GitURLSession = URLSession.shared,
         id: String,
-        completion: @escaping (_ response: Result<GitHubGist, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitHubGist, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
 
         let router = GitHubGistRouter.readGist(configuration, id)
@@ -167,7 +167,7 @@ extension GitHubAccount {
         filename: String,
         fileContent: String,
         publicAccess: Bool,
-        completion: @escaping (_ response: Result<GitHubGist, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitHubGist, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
 
         let router = GitHubGistRouter.postGistFile(configuration, description, filename, fileContent, publicAccess)
@@ -207,7 +207,7 @@ extension GitHubAccount {
         description: String,
         filename: String,
         fileContent: String,
-        completion: @escaping (_ response: Result<GitHubGist, Error>) -> Void
+        completion: @escaping @Sendable (_ response: Result<GitHubGist, Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
 
         let router = GitHubGistRouter.patchGistFile(configuration, id, description, filename, fileContent)

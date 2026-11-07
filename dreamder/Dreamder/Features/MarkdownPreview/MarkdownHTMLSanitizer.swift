@@ -1,6 +1,6 @@
 import Foundation
 
-enum MarkdownHTMLTag {
+nonisolated enum MarkdownHTMLTag {
     struct ParsedTag {
         let text: String
         let name: String
@@ -128,7 +128,7 @@ enum MarkdownHTMLTag {
     }
 }
 
-enum MarkdownHTMLSanitizer {
+nonisolated enum MarkdownHTMLSanitizer {
     static func sanitize(_ html: String) -> String {
         removingEventHandlers(removingScriptElements(html))
     }

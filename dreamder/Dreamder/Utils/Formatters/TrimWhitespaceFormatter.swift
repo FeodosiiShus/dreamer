@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-class TrimWhitespaceFormatter: Formatter {
+nonisolated class TrimWhitespaceFormatter: Formatter {
     override func string(for obj: Any?) -> String? {
         guard let string = obj as? String else { return nil }
         return string.trimmingCharacters(in: .whitespacesAndNewlines)

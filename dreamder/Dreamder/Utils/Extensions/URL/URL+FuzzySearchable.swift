@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension URL: FuzzySearchable {
+nonisolated extension URL: FuzzySearchable {
     var searchableString: String {
         return self.lastPathComponent
     }

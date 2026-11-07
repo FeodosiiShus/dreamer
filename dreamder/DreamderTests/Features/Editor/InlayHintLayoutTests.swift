@@ -3,6 +3,7 @@ import LanguageServerProtocol
 import Testing
 @testable import Dreamder
 
+@MainActor
 @Suite
 struct InlayHintLayoutTests {
     private func hint(_ label: TwoTypeOption<String, [InlayHintLabelPart]>, line: Int = 0, character: Int = 0) -> InlayHint {

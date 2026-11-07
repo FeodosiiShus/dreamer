@@ -1,14 +1,14 @@
 import Foundation
 import LanguageServerProtocol
 
-struct LSPReferenceLocation: Hashable {
+nonisolated struct LSPReferenceLocation: Hashable, Sendable {
     let uri: String
     let line: Int
     let startCharacter: Int
     let endCharacter: Int
 }
 
-struct LSPUsageRow: Identifiable, Hashable {
+nonisolated struct LSPUsageRow: Identifiable, Hashable, Sendable {
     let uri: String
     let fileURL: URL
     let fileName: String
@@ -24,7 +24,7 @@ struct LSPUsageRow: Identifiable, Hashable {
     var displayLine: Int { line + 1 }
 }
 
-enum LSPUsagesMapping {
+nonisolated enum LSPUsagesMapping {
     static func locations(from response: [Location]?) -> [LSPReferenceLocation] {
         (response ?? []).map { location in
             LSPReferenceLocation(

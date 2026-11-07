@@ -8,7 +8,7 @@
 import Foundation.NSDate
 
 /// Model class to help map commit history log data
-struct GitCommit: Equatable, Hashable, Identifiable {
+nonisolated struct GitCommit: Equatable, Hashable, Identifiable, Sendable {
     var id = UUID()
     let hash: String
     let commitHash: String

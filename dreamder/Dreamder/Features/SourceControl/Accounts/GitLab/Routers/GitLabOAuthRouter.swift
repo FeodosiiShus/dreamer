@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum GitLabOAuthRouter: GitRouter {
+nonisolated enum GitLabOAuthRouter: GitRouter {
     case authorize(GitLabOAuthConfiguration, String)
     case accessToken(GitLabOAuthConfiguration, String, String)
 

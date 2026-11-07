@@ -8,7 +8,7 @@
 import Foundation
 
 /// Shells supported by Dreamder
-enum Shell: String, CaseIterable {
+nonisolated enum Shell: String, CaseIterable, Sendable {
     case bash
     case zsh
 

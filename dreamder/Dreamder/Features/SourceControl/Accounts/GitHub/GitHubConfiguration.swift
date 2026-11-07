@@ -10,7 +10,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
-struct GitHubTokenConfiguration: GitRouterConfiguration {
+nonisolated struct GitHubTokenConfiguration: GitRouterConfiguration {
     let provider = SourceControlAccount.Provider.github
     var apiEndpoint: String?
     var accessToken: String?
@@ -35,7 +35,7 @@ struct GitHubTokenConfiguration: GitRouterConfiguration {
     }
 }
 
-struct GitHubOAuthConfiguration: GitRouterConfiguration {
+nonisolated struct GitHubOAuthConfiguration: GitRouterConfiguration {
     let provider = SourceControlAccount.Provider.github
     var apiEndpoint: String?
     var accessToken: String?
@@ -79,7 +79,7 @@ struct GitHubOAuthConfiguration: GitRouterConfiguration {
     func authorize(
         _ session: GitURLSession = URLSession.shared,
         code: String,
-        completion: @escaping (_ config: GitHubTokenConfiguration) -> Void
+        completion: @escaping @Sendable (_ config: GitHubTokenConfiguration) -> Void
     ) {
         let request = GitHubOAuthRouter.accessToken(self, code).URLRequest
         if let request {
@@ -106,7 +106,7 @@ struct GitHubOAuthConfiguration: GitRouterConfiguration {
     func handleOpenURL(
         _ session: GitURLSession = URLSession.shared,
         url: URL,
-        completion: @escaping (_ config: GitHubTokenConfiguration) -> Void
+        completion: @escaping @Sendable (_ config: GitHubTokenConfiguration) -> Void
     ) {
 
         if let code = url.URLParameters["code"] {
@@ -125,7 +125,7 @@ struct GitHubOAuthConfiguration: GitRouterConfiguration {
     }
 }
 
-enum GitHubOAuthRouter: GitRouter {
+nonisolated enum GitHubOAuthRouter: GitRouter {
     case authorize(GitHubOAuthConfiguration)
     case accessToken(GitHubOAuthConfiguration, String)
 

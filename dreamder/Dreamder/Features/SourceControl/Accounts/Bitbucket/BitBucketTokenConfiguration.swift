@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct BitBucketTokenConfiguration: GitRouterConfiguration {
+nonisolated struct BitBucketTokenConfiguration: GitRouterConfiguration {
     let provider = SourceControlAccount.Provider.bitbucketCloud
     var apiEndpoint: String?
     var accessToken: String?

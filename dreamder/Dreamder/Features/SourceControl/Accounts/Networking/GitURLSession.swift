@@ -13,17 +13,17 @@ import FoundationNetworking
 #endif
 
 // TODO: DOCS (Nanashi Li)
-protocol GitURLSession {
+nonisolated protocol GitURLSession {
 
     func dataTask(
         with request: URLRequest,
-        completionHandler: @escaping (Data?, URLResponse?, Error?) -> Swift.Void
+        completionHandler: @escaping @Sendable (Data?, URLResponse?, Error?) -> Swift.Void
     ) -> GitURLSessionDataTaskProtocol
 
     func uploadTask(
         with request: URLRequest,
         fromData bodyData: Data?,
-        completionHandler: @escaping (Data?, URLResponse?, Error?) -> Void
+        completionHandler: @escaping @Sendable (Data?, URLResponse?, Error?) -> Void
     ) -> GitURLSessionDataTaskProtocol
 
 #if !canImport(FoundationNetworking)
@@ -42,17 +42,17 @@ protocol GitURLSession {
 #endif
 }
 
-protocol GitURLSessionDataTaskProtocol {
+nonisolated protocol GitURLSessionDataTaskProtocol {
     func resume()
 }
 
 extension URLSessionDataTask: GitURLSessionDataTaskProtocol {}
 
-extension URLSession: GitURLSession {
+nonisolated extension URLSession: GitURLSession {
 
     func dataTask(
         with request: URLRequest,
-        completionHandler: @escaping (Data?, URLResponse?, Error?) -> Swift.Void
+        completionHandler: @escaping @Sendable (Data?, URLResponse?, Error?) -> Swift.Void
     ) -> GitURLSessionDataTaskProtocol {
         (dataTask(with: request, completionHandler: completionHandler) as URLSessionDataTask)
     }
@@ -60,7 +60,7 @@ extension URLSession: GitURLSession {
     func uploadTask(
         with request: URLRequest,
         fromData bodyData: Data?,
-        completionHandler: @escaping (Data?, URLResponse?, Error?) -> Void
+        completionHandler: @escaping @Sendable (Data?, URLResponse?, Error?) -> Void
     ) -> GitURLSessionDataTaskProtocol {
         uploadTask(with: request, from: bodyData, completionHandler: completionHandler)
     }

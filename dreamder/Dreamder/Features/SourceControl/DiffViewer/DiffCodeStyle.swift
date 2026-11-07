@@ -87,7 +87,7 @@ extension GitStatus {
     }
 }
 
-enum DiffPath {
+nonisolated enum DiffPath {
     static func relativePath(of url: URL, from root: URL) -> String {
         var rootPath = root.absoluteURL.standardizedFileURL.path(percentEncoded: false)
         while rootPath.count > 1 && rootPath.hasSuffix("/") {
