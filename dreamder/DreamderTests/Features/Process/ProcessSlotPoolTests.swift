@@ -68,9 +68,9 @@ struct ProcessSlotPoolTests {
         var waiters: [Task<Void, any Error>] = []
         for index in 1...3 {
             waiters.append(Task {
-                try await pool.withSlot {
-                    order.withLock { $0.append(index) }
-                }
+                try await pool.acquire()
+                order.withLock { $0.append(index) }
+                pool.release()
             })
             try await Task.sleep(for: .milliseconds(20))
         }
@@ -88,7 +88,8 @@ struct ProcessSlotPoolTests {
         let pool = ProcessSlotPool(limit: 1)
         try await pool.acquire()
         let waiter = Task {
-            try await pool.withSlot { 42 }
+            try await pool.acquire()
+            pool.release()
         }
         try await Task.sleep(for: .milliseconds(50))
         waiter.cancel()

@@ -65,9 +65,25 @@ jobs:
       - name: Build
         run: make build
       - name: Unit tests with coverage
-        env:
-          COVERAGE_CHECK: "1"
         run: make coverage
+      - name: Coverage gate against the previous successful run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 Scripts/coverage-report.py .build/coverage.xcresult --baseline .build/coverage-baseline.json --write-baseline
+          previous=$(gh run list --repo "$GITHUB_REPOSITORY" --branch "$GITHUB_REF_NAME" --workflow "$GITHUB_WORKFLOW" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -n "$previous" ] && gh run download "$previous" --repo "$GITHUB_REPOSITORY" -n "coverage-baseline-${{ matrix.runner }}" -D .build/previous-coverage; then
+            python3 Scripts/coverage-report.py .build/coverage.xcresult --check --summary --baseline .build/previous-coverage/coverage-baseline.json
+          else
+            echo "No coverage baseline from a previous successful run on ${{ matrix.runner }}; reporting only"
+            python3 Scripts/coverage-report.py .build/coverage.xcresult --summary
+          fi
+      - name: Upload coverage baseline
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-baseline-${{ matrix.runner }}
+          path: dreamder/.build/coverage-baseline.json
+          if-no-files-found: error
       - name: Build Release app
         if: matrix.primary
         run: make release
