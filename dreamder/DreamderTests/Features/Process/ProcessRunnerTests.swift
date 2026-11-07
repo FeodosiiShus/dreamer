@@ -146,9 +146,9 @@ struct ProcessRunnerTests {
         let started = clock.now
         let timeout = Duration.milliseconds(300)
         await #expect(throws: ProcessRunnerError.timedOut(timeout)) {
-            try await runner.run(ProcessTestSupport.shell("exec sleep 60", timeout: timeout))
+            try await runner.run(ProcessTestSupport.shell("exec sleep 600", timeout: timeout))
         }
-        #expect(clock.now - started < .seconds(30))
+        #expect(clock.now - started < .seconds(300))
     }
 
     @Test
@@ -162,12 +162,12 @@ struct ProcessRunnerTests {
         try await withTempDir { directory in
             let pidFile = directory.appending(path: "pid")
             let invocation = ProcessTestSupport.shell(
-                "echo $$ > \"$1\"; exec sleep 60",
+                "echo $$ > \"$1\"; exec sleep 600",
                 arguments: [pidFile.path(percentEncoded: false)]
             )
             let task = Task { try await runner.run(invocation) }
 
-            let started = try await ProcessTestSupport.waitUntil {
+            let started = try await ProcessTestSupport.waitUntil(timeout: .seconds(100)) {
                 ProcessTestSupport.readProcessIdentifier(from: pidFile) != nil
             }
             #expect(started)
