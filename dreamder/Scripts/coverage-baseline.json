@@ -131,7 +131,7 @@
    "scope": "pure"
   },
   "Dreamder/Features/CEWorkspace/Models/CEWorkspaceFileManager+DirectoryEvents.swift": {
-   "covered": 228,
+   "covered": 224,
    "executable": 303,
    "scope": "io"
   },
@@ -291,7 +291,7 @@
    "scope": "io"
   },
   "Dreamder/Features/Documents/Indexer/SearchIndexer+InternalMethods.swift": {
-   "covered": 88,
+   "covered": 86,
    "executable": 96,
    "scope": "io"
   },
@@ -1406,7 +1406,7 @@
    "scope": "view"
   },
   "Dreamder/Features/MarkdownPreview/MarkdownBlockRenderer.swift": {
-   "covered": 588,
+   "covered": 587,
    "executable": 620,
    "scope": "pure"
   },
@@ -1456,7 +1456,7 @@
    "scope": "pure"
   },
   "Dreamder/Features/Matching/MinusculeMatcherCore.swift": {
-   "covered": 594,
+   "covered": 598,
    "executable": 610,
    "scope": "pure"
   },
@@ -2771,12 +2771,12 @@
    "scope": "pure"
   },
   "Dreamder/Features/SourceControl/DiffEngine/SequenceDiff.swift": {
-   "covered": 195,
+   "covered": 196,
    "executable": 432,
    "scope": "pure"
   },
   "Dreamder/Features/SourceControl/DiffEngine/TrimUtil.swift": {
-   "covered": 217,
+   "covered": 222,
    "executable": 289,
    "scope": "pure"
   },
@@ -3741,7 +3741,7 @@
    "scope": "viewModel"
   },
   "Dreamder/Utils/Process/GitCommandLine.swift": {
-   "covered": 108,
+   "covered": 111,
    "executable": 112,
    "scope": "io"
   },
@@ -3751,7 +3751,7 @@
    "scope": "io"
   },
   "Dreamder/Utils/Process/GitCommandRunner.swift": {
-   "covered": 225,
+   "covered": 226,
    "executable": 227,
    "scope": "io"
   },
@@ -3761,7 +3761,7 @@
    "scope": "io"
   },
   "Dreamder/Utils/Process/ProcessExecution.swift": {
-   "covered": 345,
+   "covered": 343,
    "executable": 356,
    "scope": "io"
   },
@@ -3776,13 +3776,18 @@
    "scope": "io"
   },
   "Dreamder/Utils/Process/ProcessRunner.swift": {
-   "covered": 106,
-   "executable": 106,
+   "covered": 126,
+   "executable": 126,
    "scope": "io"
   },
   "Dreamder/Utils/Process/ProcessRunning.swift": {
    "covered": 69,
    "executable": 72,
+   "scope": "io"
+  },
+  "Dreamder/Utils/Process/ProcessSlotPool.swift": {
+   "covered": 105,
+   "executable": 105,
    "scope": "io"
   },
   "Dreamder/Utils/Process/ShellRunning.swift": {
@@ -3833,11 +3838,11 @@
  },
  "scopes": {
   "io": {
-   "covered": 4602,
-   "executable": 7438
+   "covered": 4723,
+   "executable": 7563
   },
   "pure": {
-   "covered": 11281,
+   "covered": 11290,
    "executable": 15753
   },
   "view": {
@@ -3851,7 +3856,7 @@
  },
  "toolchain": "swift-6.4",
  "total": {
-  "covered": 29259,
-  "executable": 88254
+  "covered": 29389,
+  "executable": 88379
  }
 }

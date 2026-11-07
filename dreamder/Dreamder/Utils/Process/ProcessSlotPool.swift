@@ -26,7 +26,7 @@ nonisolated final class ProcessSlotPool: Sendable {
         state.withLock { $0.available }
     }
 
-    func withSlot<T: Sendable>(_ body: () async throws -> T) async throws -> T {
+    func withSlot<T: Sendable>(_ body: @Sendable () async throws -> T) async throws -> T {
         try await acquire()
         defer { release() }
         return try await body()
