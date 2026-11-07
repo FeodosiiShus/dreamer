@@ -19,9 +19,9 @@ nonisolated struct BranchesCompareCommit: Identifiable, Hashable {
                 guard parts.count >= 4, !parts[0].isEmpty else { return nil }
                 return BranchesCompareCommit(
                     hash: parts[0],
-                    subject: parts[1],
-                    author: parts[2],
-                    date: parts[3]
+                    subject: parts[1..<(parts.count - 2)].joined(separator: "|"),
+                    author: parts[parts.count - 2],
+                    date: parts[parts.count - 1]
                 )
             }
     }

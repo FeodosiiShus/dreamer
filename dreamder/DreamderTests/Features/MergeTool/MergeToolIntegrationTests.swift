@@ -102,6 +102,34 @@ struct MergeToolIntegrationTests {
     }
 
     @Test
+    func rebaseOntoACommitWithoutABranchNamesTheShortHash() async throws {
+        try await withTempDir { dir in
+            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.rebaseOntoDetachedCommitConflict(in: dir) }
+            let onto = try fixture.read(".git/rebase-merge/onto").trimmingCharacters(in: .whitespacesAndNewlines)
+            let short = try fixture.run("rev-parse", "--short", onto).trimmingCharacters(in: .whitespacesAndNewlines)
+            let context = await repository(dir).context()
+
+            #expect(context.operation == .rebase(branch: "feature", onto: short))
+            #expect(context.summary == "Rebasing branch feature onto \(short)")
+            #expect(context.swapsSides)
+        }
+    }
+
+    @Test
+    func cherryPickConflictIsReportedWithTheShortHash() async throws {
+        try await withTempDir { dir in
+            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.cherryPickConflict(in: dir) }
+            let short = try fixture.run("rev-parse", "--short", "CHERRY_PICK_HEAD")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let context = await repository(dir).context()
+
+            #expect(context.operation == .cherryPick(hash: short))
+            #expect(context.swapsSides == false)
+            #expect(try fixture.unmergedPaths() == ["src/main.swift"])
+        }
+    }
+
+    @Test
     func acceptYoursDeletesFileDeletedOnOurSide() async throws {
         try await withTempDir { dir in
             let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.deleteModifyConflict(in: dir) }

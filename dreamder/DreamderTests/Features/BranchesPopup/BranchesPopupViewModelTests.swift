@@ -168,9 +168,10 @@ struct BranchesPopupViewModelTests {
             let recent = try #require(harness.model.sections.first { $0.id == .recent })
             let recentNames: [String] = recent.refs.map(\.shortName)
             #expect(recentNames == ["main", "b7", "b5", "b4", "b3"])
-            let allRefs: [BranchesPopupRef] = harness.model.sections.flatMap(\.refs)
-            let mainCount = allRefs.filter { $0.shortName == "main" }.count
+            let localRefs: [BranchesPopupRef] = harness.model.sections.first { $0.id == .local }?.refs ?? []
+            let mainCount = localRefs.filter { $0.shortName == "main" }.count
             #expect(mainCount == 1)
+            #expect(recentNames.filter { $0 == "main" }.count == 1)
         }
     }
 
@@ -646,12 +647,14 @@ struct BranchesPopupViewModelTests {
             #expect(harness.model.rows.first { $0.ref?.shortName == "obsolete" }?.isFavorite == true)
 
             let localSection = try #require(harness.model.sections.first { $0.id == .local })
-            #expect(localSection.nodes.map(\.title) == ["obsolete", "alpha"])
+            let localTitles = localSection.nodes.map(\.title).filter { $0 != "main" }
+            #expect(localTitles == ["obsolete", "alpha", "feature"])
 
             harness.model.toggleFavorite(obsolete)
             #expect(harness.model.favorites.contains("local:obsolete") == false)
             let restored = try #require(harness.model.sections.first { $0.id == .local })
-            #expect(restored.nodes.map(\.title) == ["alpha", "obsolete"])
+            let restoredTitles = restored.nodes.map(\.title).filter { $0 != "main" }
+            #expect(restoredTitles == ["alpha", "feature", "obsolete"])
         }
     }
 

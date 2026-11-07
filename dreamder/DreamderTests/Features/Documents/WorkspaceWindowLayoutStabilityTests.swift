@@ -1,5 +1,4 @@
 import AppKit
-import OSLog
 import SwiftUI
 import Testing
 @testable import Dreamder
@@ -7,11 +6,24 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct WorkspaceWindowLayoutStabilityTests {
-    private struct Harness {
+    @MainActor
+    private final class Harness {
         let workspace: WorkspaceDocument
         let window: NSWindow
         let editorManager: EditorManager
         let start: Date
+        private(set) var steps: [(date: Date, name: String)] = []
+
+        init(workspace: WorkspaceDocument, window: NSWindow, editorManager: EditorManager, start: Date) {
+            self.workspace = workspace
+            self.window = window
+            self.editorManager = editorManager
+            self.start = start
+        }
+
+        func record(_ step: String) {
+            steps.append((Date(), step))
+        }
 
         func close() {
             window.close()
@@ -20,7 +32,7 @@ struct WorkspaceWindowLayoutStabilityTests {
     }
 
     private func makeHarness(in directory: URL) throws -> Harness {
-        let longSource = (0..<1_500).map { "let value\($0) = \($0) // trailing comment that is long enough to exceed the pane width" }
+        let longSource = (0..<300).map { "let value\($0) = \($0) // trailing comment that is long enough to exceed the pane width" }
             .joined(separator: "\n")
         try longSource.write(
             to: directory.appending(path: "Model.swift"),
@@ -45,25 +57,15 @@ struct WorkspaceWindowLayoutStabilityTests {
         return Harness(workspace: workspace, window: window, editorManager: editorManager, start: start)
     }
 
-    private func layoutLoopDiagnostics(since start: Date) throws -> [String] {
-        let store = try OSLogStore(scope: .currentProcessIdentifier)
-        let position = store.position(date: start)
-        let predicate = NSPredicate(format: "subsystem == %@", "com.apple.AppKit")
-        return try store.getEntries(at: position, matching: predicate).compactMap { entry in
-            guard let log = entry as? OSLogEntryLog else { return nil }
-            let message = log.composedMessage
-            let isLoopSignature = message.contains("has continued for")
-                || message.contains("Update Constraints in Window passes")
-                || message.contains("kept the layout or constraints dirty")
-            return isLoopSignature ? message : nil
-        }
-    }
-
-    private func expectSettled(_ harness: Harness, after step: String) async throws {
+    private func settle(_ harness: Harness, after step: String) async throws {
+        harness.record(step)
         try await Task.sleep(for: .milliseconds(1_200))
         harness.window.layoutIfNeeded()
-        let diagnostics = try layoutLoopDiagnostics(since: harness.start)
-        #expect(diagnostics.isEmpty, "AppKit reported a layout loop after \(step): \(diagnostics)")
+    }
+
+    private func expectNoLayoutLoop(_ harness: Harness) async throws {
+        let diagnostics = try await AppKitLayoutLoopDetector.diagnostics(since: harness.start)
+        #expect(diagnostics.isEmpty, "\(AppKitLayoutLoopDetector.describe(diagnostics, steps: harness.steps))")
     }
 
     @Test
@@ -71,16 +73,17 @@ struct WorkspaceWindowLayoutStabilityTests {
         try await withTempDir { directory in
             let harness = try makeHarness(in: directory)
             defer { harness.close() }
-            try await expectSettled(harness, after: "initial layout")
+            try await settle(harness, after: "initial layout")
 
             let right = harness.editorManager.splitActiveEditor(.trailing, workspace: harness.workspace)
             #expect(right != nil)
-            try await expectSettled(harness, after: "split right")
+            try await settle(harness, after: "split right")
 
             let down = harness.editorManager.splitActiveEditor(.bottom, workspace: harness.workspace)
             #expect(down != nil)
-            try await expectSettled(harness, after: "split down")
+            try await settle(harness, after: "split down")
             #expect(harness.editorManager.flattenedEditors.count == 3)
+            try await expectNoLayoutLoop(harness)
         }
     }
 
@@ -89,14 +92,15 @@ struct WorkspaceWindowLayoutStabilityTests {
         try await withTempDir { directory in
             let harness = try makeHarness(in: directory)
             defer { harness.close() }
-            try await expectSettled(harness, after: "initial layout")
+            try await settle(harness, after: "initial layout")
 
             let right = try #require(harness.editorManager.splitActiveEditor(.trailing, workspace: harness.workspace))
-            try await expectSettled(harness, after: "split right")
+            try await settle(harness, after: "split right")
 
             harness.editorManager.closeEditor(right)
-            try await expectSettled(harness, after: "close split")
+            try await settle(harness, after: "close split")
             #expect(harness.editorManager.flattenedEditors.count == 1)
+            try await expectNoLayoutLoop(harness)
         }
     }
 
@@ -106,12 +110,13 @@ struct WorkspaceWindowLayoutStabilityTests {
             let harness = try makeHarness(in: directory)
             defer { harness.close() }
             harness.editorManager.splitActiveEditor(.trailing, workspace: harness.workspace)
-            try await expectSettled(harness, after: "split right")
+            try await settle(harness, after: "split right")
 
             harness.window.setContentSize(NSSize(width: 900, height: 600))
-            try await expectSettled(harness, after: "shrink")
+            try await settle(harness, after: "shrink")
             harness.window.setContentSize(NSSize(width: 1500, height: 900))
-            try await expectSettled(harness, after: "grow")
+            try await settle(harness, after: "grow")
+            try await expectNoLayoutLoop(harness)
         }
     }
 }

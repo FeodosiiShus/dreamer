@@ -303,9 +303,10 @@ nonisolated enum BranchesPopupTreeBuilder {
             }
             : []
 
+        let localCandidates = matcher == nil ? localRefs : localRefs.filter { !recentShortNames.contains($0.shortName) }
         let candidates: [(BranchesPopupSectionID, [BranchesPopupRef])] = [
             (.recent, recentRefs),
-            (.local, ordering.sorted(localRefs.filter { !recentShortNames.contains($0.shortName) })),
+            (.local, ordering.sorted(localCandidates)),
             (.remote, ordering.sorted(remoteRefs)),
             (.tags, ordering.sorted(tagRefs))
         ]

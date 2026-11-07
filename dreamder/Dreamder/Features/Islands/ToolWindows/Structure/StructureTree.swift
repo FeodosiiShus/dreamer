@@ -160,7 +160,8 @@ nonisolated enum StructureTreeBuilder {
             .map { String($0).replacingOccurrences(of: "\r", with: "") }
         let items: [IndentedSymbol] = extracted.enumerated().map { index, symbol in
             let lineIndex = min(max(symbol.line - 1, 0), max(lines.count - 1, 0))
-            let indent = lines.indices.contains(lineIndex) ? indentation(of: lines[lineIndex]) : 0
+            let textIndent = lines.indices.contains(lineIndex) ? indentation(of: lines[lineIndex]) : 0
+            let indent = symbol.nestingLevel ?? textIndent
             return IndentedSymbol(
                 indent: indent,
                 node: StructureNode(

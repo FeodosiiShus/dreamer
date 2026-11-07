@@ -1,6 +1,6 @@
 import Foundation
 
-enum MergeToolErrorText {
+nonisolated enum MergeToolErrorText {
     static func describe(_ error: Error) -> String {
         if let gitError = error as? GitClient.GitClientError {
             return gitError.description

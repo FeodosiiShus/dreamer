@@ -101,4 +101,20 @@ class CEActiveTaskTests {
             Issue.record("Task output should be empty after clearOutput is called.")
         }
     }
+
+    @Test(arguments: [Shell.zsh, Shell.bash])
+    func outputIsCompleteWhenTheTaskFinishes(_ shell: Shell) async throws {
+        task.command = "for i in $(seq 1 120); do echo line-$i; done; echo FINAL-MARKER"
+        activeTask.run(workspaceURL: nil, shell: shell)
+
+        await waitForExpectation(timeout: .seconds(90)) {
+            activeTask.status == .finished
+        } onTimeout: {
+            Issue.record("Status never changed to finished. \(activeTask.status)")
+        }
+
+        let output = try #require(activeTask.output).getBufferAsString()
+        #expect(output.contains("FINAL-MARKER"))
+        #expect(output.contains("line-120"))
+    }
 }

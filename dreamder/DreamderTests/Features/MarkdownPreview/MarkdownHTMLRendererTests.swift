@@ -2,175 +2,179 @@ import Foundation
 import Testing
 @testable import Dreamder
 
+private func plainHTML(_ markdown: String) -> String {
+    MarkdownPreviewTestSupport.plainHTML(markdown)
+}
+
 @Suite
 struct MarkdownHTMLRendererTests {
     @Test
     func atxHeadings() {
         let markdown = "## Sub ##\n####### not heading"
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
         #expect(html == "<h2>Sub</h2>\n<p>####### not heading</p>")
     }
 
     @Test
     func atxHeadingLevels() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "# One\n### Three\n###### Six")
+        let html = plainHTML("# One\n### Three\n###### Six")
         #expect(html == "<h1>One</h1>\n<h3>Three</h3>\n<h6>Six</h6>")
     }
 
     @Test
     func setextHeadings() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "Title\n=====\n\nSub\n---")
+        let html = plainHTML("Title\n=====\n\nSub\n---")
         #expect(html == "<h1>Title</h1>\n<h2>Sub</h2>")
     }
 
     @Test
     func paragraphsJoinLines() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "first line\nsecond line\n\nnext paragraph")
+        let html = plainHTML("first line\nsecond line\n\nnext paragraph")
         #expect(html == "<p>first line\nsecond line</p>\n<p>next paragraph</p>")
     }
 
     @Test
     func emphasisAndStrong() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "*em* **strong** ***both***")
+        let html = plainHTML("*em* **strong** ***both***")
         #expect(html == "<p><em>em</em> <strong>strong</strong> <em><strong>both</strong></em></p>")
     }
 
     @Test
     func nestedEmphasis() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "**bold *italic***")
+        let html = plainHTML("**bold *italic***")
         #expect(html == "<p><strong>bold <em>italic</em></strong></p>")
     }
 
     @Test
     func intrawordUnderscoresStayLiteral() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "a_b_c and _em_")
+        let html = plainHTML("a_b_c and _em_")
         #expect(html == "<p>a_b_c and <em>em</em></p>")
     }
 
     @Test
     func unmatchedDelimiterStaysLiteral() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "a * b")
+        let html = plainHTML("a * b")
         #expect(html == "<p>a * b</p>")
     }
 
     @Test
     func codeSpans() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "call `print(\"hi\")` now")
+        let html = plainHTML("call `print(\"hi\")` now")
         #expect(html == "<p>call <code>print(&quot;hi&quot;)</code> now</p>")
     }
 
     @Test
     func codeSpanKeepsMarkdownLiteral() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "`a *b* [c](d)`")
+        let html = plainHTML("`a *b* [c](d)`")
         #expect(html == "<p><code>a *b* [c](d)</code></p>")
     }
 
     @Test
     func fencedCodeBlock() {
         let markdown = "```swift\nlet a = 1 < 2\n```"
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
         #expect(html == "<pre><code class=\"language-swift\">let a = 1 &lt; 2\n</code></pre>")
     }
 
     @Test
     func fencedCodeBlockWithoutInfo() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "```\nplain `code`\n```")
+        let html = plainHTML("```\nplain `code`\n```")
         #expect(html == "<pre><code>plain `code`\n</code></pre>")
     }
 
     @Test
     func indentedCodeBlock() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "    let a = 1\n    let b = 2")
+        let html = plainHTML("    let a = 1\n    let b = 2")
         #expect(html == "<pre><code>let a = 1\nlet b = 2\n</code></pre>")
     }
 
     @Test
     func blockQuote() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "> quoted")
+        let html = plainHTML("> quoted")
         #expect(html == "<blockquote>\n<p>quoted</p>\n</blockquote>")
     }
 
     @Test
     func nestedBlockQuote() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "> quoted\n> > nested")
+        let html = plainHTML("> quoted\n> > nested")
         #expect(html == "<blockquote>\n<p>quoted</p>\n<blockquote>\n<p>nested</p>\n</blockquote>\n</blockquote>")
     }
 
     @Test
     func unorderedList() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "- one\n- two\n- three")
+        let html = plainHTML("- one\n- two\n- three")
         #expect(html == "<ul>\n<li>one</li>\n<li>two</li>\n<li>three</li>\n</ul>")
     }
 
     @Test
     func orderedList() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "1. one\n2. two")
+        let html = plainHTML("1. one\n2. two")
         #expect(html == "<ol>\n<li>one</li>\n<li>two</li>\n</ol>")
     }
 
     @Test
     func orderedListKeepsStartNumber() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "3. three\n4. four")
+        let html = plainHTML("3. three\n4. four")
         #expect(html == "<ol start=\"3\">\n<li>three</li>\n<li>four</li>\n</ol>")
     }
 
     @Test
     func nestedList() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "- a\n  - b\n  - c\n- d")
+        let html = plainHTML("- a\n  - b\n  - c\n- d")
         #expect(html == "<ul>\n<li>a<ul>\n<li>b</li>\n<li>c</li>\n</ul></li>\n<li>d</li>\n</ul>")
     }
 
     @Test
     func looseListKeepsParagraphs() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "- a\n\n- b")
+        let html = plainHTML("- a\n\n- b")
         #expect(html == "<ul>\n<li><p>a</p></li>\n<li><p>b</p></li>\n</ul>")
     }
 
     @Test
     func taskList() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "- [ ] open\n- [x] done")
+        let html = plainHTML("- [ ] open\n- [x] done")
         #expect(html == """
         <ul>
-        <li><input type="checkbox" disabled> open</li>
-        <li><input type="checkbox" disabled checked> done</li>
+        <li class="task-list-item"><input type="checkbox" disabled> open</li>
+        <li class="task-list-item"><input type="checkbox" disabled checked> done</li>
         </ul>
         """)
     }
 
     @Test
     func links() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "[site](https://example.com \"Title\")")
+        let html = plainHTML("[site](https://example.com \"Title\")")
         #expect(html == "<p><a href=\"https://example.com\" title=\"Title\">site</a></p>")
     }
 
     @Test
     func linkWithBoldLabel() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "[**bold**](a.md)")
+        let html = plainHTML("[**bold**](a.md)")
         #expect(html == "<p><a href=\"a.md\"><strong>bold</strong></a></p>")
     }
 
     @Test
     func relativeImage() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "![logo](images/logo.png)")
+        let html = plainHTML("![logo](images/logo.png)")
         #expect(html == "<p><img src=\"images/logo.png\" alt=\"logo\" /></p>")
     }
 
     @Test
     func imageInsideLink() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "[![b](i.png)](https://x.y)")
+        let html = plainHTML("[![b](i.png)](https://x.y)")
         #expect(html == "<p><a href=\"https://x.y\"><img src=\"i.png\" alt=\"b\" /></a></p>")
     }
 
     @Test
     func thematicBreak() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "a\n\n---\n\n***\n\nb")
+        let html = plainHTML("a\n\n---\n\n***\n\nb")
         #expect(html == "<p>a</p>\n<hr />\n<hr />\n<p>b</p>")
     }
 
     @Test
     func tableWithAlignment() {
         let markdown = "| Name | Age |\n|:-----|----:|\n| Ann | 30 |"
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
         #expect(html == """
         <table>
         <thead>
@@ -192,103 +196,111 @@ struct MarkdownHTMLRendererTests {
     @Test
     func tableEscapedPipe() {
         let markdown = "| a \\| b | c |\n|---|---|\n| 1 | 2 |"
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
         #expect(html.contains("<th>a | b</th>"))
         #expect(html.contains("<td>1</td>"))
     }
 
     @Test
     func escapesHTML() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "a < b & c > d")
+        let html = plainHTML("a < b & c > d")
         #expect(html == "<p>a &lt; b &amp; c &gt; d</p>")
     }
 
     @Test
     func inlineHTMLPassesThrough() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "<b>&\"x\"</b>")
+        let html = plainHTML("<b>&\"x\"</b>")
         #expect(html == "<p><b>&amp;&quot;x&quot;</b></p>")
     }
 
     @Test
     func inlineHTMLCommentPassesThrough() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "a <!-- note --> b")
+        let html = plainHTML("a <!-- note --> b")
         #expect(html == "<p>a <!-- note --> b</p>")
     }
 
     @Test
     func inlineHTMLWithAttributesPassesThrough() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "text <img src=\"a.png\" alt=\"x\"> end")
+        let html = plainHTML("text <img src=\"a.png\" alt=\"x\"> end")
         #expect(html == "<p>text <img src=\"a.png\" alt=\"x\"> end</p>")
     }
 
     @Test
     func inlineHTMLEventHandlerIsStripped() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "text <img src=\"a.png\" onerror=\"evil()\"> end")
+        let html = plainHTML("text <img src=\"a.png\" onerror=\"evil()\"> end")
         #expect(html == "<p>text <img src=\"a.png\"> end</p>")
     }
 
     @Test
     func escapesHTMLInsideCode() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "```\n<script>alert(1)</script>\n```")
+        let html = plainHTML("```\n<script>alert(1)</script>\n```")
         #expect(html == "<pre><code>&lt;script&gt;alert(1)&lt;/script&gt;\n</code></pre>")
     }
 
     @Test
     func backslashEscape() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "a \\*literal\\* star")
+        let html = plainHTML("a \\*literal\\* star")
         #expect(html == "<p>a *literal* star</p>")
     }
 
     @Test
     func hardBreak() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "one  \ntwo")
+        let html = plainHTML("one  \ntwo")
         #expect(html == "<p>one<br />\ntwo</p>")
     }
 
     @Test
     func backslashHardBreak() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "one\\\ntwo")
+        let html = plainHTML("one\\\ntwo")
         #expect(html == "<p>one<br />\ntwo</p>")
     }
 
     @Test
-    func documentEmbedsBaseURL() {
+    func documentEmbedsBaseURLBodyAndStylesheet() {
         let baseURL = URL(fileURLWithPath: "/tmp/project", isDirectory: true)
-        let document = MarkdownHTMLRenderer.documentHTML(body: "<p>hi</p>", baseURL: baseURL)
+        let document = MarkdownHTMLRenderer.documentHTML(
+            body: "<p>hi</p>",
+            baseURL: baseURL,
+            palette: MarkdownPreviewFixtures.darkPalette
+        )
         #expect(document.contains("<base href=\"file:///tmp/project/\">"))
         #expect(document.contains("<p>hi</p>"))
-        #expect(document.contains("font-family: \"JetBrains Mono\", monospace;"))
-        #expect(document.contains("color: #71A1FE;"))
+        #expect(document.contains("font: 0.9em \"JetBrains Mono\""))
+        #expect(document.contains("<style>"))
     }
 
     @Test
     func documentWithoutBaseURL() {
-        let document = MarkdownHTMLRenderer.documentHTML(body: "<p>hi</p>", baseURL: nil)
+        let document = MarkdownHTMLRenderer.documentHTML(
+            body: "<p>hi</p>",
+            baseURL: nil,
+            palette: MarkdownPreviewFixtures.darkPalette
+        )
         #expect(!document.contains("<base"))
         #expect(document.contains("<p>hi</p>"))
     }
 
     @Test
     func emptyDocument() {
-        #expect(MarkdownHTMLRenderer.bodyHTML(from: "") == "")
+        #expect(plainHTML("") == "")
     }
 
     @Test
     func exclamationMarkOutsideImageTerminates() {
         let markdown = "Don't be shy, jump right in and be part of the discussion!"
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
         #expect(html == "<p>Don't be shy, jump right in and be part of the discussion!</p>")
     }
 
     @Test
     func exclamationMarkBeforeLinkTerminates() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "Hello! [link](a.md) and ![img](i.png) and !")
+        let html = plainHTML("Hello! [link](a.md) and ![img](i.png) and !")
         #expect(html == "<p>Hello! <a href=\"a.md\">link</a> and <img src=\"i.png\" alt=\"img\" /> and !</p>")
     }
 
     @Test
     func admonitionMarkerTerminates() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "> [!IMPORTANT]\n> Not for production.")
+        let html = plainHTML("> [!IMPORTANT]\n> Not for production.")
         #expect(html == "<blockquote>\n<p>[!IMPORTANT]\nNot for production.</p>\n</blockquote>")
     }
 
@@ -316,7 +328,7 @@ struct MarkdownHTMLRendererTests {
         - [Motivation](#motivation)
         - [Mission](#mission)
         """
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
 
         #expect(!html.isEmpty)
         #expect(html.contains("<p align=\"center\">"))
@@ -339,7 +351,7 @@ struct MarkdownHTMLRendererTests {
         > 
         > [**Join us**](https://discord.gg/KvdE3wYKNR?event=1189275961456336937)
         """
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
 
         #expect(html.contains("<a href=\"https://discord.gg/vChUXVf9Em\">Discord</a>"))
         #expect(html.contains("be part of the discussion!</p>"))
@@ -363,7 +375,7 @@ struct MarkdownHTMLRendererTests {
         |---|---|
         | Austin Condiff | Design |
         """
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
 
         #expect(html.contains("<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->"))
         #expect(html.contains("<table>"))
@@ -386,7 +398,7 @@ struct MarkdownHTMLRendererTests {
         - [Anchor](#anchor) and **bold** and *em* and `code` and <not-a-tag>
         """
         let markdown = Array(repeating: paragraph, count: 200).joined(separator: "\n\n")
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
 
         #expect(html.contains("<blockquote>"))
         #expect(html.contains("Not for production use! Read <a href=\"https://example.com\">the docs</a>"))
@@ -397,82 +409,82 @@ struct MarkdownHTMLRendererTests {
     @Test
     func htmlBlockKind1ScriptIsRemoved() {
         let markdown = "<script>\nvar a = 1;\n</script>\n\ntext"
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
         #expect(html == "<p>text</p>")
     }
 
     @Test
     func htmlBlockKind1PreIsVerbatim() {
         let markdown = "<pre>\nkeep *raw*\n</pre>\n\ntext"
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
         #expect(html == "<pre>\nkeep *raw*\n</pre>\n<p>text</p>")
     }
 
     @Test
     func htmlBlockKind1TextareaAndStyleAreVerbatim() {
         let markdown = "<textarea>\n*raw*\n</textarea>\n\n<style>\nbody { color: red }\n</style>"
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
         #expect(html == "<textarea>\n*raw*\n</textarea>\n<style>\nbody { color: red }\n</style>")
     }
 
     @Test
     func htmlBlockKind2CommentIsVerbatim() {
         let markdown = "<!-- hidden -->\n\ntext"
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
         #expect(html == "<!-- hidden -->\n<p>text</p>")
     }
 
     @Test
     func htmlBlockKind3InstructionIsVerbatim() {
         let markdown = "<?php echo 1; ?>\n\ntext"
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
         #expect(html == "<?php echo 1; ?>\n<p>text</p>")
     }
 
     @Test
     func htmlBlockKind4DeclarationIsVerbatim() {
         let markdown = "<!DOCTYPE html>\n\ntext"
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
         #expect(html == "<!DOCTYPE html>\n<p>text</p>")
     }
 
     @Test
     func htmlBlockKind5CDataIsVerbatim() {
         let markdown = "<![CDATA[raw <tag>]]>\n\ntext"
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
         #expect(html == "<![CDATA[raw <tag>]]>\n<p>text</p>")
     }
 
     @Test
     func htmlBlockKind6BlockTagIsVerbatim() {
         let markdown = "<div class=\"x\">\ncontent *not em*\n</div>\n\ntext"
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
         #expect(html == "<div class=\"x\">\ncontent *not em*\n</div>\n<p>text</p>")
     }
 
     @Test
     func htmlBlockKind7CompleteTagAloneOnLineIsVerbatim() {
         let markdown = "<custom-tag>\n\ntext"
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
         #expect(html == "<custom-tag>\n<p>text</p>")
     }
 
     @Test
     func htmlBlockKind6InterruptsParagraph() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "text\n<div>block</div>")
+        let html = plainHTML("text\n<div>block</div>")
         #expect(html == "<p>text</p>\n<div>block</div>")
     }
 
     @Test
     func htmlBlockKind7DoesNotInterruptParagraph() {
-        let html = MarkdownHTMLRenderer.bodyHTML(from: "text\n<custom-tag>")
+        let html = plainHTML("text\n<custom-tag>")
         #expect(html == "<p>text\n<custom-tag></p>")
     }
 
     @Test
     func htmlBlockEventHandlerAttributeIsStripped() {
         let markdown = "<div onclick=\"evil()\" data-x=\"1\">\nhi\n</div>"
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+        let html = plainHTML(markdown)
         #expect(html == "<div data-x=\"1\">\nhi\n</div>")
     }
 

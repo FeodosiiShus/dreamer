@@ -198,7 +198,10 @@ nonisolated enum GitLogPermanentGraphBuilder {
         return correct.count == parents.count ? commit : GitLogGraphCommit(id: commit.id, parents: correct)
     }
 
-    static func build(commits rawCommits: [GitLogGraphCommit]) -> GitLogPermanentGraphBuildResult {
+    static func build(
+        commits rawCommits: [GitLogGraphCommit],
+        notLoadedCommitId: ((String) -> Int)? = nil
+    ) -> GitLogPermanentGraphBuildResult {
         let commits = rawCommits.map(fixDuplicateParents)
         let count = commits.count
         var simpleNodes = [Bool](repeating: false, count: count)
@@ -248,7 +251,8 @@ nonisolated enum GitLogPermanentGraphBuilder {
             commits: commits,
             nodeToEdgeIndex: nodeToEdgeIndex,
             longEdges: &longEdges,
-            upAdjacentNodes: upAdjacentNodes
+            upAdjacentNodes: upAdjacentNodes,
+            notLoadedCommitId: notLoadedCommitId
         )
 
         return GitLogPermanentGraphBuildResult(
@@ -277,7 +281,8 @@ nonisolated enum GitLogPermanentGraphBuilder {
         commits: [GitLogGraphCommit],
         nodeToEdgeIndex: [Int],
         longEdges: inout [Int],
-        upAdjacentNodes: [String: [Int]]
+        upAdjacentNodes: [String: [Int]],
+        notLoadedCommitId: ((String) -> Int)?
     ) -> [Int: String] {
         func order(_ id: String) -> (Int, Int) {
             let minUp = upAdjacentNodes[id]?.min() ?? 0
@@ -293,7 +298,7 @@ nonisolated enum GitLogPermanentGraphBuilder {
 
         var notLoaded: [Int: String] = [:]
         for notLoadedCommit in sortedIds {
-            let notLoadedId = -(notLoaded.count + 2)
+            let notLoadedId = notLoadedCommitId?(notLoadedCommit) ?? -(notLoaded.count + 2)
             notLoaded[notLoadedId] = notLoadedCommit
             for upNodeIndex in upAdjacentNodes[notLoadedCommit] ?? [] {
                 for edgeIndex in nodeToEdgeIndex[upNodeIndex]..<nodeToEdgeIndex[upNodeIndex + 1]

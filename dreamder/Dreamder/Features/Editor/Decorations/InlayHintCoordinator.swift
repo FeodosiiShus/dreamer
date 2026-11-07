@@ -82,6 +82,7 @@ nonisolated enum InlayHintLayout {
 
 final class InlayHintCoordinator: TextViewCoordinator {
     private static let maxClientAttempts = 15
+    static let hintsDidChangeNotification = Notification.Name("dev.dreamder.InlayHintCoordinator.hintsDidChange")
 
     private let fileURL: URL?
     private weak var controller: TextViewController?
@@ -169,6 +170,7 @@ final class InlayHintCoordinator: TextViewCoordinator {
             )
         }
         layoutManager.setNeedsLayout()
+        NotificationCenter.default.post(name: Self.hintsDidChangeNotification, object: textView)
     }
 
     private func removeHints() {

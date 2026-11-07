@@ -41,7 +41,7 @@
    "scope": "pure"
   },
   "Dreamder/Features/About/BlurButtonStyle.swift": {
-   "covered": 0,
+   "covered": 17,
    "executable": 20,
    "scope": "view"
   },
@@ -86,7 +86,7 @@
    "scope": "pure"
   },
   "Dreamder/Features/CEWorkspace/Models/CEWorkspaceFileManager+DirectoryEvents.swift": {
-   "covered": 228,
+   "covered": 225,
    "executable": 303,
    "scope": "io"
   },
@@ -101,7 +101,7 @@
    "scope": "io"
   },
   "Dreamder/Features/CEWorkspace/Models/CEWorkspaceFileManager.swift": {
-   "covered": 134,
+   "covered": 141,
    "executable": 153,
    "scope": "io"
   },
@@ -176,7 +176,7 @@
    "scope": "view"
   },
   "Dreamder/Features/Documents/CodeFileDocument/CodeFileDocument.swift": {
-   "covered": 163,
+   "covered": 166,
    "executable": 237,
    "scope": "viewModel"
   },
@@ -186,7 +186,7 @@
    "scope": "pure"
   },
   "Dreamder/Features/Documents/Controllers/DreamderDocumentController.swift": {
-   "covered": 11,
+   "covered": 36,
    "executable": 234,
    "scope": "viewModel"
   },
@@ -195,8 +195,13 @@
    "executable": 27,
    "scope": "viewModel"
   },
+  "Dreamder/Features/Documents/Controllers/DreamderWindowController+Markdown.swift": {
+   "covered": 149,
+   "executable": 203,
+   "scope": "viewModel"
+  },
   "Dreamder/Features/Documents/Controllers/DreamderWindowController+Panels.swift": {
-   "covered": 0,
+   "covered": 152,
    "executable": 152,
    "scope": "viewModel"
   },
@@ -206,7 +211,7 @@
    "scope": "viewModel"
   },
   "Dreamder/Features/Documents/Controllers/DreamderWindowController+Toolbar.swift": {
-   "covered": 113,
+   "covered": 123,
    "executable": 135,
    "scope": "viewModel"
   },
@@ -321,7 +326,7 @@
    "scope": "viewModel"
   },
   "Dreamder/Features/DreamderAutomation/DreamderHeadless.swift": {
-   "covered": 73,
+   "covered": 78,
    "executable": 93,
    "scope": "viewModel"
   },
@@ -371,7 +376,7 @@
    "scope": "view"
   },
   "Dreamder/Features/DreamderUI/Views/FeatureIcon.swift": {
-   "covered": 0,
+   "covered": 66,
    "executable": 84,
    "scope": "view"
   },
@@ -461,7 +466,7 @@
    "scope": "view"
   },
   "Dreamder/Features/Editor/Decorations/DiagnosticHighlightCoordinator.swift": {
-   "covered": 8,
+   "covered": 92,
    "executable": 107,
    "scope": "viewModel"
   },
@@ -476,12 +481,12 @@
    "scope": "pure"
   },
   "Dreamder/Features/Editor/Decorations/GitGutterCoordinator.swift": {
-   "covered": 79,
+   "covered": 291,
    "executable": 381,
    "scope": "viewModel"
   },
   "Dreamder/Features/Editor/Decorations/GitGutterMarkerView.swift": {
-   "covered": 41,
+   "covered": 133,
    "executable": 192,
    "scope": "view"
   },
@@ -501,7 +506,7 @@
    "scope": "viewModel"
   },
   "Dreamder/Features/Editor/Decorations/IndentGuideOverlayView.swift": {
-   "covered": 87,
+   "covered": 91,
    "executable": 117,
    "scope": "view"
   },
@@ -511,8 +516,8 @@
    "scope": "pure"
   },
   "Dreamder/Features/Editor/Decorations/InlayHintCoordinator.swift": {
-   "covered": 66,
-   "executable": 143,
+   "covered": 83,
+   "executable": 144,
    "scope": "viewModel"
   },
   "Dreamder/Features/Editor/GitAnnotations/EditorContextMenuCoordinator.swift": {
@@ -531,13 +536,13 @@
    "scope": "pure"
   },
   "Dreamder/Features/Editor/GitAnnotations/GitBlameCoordinator.swift": {
-   "covered": 209,
-   "executable": 342,
+   "covered": 263,
+   "executable": 364,
    "scope": "viewModel"
   },
   "Dreamder/Features/Editor/GitAnnotations/GitBlameOverlayViews.swift": {
-   "covered": 57,
-   "executable": 198,
+   "covered": 106,
+   "executable": 230,
    "scope": "view"
   },
   "Dreamder/Features/Editor/Models/Editor/Editor+History.swift": {
@@ -631,8 +636,8 @@
    "scope": "view"
   },
   "Dreamder/Features/Editor/TabBar/Views/EditorTabBarTrailingAccessories.swift": {
-   "covered": 104,
-   "executable": 190,
+   "covered": 127,
+   "executable": 176,
    "scope": "view"
   },
   "Dreamder/Features/Editor/TabBar/Views/EditorTabBarView.swift": {
@@ -646,13 +651,13 @@
    "scope": "view"
   },
   "Dreamder/Features/Editor/Views/CodeFileView.swift": {
-   "covered": 176,
-   "executable": 212,
+   "covered": 190,
+   "executable": 226,
    "scope": "view"
   },
   "Dreamder/Features/Editor/Views/CodeFileViewSession.swift": {
-   "covered": 49,
-   "executable": 74,
+   "covered": 55,
+   "executable": 80,
    "scope": "view"
   },
   "Dreamder/Features/Editor/Views/CompletionTriggerSync.swift": {
@@ -661,12 +666,12 @@
    "scope": "view"
   },
   "Dreamder/Features/Editor/Views/EditorAreaFileView.swift": {
-   "covered": 25,
+   "covered": 30,
    "executable": 57,
    "scope": "view"
   },
   "Dreamder/Features/Editor/Views/EditorAreaView.swift": {
-   "covered": 128,
+   "covered": 129,
    "executable": 197,
    "scope": "view"
   },
@@ -801,12 +806,12 @@
    "scope": "viewModel"
   },
   "Dreamder/Features/Islands/ToolWindows/Problems/ProblemsTree.swift": {
-   "covered": 125,
+   "covered": 126,
    "executable": 130,
    "scope": "pure"
   },
   "Dreamder/Features/Islands/ToolWindows/ProblemsToolWindow.swift": {
-   "covered": 0,
+   "covered": 142,
    "executable": 388,
    "scope": "view"
   },
@@ -821,8 +826,8 @@
    "scope": "view"
   },
   "Dreamder/Features/Islands/ToolWindows/Structure/StructureTree.swift": {
-   "covered": 239,
-   "executable": 244,
+   "covered": 242,
+   "executable": 247,
    "scope": "pure"
   },
   "Dreamder/Features/Islands/ToolWindows/Structure/StructureViewModel.swift": {
@@ -851,12 +856,12 @@
    "scope": "view"
   },
   "Dreamder/Features/Islands/Workspace/IslandsWorkspaceView.swift": {
-   "covered": 320,
+   "covered": 328,
    "executable": 528,
    "scope": "view"
   },
   "Dreamder/Features/Islands/Workspace/ToolWindowContentView.swift": {
-   "covered": 15,
+   "covered": 16,
    "executable": 22,
    "scope": "view"
   },
@@ -871,7 +876,7 @@
    "scope": "pure"
   },
   "Dreamder/Features/Islands/Workspace/ToolWindowStripe.swift": {
-   "covered": 133,
+   "covered": 137,
    "executable": 167,
    "scope": "view"
   },
@@ -901,7 +906,7 @@
    "scope": "io"
   },
   "Dreamder/Features/LSP/Discovery/LanguageServerDiscovery.swift": {
-   "covered": 152,
+   "covered": 172,
    "executable": 180,
    "scope": "io"
   },
@@ -926,7 +931,7 @@
    "scope": "viewModel"
   },
   "Dreamder/Features/LSP/Features/Diagnostics/LSPDiagnosticsPublisher.swift": {
-   "covered": 73,
+   "covered": 93,
    "executable": 95,
    "scope": "viewModel"
   },
@@ -1136,7 +1141,7 @@
    "scope": "viewModel"
   },
   "Dreamder/Features/LSP/LanguageServer/InitializationGatedConnection.swift": {
-   "covered": 61,
+   "covered": 67,
    "executable": 67,
    "scope": "viewModel"
   },
@@ -1151,12 +1156,12 @@
    "scope": "viewModel"
   },
   "Dreamder/Features/LSP/LanguageServer/LanguageServer.swift": {
-   "covered": 235,
+   "covered": 311,
    "executable": 330,
    "scope": "viewModel"
   },
   "Dreamder/Features/LSP/LanguageServer/LanguageServerFileMap.swift": {
-   "covered": 21,
+   "covered": 24,
    "executable": 44,
    "scope": "pure"
   },
@@ -1296,17 +1301,17 @@
    "scope": "viewModel"
   },
   "Dreamder/Features/LSP/Service/LSPService+ClientRequests.swift": {
-   "covered": 0,
+   "covered": 29,
    "executable": 182,
    "scope": "viewModel"
   },
   "Dreamder/Features/LSP/Service/LSPService+Events.swift": {
-   "covered": 0,
+   "covered": 50,
    "executable": 71,
    "scope": "viewModel"
   },
   "Dreamder/Features/LSP/Service/LSPService.swift": {
-   "covered": 149,
+   "covered": 205,
    "executable": 366,
    "scope": "viewModel"
   },
@@ -1355,15 +1360,160 @@
    "executable": 17,
    "scope": "view"
   },
+  "Dreamder/Features/Markdown/Actions/MarkdownActionResult.swift": {
+   "covered": 114,
+   "executable": 123,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Actions/MarkdownDocument.swift": {
+   "covered": 572,
+   "executable": 601,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Actions/MarkdownEditorCommand.swift": {
+   "covered": 51,
+   "executable": 51,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Actions/MarkdownEmphasisToggle.swift": {
+   "covered": 496,
+   "executable": 499,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Actions/MarkdownHeaderAnchor.swift": {
+   "covered": 264,
+   "executable": 269,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Actions/MarkdownHeaderLevel.swift": {
+   "covered": 243,
+   "executable": 252,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Actions/MarkdownInline.swift": {
+   "covered": 483,
+   "executable": 512,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Actions/MarkdownLinkCreation.swift": {
+   "covered": 382,
+   "executable": 417,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Actions/MarkdownTable.swift": {
+   "covered": 252,
+   "executable": 258,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Actions/MarkdownTableFormatter.swift": {
+   "covered": 324,
+   "executable": 336,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Actions/MarkdownTableNavigation.swift": {
+   "covered": 103,
+   "executable": 104,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Actions/MarkdownTableOfContents.swift": {
+   "covered": 152,
+   "executable": 163,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Actions/MarkdownText.swift": {
+   "covered": 102,
+   "executable": 116,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Commands/MarkdownCommands.swift": {
+   "covered": 143,
+   "executable": 197,
+   "scope": "view"
+  },
+  "Dreamder/Features/Markdown/Commands/MarkdownTableGridModel.swift": {
+   "covered": 26,
+   "executable": 26,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Commands/MarkdownTableGridPicker.swift": {
+   "covered": 0,
+   "executable": 134,
+   "scope": "view"
+  },
+  "Dreamder/Features/Markdown/Highlighting/MarkdownBlockLexer.swift": {
+   "covered": 868,
+   "executable": 902,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Highlighting/MarkdownHTMLScanner.swift": {
+   "covered": 308,
+   "executable": 343,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Highlighting/MarkdownHighlightProvider.swift": {
+   "covered": 127,
+   "executable": 127,
+   "scope": "viewModel"
+  },
+  "Dreamder/Features/Markdown/Highlighting/MarkdownInlineLexer.swift": {
+   "covered": 644,
+   "executable": 673,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Highlighting/MarkdownToken.swift": {
+   "covered": 93,
+   "executable": 104,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Model/MarkdownListItemPrefix.swift": {
+   "covered": 129,
+   "executable": 133,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Structure/MarkdownHeaderOutline.swift": {
+   "covered": 174,
+   "executable": 176,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Typing/MarkdownListEnter.swift": {
+   "covered": 378,
+   "executable": 388,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Typing/MarkdownListRenumber.swift": {
+   "covered": 148,
+   "executable": 148,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Typing/MarkdownListStructure.swift": {
+   "covered": 433,
+   "executable": 442,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Typing/MarkdownTextState.swift": {
+   "covered": 96,
+   "executable": 103,
+   "scope": "pure"
+  },
+  "Dreamder/Features/Markdown/Typing/MarkdownTypingCoordinator.swift": {
+   "covered": 105,
+   "executable": 105,
+   "scope": "viewModel"
+  },
   "Dreamder/Features/MarkdownPreview/MarkdownBlockRenderer.swift": {
-   "covered": 588,
-   "executable": 620,
+   "covered": 711,
+   "executable": 747,
    "scope": "pure"
   },
   "Dreamder/Features/MarkdownPreview/MarkdownEditorWithPreview.swift": {
-   "covered": 0,
-   "executable": 273,
+   "covered": 81,
+   "executable": 91,
    "scope": "view"
+  },
+  "Dreamder/Features/MarkdownPreview/MarkdownHTMLEntities.swift": {
+   "covered": 53,
+   "executable": 70,
+   "scope": "pure"
   },
   "Dreamder/Features/MarkdownPreview/MarkdownHTMLRenderer.swift": {
    "covered": 27,
@@ -1371,24 +1521,64 @@
    "scope": "pure"
   },
   "Dreamder/Features/MarkdownPreview/MarkdownHTMLSanitizer.swift": {
-   "covered": 218,
+   "covered": 224,
    "executable": 246,
    "scope": "pure"
   },
   "Dreamder/Features/MarkdownPreview/MarkdownInlineRenderer.swift": {
-   "covered": 318,
-   "executable": 355,
+   "covered": 604,
+   "executable": 647,
    "scope": "pure"
   },
   "Dreamder/Features/MarkdownPreview/MarkdownPreviewLayout.swift": {
-   "covered": 29,
-   "executable": 57,
+   "covered": 124,
+   "executable": 135,
+   "scope": "viewModel"
+  },
+  "Dreamder/Features/MarkdownPreview/MarkdownPreviewLayoutButtons.swift": {
+   "covered": 64,
+   "executable": 75,
+   "scope": "view"
+  },
+  "Dreamder/Features/MarkdownPreview/MarkdownPreviewModel.swift": {
+   "covered": 79,
+   "executable": 81,
+   "scope": "viewModel"
+  },
+  "Dreamder/Features/MarkdownPreview/MarkdownPreviewScripts.swift": {
+   "covered": 6,
+   "executable": 9,
+   "scope": "view"
+  },
+  "Dreamder/Features/MarkdownPreview/MarkdownPreviewScrollSync.swift": {
+   "covered": 42,
+   "executable": 46,
+   "scope": "pure"
+  },
+  "Dreamder/Features/MarkdownPreview/MarkdownPreviewSettings.swift": {
+   "covered": 19,
+   "executable": 19,
+   "scope": "viewModel"
+  },
+  "Dreamder/Features/MarkdownPreview/MarkdownPreviewStyles.swift": {
+   "covered": 264,
+   "executable": 266,
+   "scope": "pure"
+  },
+  "Dreamder/Features/MarkdownPreview/MarkdownPreviewTheme.swift": {
+   "covered": 34,
+   "executable": 44,
    "scope": "viewModel"
   },
   "Dreamder/Features/MarkdownPreview/MarkdownPreviewWebView.swift": {
-   "covered": 0,
-   "executable": 90,
+   "covered": 73,
+   "executable": 105,
    "scope": "view"
+  },
+  "Dreamder/Features/MarkdownPreview/MarkdownRenderContext.swift": {
+   "covered": 212,
+   "executable": 221,
+   "scope": "pure"
   },
   "Dreamder/Features/Matching/KeyboardLayoutConverter.swift": {
    "covered": 44,
@@ -1406,7 +1596,7 @@
    "scope": "pure"
   },
   "Dreamder/Features/Matching/MinusculeMatcherCore.swift": {
-   "covered": 600,
+   "covered": 595,
    "executable": 610,
    "scope": "pure"
   },
@@ -1641,7 +1831,7 @@
    "scope": "view"
   },
   "Dreamder/Features/Notifications/Models/CENotification.swift": {
-   "covered": 0,
+   "covered": 39,
    "executable": 51,
    "scope": "pure"
   },
@@ -1651,33 +1841,33 @@
    "scope": "viewModel"
   },
   "Dreamder/Features/Notifications/NotificationManager+System.swift": {
-   "covered": 0,
+   "covered": 13,
    "executable": 30,
    "scope": "viewModel"
   },
   "Dreamder/Features/Notifications/NotificationManager.swift": {
-   "covered": 24,
+   "covered": 105,
    "executable": 127,
    "scope": "viewModel"
   },
   "Dreamder/Features/Notifications/ViewModels/NotificationPanelViewModel.swift": {
-   "covered": 72,
+   "covered": 425,
    "executable": 435,
    "scope": "viewModel"
   },
   "Dreamder/Features/Notifications/Views/NotificationBannerView.swift": {
-   "covered": 8,
+   "covered": 283,
    "executable": 329,
    "scope": "view"
   },
   "Dreamder/Features/Notifications/Views/NotificationPanelView.swift": {
-   "covered": 430,
+   "covered": 455,
    "executable": 519,
    "scope": "view"
   },
   "Dreamder/Features/OpenQuickly/ViewModels/OpenQuicklyViewModel.swift": {
-   "covered": 5,
-   "executable": 112,
+   "covered": 70,
+   "executable": 71,
    "scope": "viewModel"
   },
   "Dreamder/Features/OpenQuickly/Views/NSTableViewWrapper.swift": {
@@ -1716,7 +1906,7 @@
    "scope": "viewModel"
   },
   "Dreamder/Features/Search/FuzzySearch/FuzzySearchable.swift": {
-   "covered": 49,
+   "covered": 51,
    "executable": 51,
    "scope": "pure"
   },
@@ -1806,13 +1996,13 @@
    "scope": "viewModel"
   },
   "Dreamder/Features/SearchEverywhere/SearchEverywhereShiftMonitor.swift": {
-   "covered": 11,
+   "covered": 30,
    "executable": 78,
    "scope": "viewModel"
   },
   "Dreamder/Features/SearchEverywhere/SearchEverywhereSymbolExtractor.swift": {
-   "covered": 225,
-   "executable": 347,
+   "covered": 232,
+   "executable": 354,
    "scope": "pure"
   },
   "Dreamder/Features/SearchEverywhere/SearchEverywhereSymbolIndex.swift": {
@@ -1881,8 +2071,8 @@
    "scope": "viewModel"
   },
   "Dreamder/Features/Settings/Models/SettingsData.swift": {
-   "covered": 46,
-   "executable": 103,
+   "covered": 52,
+   "executable": 108,
    "scope": "viewModel"
   },
   "Dreamder/Features/Settings/Models/SettingsInjector.swift": {
@@ -2486,7 +2676,7 @@
    "scope": "pure"
   },
   "Dreamder/Features/SourceControl/BranchesPopup/BranchesPopupCompare.swift": {
-   "covered": 28,
+   "covered": 53,
    "executable": 301,
    "scope": "viewModel"
   },
@@ -2511,8 +2701,8 @@
    "scope": "view"
   },
   "Dreamder/Features/SourceControl/BranchesPopup/BranchesPopupModel.swift": {
-   "covered": 421,
-   "executable": 430,
+   "covered": 423,
+   "executable": 431,
    "scope": "pure"
   },
   "Dreamder/Features/SourceControl/BranchesPopup/BranchesPopupPrompt.swift": {
@@ -2646,7 +2836,7 @@
    "scope": "viewModel"
   },
   "Dreamder/Features/SourceControl/Clone/ViewModels/GitCloneViewModel.swift": {
-   "covered": 0,
+   "covered": 18,
    "executable": 188,
    "scope": "viewModel"
   },
@@ -2685,6 +2875,11 @@
    "executable": 666,
    "scope": "pure"
   },
+  "Dreamder/Features/SourceControl/DiffEngine/ByWordFirst.swift": {
+   "covered": 210,
+   "executable": 221,
+   "scope": "pure"
+  },
   "Dreamder/Features/SourceControl/DiffEngine/ChangeCorrector.swift": {
    "covered": 65,
    "executable": 65,
@@ -2695,8 +2890,13 @@
    "executable": 180,
    "scope": "pure"
   },
+  "Dreamder/Features/SourceControl/DiffEngine/ComparisonManager+Ranges.swift": {
+   "covered": 229,
+   "executable": 230,
+   "scope": "pure"
+  },
   "Dreamder/Features/SourceControl/DiffEngine/ComparisonManager.swift": {
-   "covered": 406,
+   "covered": 409,
    "executable": 427,
    "scope": "pure"
   },
@@ -2706,7 +2906,7 @@
    "scope": "pure"
   },
   "Dreamder/Features/SourceControl/DiffEngine/ComparisonUtil.swift": {
-   "covered": 106,
+   "covered": 110,
    "executable": 114,
    "scope": "pure"
   },
@@ -2716,12 +2916,12 @@
    "scope": "pure"
   },
   "Dreamder/Features/SourceControl/DiffEngine/DiffRanges.swift": {
-   "covered": 69,
+   "covered": 71,
    "executable": 81,
    "scope": "pure"
   },
   "Dreamder/Features/SourceControl/DiffEngine/LineOffsets.swift": {
-   "covered": 43,
+   "covered": 59,
    "executable": 59,
    "scope": "pure"
   },
@@ -2745,9 +2945,14 @@
    "executable": 432,
    "scope": "pure"
   },
+  "Dreamder/Features/SourceControl/DiffEngine/TextDiffProvider.swift": {
+   "covered": 57,
+   "executable": 57,
+   "scope": "pure"
+  },
   "Dreamder/Features/SourceControl/DiffEngine/TrimUtil.swift": {
-   "covered": 217,
-   "executable": 289,
+   "covered": 297,
+   "executable": 302,
    "scope": "pure"
   },
   "Dreamder/Features/SourceControl/DiffViewer/DiffCodeStyle.swift": {
@@ -2781,7 +2986,7 @@
    "scope": "view"
   },
   "Dreamder/Features/SourceControl/DiffViewer/TextDiff.swift": {
-   "covered": 167,
+   "covered": 170,
    "executable": 173,
    "scope": "pure"
   },
@@ -2836,8 +3041,8 @@
    "scope": "pure"
   },
   "Dreamder/Features/SourceControl/GitToolWindow/GitLogGraphCore.swift": {
-   "covered": 234,
-   "executable": 240,
+   "covered": 216,
+   "executable": 242,
    "scope": "pure"
   },
   "Dreamder/Features/SourceControl/GitToolWindow/GitLogGraphLayoutBuilder.swift": {
@@ -2851,8 +3056,8 @@
    "scope": "view"
   },
   "Dreamder/Features/SourceControl/GitToolWindow/GitLogPrintElements.swift": {
-   "covered": 317,
-   "executable": 355,
+   "covered": 326,
+   "executable": 364,
    "scope": "pure"
   },
   "Dreamder/Features/SourceControl/GitToolWindow/GitLogRelativeDate.swift": {
@@ -2881,7 +3086,7 @@
    "scope": "view"
   },
   "Dreamder/Features/SourceControl/MergeTool/MergeConflictRepository.swift": {
-   "covered": 144,
+   "covered": 163,
    "executable": 172,
    "scope": "io"
   },
@@ -2971,7 +3176,7 @@
    "scope": "pure"
   },
   "Dreamder/Features/SourceControl/Models/GitChangedFile.swift": {
-   "covered": 4,
+   "covered": 12,
    "executable": 16,
    "scope": "pure"
   },
@@ -2991,12 +3196,12 @@
    "scope": "pure"
   },
   "Dreamder/Features/SourceControl/SourceControlManager+BranchOperations.swift": {
-   "covered": 104,
+   "covered": 107,
    "executable": 162,
    "scope": "viewModel"
   },
   "Dreamder/Features/SourceControl/SourceControlManager+GitClient.swift": {
-   "covered": 123,
+   "covered": 146,
    "executable": 279,
    "scope": "viewModel"
   },
@@ -3131,7 +3336,7 @@
    "scope": "view"
   },
   "Dreamder/Features/StatusBar/Views/StatusBarItems/StatusBarNotificationsButton.swift": {
-   "covered": 58,
+   "covered": 64,
    "executable": 72,
    "scope": "view"
   },
@@ -3141,8 +3346,8 @@
    "scope": "view"
   },
   "Dreamder/Features/Tasks/Models/CEActiveTask.swift": {
-   "covered": 112,
-   "executable": 159,
+   "covered": 113,
+   "executable": 160,
    "scope": "viewModel"
   },
   "Dreamder/Features/Tasks/Models/CETaskStatus.swift": {
@@ -3186,12 +3391,12 @@
    "scope": "viewModel"
   },
   "Dreamder/Features/TerminalEmulator/Views/CEActiveTaskTerminalView.swift": {
-   "covered": 75,
-   "executable": 85,
+   "covered": 91,
+   "executable": 101,
    "scope": "view"
   },
   "Dreamder/Features/TerminalEmulator/Views/CELocalShellTerminalView.swift": {
-   "covered": 79,
+   "covered": 80,
    "executable": 108,
    "scope": "io"
   },
@@ -3366,8 +3571,8 @@
    "scope": "view"
   },
   "Dreamder/Features/WindowCommands/DreamderCommands.swift": {
-   "covered": 27,
-   "executable": 27,
+   "covered": 37,
+   "executable": 37,
    "scope": "view"
   },
   "Dreamder/Features/WindowCommands/EditorCommands.swift": {
@@ -3516,7 +3721,7 @@
    "scope": "pure"
   },
   "Dreamder/Utils/Extensions/LanguageIdentifier/LanguageIdentifier+CodeLanguage.swift": {
-   "covered": 33,
+   "covered": 45,
    "executable": 71,
    "scope": "pure"
   },
@@ -3641,7 +3846,7 @@
    "scope": "pure"
   },
   "Dreamder/Utils/Extensions/URL/URL+Identifiable.swift": {
-   "covered": 0,
+   "covered": 3,
    "executable": 3,
    "scope": "pure"
   },
@@ -3823,25 +4028,25 @@
  },
  "scopes": {
   "io": {
-   "covered": 4840,
+   "covered": 4884,
    "executable": 7631
   },
   "pure": {
-   "covered": 14253,
-   "executable": 18718
+   "covered": 22744,
+   "executable": 27422
   },
   "view": {
-   "covered": 9586,
-   "executable": 46698
+   "covered": 10717,
+   "executable": 47010
   },
   "viewModel": {
-   "covered": 9747,
-   "executable": 18686
+   "covered": 11761,
+   "executable": 19331
   }
  },
  "toolchain": "swift-6.4",
  "total": {
-  "covered": 38426,
-  "executable": 91733
+  "covered": 50106,
+  "executable": 101394
  }
 }

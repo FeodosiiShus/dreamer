@@ -449,7 +449,12 @@ nonisolated final class GitLogPrintElementGenerator {
                 result.append(.edge(edge))
             }
         }
-        result.sort(by: comparator.areInIncreasingOrder)
+        result = result.enumerated()
+            .sorted { left, right in
+                let order = comparator.compare(left.element, right.element)
+                return order != 0 ? order < 0 : left.offset < right.offset
+            }
+            .map(\.element)
         cache[rowIndex] = result
         return result
     }

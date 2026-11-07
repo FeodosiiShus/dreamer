@@ -181,6 +181,38 @@ extension GitMergeFixture {
         return fixture
     }
 
+    static func rebaseOntoDetachedCommitConflict(in root: URL) throws -> GitMergeFixture {
+        let fixture = try GitMergeFixture(root: root)
+        try fixture.write("src/main.swift", "line1\nline2\nline3\n")
+        try fixture.commit("base")
+        try fixture.run("checkout", "-q", "-b", "feature")
+        try fixture.write("src/main.swift", "line1\nfeature-line\nline3\n")
+        try fixture.commit("feature edit")
+        try fixture.run("checkout", "-q", "main")
+        try fixture.write("src/main.swift", "line1\nmain-line\nline3\n")
+        try fixture.commit("main edit")
+        let onto = try fixture.run("rev-parse", "HEAD").trimmingCharacters(in: .whitespacesAndNewlines)
+        try fixture.write("src/other.swift", "other\n")
+        try fixture.commit("main tip")
+        try fixture.run("checkout", "-q", "feature")
+        _ = try fixture.runIgnoringFailure("rebase", onto)
+        return fixture
+    }
+
+    static func cherryPickConflict(in root: URL) throws -> GitMergeFixture {
+        let fixture = try GitMergeFixture(root: root)
+        try fixture.write("src/main.swift", "line1\nline2\nline3\n")
+        try fixture.commit("base")
+        try fixture.run("checkout", "-q", "-b", "feature")
+        try fixture.write("src/main.swift", "line1\nfeature-line\nline3\n")
+        try fixture.commit("feature edit")
+        try fixture.run("checkout", "-q", "main")
+        try fixture.write("src/main.swift", "line1\nmain-line\nline3\n")
+        try fixture.commit("main edit")
+        _ = try fixture.runIgnoringFailure("cherry-pick", "feature")
+        return fixture
+    }
+
     static func bothAddedConflict(in root: URL) throws -> GitMergeFixture {
         let fixture = try GitMergeFixture(root: root)
         try fixture.write("base.txt", "base\n")

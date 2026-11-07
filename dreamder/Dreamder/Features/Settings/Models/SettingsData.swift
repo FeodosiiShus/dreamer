@@ -56,6 +56,8 @@ struct SettingsData: Codable, Hashable {
     /// Developer settings for Dreamder developers
     var developerSettings: DeveloperSettings = .init()
 
+    var markdownPreview: MarkdownPreviewSettings = .init()
+
     /// Default initializer
     init() {}
 
@@ -82,6 +84,9 @@ struct SettingsData: Codable, Hashable {
         ) ?? .init()
         self.developerSettings = try container.decodeIfPresent(
             DeveloperSettings.self, forKey: .developerSettings
+        ) ?? .init()
+        self.markdownPreview = try container.decodeIfPresent(
+            MarkdownPreviewSettings.self, forKey: .markdownPreview
         ) ?? .init()
     }
 

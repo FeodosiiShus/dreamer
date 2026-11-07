@@ -122,6 +122,25 @@ struct CodeFileView: View {
         return coordinators
     }
 
+    private var isMarkdown: Bool {
+        MarkdownPreviewLayoutStore.isMarkdownFile(codeFile.fileURL)
+    }
+
+    private var wrapsLines: Bool {
+        isMarkdown ? (codeFile.wrapLines ?? true) : wrapLinesToEditorWidth
+    }
+
+    private func highlightProviders(for session: CodeFileViewSession) -> [HighlightProviding] {
+        var providers: [HighlightProviding] = [
+            codeFile.languageServerObjects.highlightProvider,
+            session.treeSitterClient
+        ]
+        if let markdownProvider = session.markdownHighlightProvider {
+            providers.append(markdownProvider)
+        }
+        return providers
+    }
+
     private var editorState: SourceEditorState {
         SourceEditorState(
             cursorPositions: editorInstance.cursorPositions,
@@ -155,7 +174,7 @@ struct CodeFileView: View {
                     font: font,
                     lineHeightMultiple: lineHeightMultiple,
                     letterSpacing: letterSpacing,
-                    wrapLines: wrapLinesToEditorWidth,
+                    wrapLines: wrapsLines,
                     useSystemCursor: useSystemCursor,
                     tabWidth: defaultTabWidth,
                     bracketPairEmphasis: getBracketPairEmphasis(for: theme)
@@ -198,10 +217,7 @@ struct CodeFileView: View {
                     }
                 }
             ),
-            highlightProviders: [
-                codeFile.languageServerObjects.highlightProvider,
-                session.treeSitterClient
-            ],
+            highlightProviders: highlightProviders(for: session),
             undoManager: undoRegistration.manager(forFile: editorInstance.file),
             coordinators: coordinators(for: session),
             completionDelegate: codeFile.languageServerObjects.completionDelegate,

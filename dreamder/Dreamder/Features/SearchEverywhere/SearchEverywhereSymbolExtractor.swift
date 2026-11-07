@@ -50,6 +50,7 @@ nonisolated struct ExtractedSymbol: Equatable, Sendable {
     let name: String
     let kind: SearchEverywhereSymbolKind
     let line: Int
+    var nestingLevel: Int?
 }
 
 struct SearchEverywhereSymbol: Hashable {
@@ -91,6 +92,10 @@ nonisolated enum SymbolExtractor {
             return goSymbols(in: lines)
         case "rs":
             return rustSymbols(in: lines)
+        case "md", "markdown":
+            return MarkdownHeaderOutline.entries(in: text).map {
+                ExtractedSymbol(name: $0.title, kind: .field, line: $0.line, nestingLevel: $0.depth)
+            }
         default:
             return []
         }

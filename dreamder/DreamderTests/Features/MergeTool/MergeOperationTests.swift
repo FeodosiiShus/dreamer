@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Dreamder
 
@@ -88,5 +89,21 @@ struct MergeOperationTests {
         #expect(MergeConflictRepository.shortBranchName("refs/heads/main") == "main")
         #expect(MergeConflictRepository.shortBranchName("refs/tags/v1.0") == "v1.0")
         #expect(MergeConflictRepository.shortBranchName("  feature  ") == "feature")
+    }
+
+    @Test
+    func gitErrorsAreDescribedByTheirGitText() {
+        let output = MergeToolErrorText.describe(GitClient.GitClientError.outputError("fatal: bad revision"))
+        let notRepository = MergeToolErrorText.describe(GitClient.GitClientError.notGitRepository)
+
+        #expect(output == "fatal: bad revision")
+        #expect(notRepository == "Not a git repository")
+    }
+
+    @Test
+    func foreignErrorsFallBackToTheirLocalizedDescription() {
+        let error = NSError(domain: "MergeTest", code: 7, userInfo: [NSLocalizedDescriptionKey: "disk is full"])
+
+        #expect(MergeToolErrorText.describe(error) == "disk is full")
     }
 }

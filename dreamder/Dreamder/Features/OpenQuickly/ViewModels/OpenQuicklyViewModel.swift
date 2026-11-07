@@ -15,6 +15,7 @@ final class OpenQuicklyViewModel {
 
     let fileURL: URL
     @ObservationIgnored var runningTask: Task<Void, Never>?
+    @ObservationIgnored private var searchGeneration = 0
 
     init(fileURL: URL) {
         self.fileURL = fileURL
@@ -38,49 +39,34 @@ final class OpenQuicklyViewModel {
     }
 
     func fetchResults() {
-        let startTime = Date()
-        guard query != "" else {
+        searchGeneration += 1
+        let generation = searchGeneration
+        runningTask?.cancel()
+        let trimmedQuery = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmedQuery.isEmpty else {
+            runningTask = nil
             searchResults = []
             return
         }
 
-        runningTask?.cancel()
+        let root = fileURL
         runningTask = Task.detached(priority: .userInitiated) {
             let enumerator = FileManager.default.enumerator(
-                at: self.fileURL,
-                includingPropertiesForKeys: [
-                    .isRegularFileKey
-                ],
-                options: [
-                    .skipsPackageDescendants
-                ]
+                at: root,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsPackageDescendants]
             )
-            if let filePaths = enumerator?.allObjects as? [URL] {
-                guard !Task.isCancelled else { return }
-                /// removes all filePaths which aren't regular files
-                let filteredFiles = filePaths.filter { url in
-                    do {
-                        let values = try url.resourceValues(forKeys: [.isRegularFileKey])
-                        return (values.isRegularFile ?? false)
-                    } catch {
-                        return false
-                    }
-                }
-
-                let fuzzySearchResults = await filteredFiles.fuzzySearch(
-                    query: self.query.trimmingCharacters(in: .whitespaces)
-                ).concurrentMap {
-                    SearchResult(
-                        fileURL: $0.item,
-                        matchedCharacters: $0.result.matchedParts
-                    )
-                }
-
-                guard !Task.isCancelled else { return }
-                await MainActor.run {
-                    self.searchResults = fuzzySearchResults
-                    print("Duration: \(Date().timeIntervalSince(startTime))")
-                }
+            guard let filePaths = enumerator?.allObjects as? [URL], !Task.isCancelled else { return }
+            let filteredFiles = filePaths.filter { url in
+                (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile ?? false
+            }
+            let fuzzySearchResults = await filteredFiles.fuzzySearch(query: trimmedQuery).concurrentMap {
+                SearchResult(fileURL: $0.item, matchedCharacters: $0.result.matchedParts)
+            }
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard generation == self.searchGeneration else { return }
+                self.searchResults = fuzzySearchResults
             }
         }
     }

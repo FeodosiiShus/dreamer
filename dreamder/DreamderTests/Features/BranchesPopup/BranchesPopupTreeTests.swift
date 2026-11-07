@@ -104,7 +104,7 @@ struct BranchesPopupTreeTests {
     }
 
     @Test
-    func recentBranchesAreExcludedFromLocal() {
+    func withoutFilterRecentBranchesAlsoStayInLocal() {
         let sections = BranchesPopupTreeBuilder.build(input(
             locals: [local("main"), local("feature"), local("fix")],
             recent: ["feature", "fix"],
@@ -112,7 +112,20 @@ struct BranchesPopupTreeTests {
         ))
         #expect(sections.map(\.id) == [.recent, .local])
         #expect(sections.first { $0.id == .recent }?.nodes.map(\.title) == ["feature", "fix"])
-        #expect(sections.first { $0.id == .local }?.nodes.map(\.title) == ["main"])
+        #expect(sections.first { $0.id == .local }?.nodes.map(\.title) == ["main", "feature", "fix"])
+    }
+
+    @Test
+    func filterExcludesRecentBranchesFromLocal() {
+        let sections = BranchesPopupTreeBuilder.build(input(
+            locals: [local("main"), local("feature"), local("feat2")],
+            recent: ["feature"],
+            current: "main",
+            query: "feat"
+        ))
+        #expect(sections.map(\.id) == [.recent, .local])
+        #expect(sections.first { $0.id == .recent }?.nodes.map(\.title) == ["feature"])
+        #expect(sections.first { $0.id == .local }?.nodes.map(\.title) == ["feat2"])
     }
 
     @Test
@@ -251,7 +264,7 @@ struct BranchesPopupTreeTests {
         let recentIDs = Set(sections.first { $0.id == .recent }?.nodes.map(\.id) ?? [])
         let localIDs = Set(sections.first { $0.id == .local }?.nodes.map(\.id) ?? [])
         #expect(recentIDs == [.ref(.recent, "feature")])
-        #expect(localIDs == [.ref(.local, "main")])
+        #expect(localIDs == [.ref(.local, "main"), .ref(.local, "feature")])
         #expect(recentIDs.isDisjoint(with: localIDs))
     }
 
@@ -332,21 +345,23 @@ struct BranchesPopupTreeTests {
         ))
         #expect(BranchesPopupTreeBuilder.maxRecentBranches == 5)
         #expect(sections.first { $0.id == .recent }?.nodes.map(\.title) == ["a", "b", "c", "d", "e"])
-        #expect(sections.first { $0.id == .local }?.nodes.map(\.title) == ["main", "f"])
+        #expect(sections.first { $0.id == .local }?.nodes.map(\.title) == ["main", "a", "b", "c", "d", "e", "f"])
     }
 
     @Test
-    func currentBranchInRecentIsNotRepeatedInLocal() {
+    func currentBranchInRecentIsAlsoListedInLocalWithoutFilter() {
         let sections = BranchesPopupTreeBuilder.build(input(
             locals: [local("main"), local("feature"), local("fix")],
             recent: ["main", "feature", "main", "feature"],
             current: "main"
         ))
-        let all = sections.flatMap(\.refs)
-        #expect(all.filter { $0.shortName == "main" }.count == 1)
-        #expect(all.filter { $0.shortName == "feature" }.count == 1)
+        let recentRefs = refs(in: sections.first { $0.id == .recent })
+        let localRefs = refs(in: sections.first { $0.id == .local })
+        #expect(recentRefs.filter { $0.shortName == "main" }.count == 1)
+        #expect(recentRefs.filter { $0.shortName == "feature" }.count == 1)
+        #expect(localRefs.filter { $0.shortName == "main" }.count == 1)
         #expect(sections.first { $0.id == .recent }?.nodes.map(\.title) == ["main", "feature"])
-        #expect(sections.first { $0.id == .local }?.nodes.map(\.title) == ["fix"])
+        #expect(sections.first { $0.id == .local }?.nodes.map(\.title) == ["main", "feature", "fix"])
     }
 
     @Test
@@ -357,9 +372,11 @@ struct BranchesPopupTreeTests {
             recent: names,
             current: "branch7"
         ))
-        let all = sections.flatMap(\.refs)
-        #expect(all.filter { $0.shortName == "branch7" }.count == 1)
-        #expect(sections.first { $0.id == .local }?.nodes.map(\.title) == ["branch7", "branch6"])
+        let recentRefs = refs(in: sections.first { $0.id == .recent })
+        let localRefs = refs(in: sections.first { $0.id == .local })
+        #expect(recentRefs.filter { $0.shortName == "branch7" }.isEmpty)
+        #expect(localRefs.filter { $0.shortName == "branch7" }.count == 1)
+        #expect(sections.first { $0.id == .local }?.nodes.first?.title == "branch7")
     }
 
     @Test

@@ -5,6 +5,8 @@ import WebKit
 struct MarkdownPreviewWebView: NSViewRepresentable {
     let bodyHTML: String
     let baseURL: URL?
+    let palette: MarkdownPreviewPalette
+    let followOffset: Int?
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -15,14 +17,13 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
-        webView.underPageBackgroundColor = NSColor(srgbRed: 25 / 255, green: 26 / 255, blue: 28 / 255, alpha: 1)
         webView.allowsMagnification = false
-        context.coordinator.show(bodyHTML, baseURL: baseURL, in: webView)
+        context.coordinator.show(self, in: webView)
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        context.coordinator.show(bodyHTML, baseURL: baseURL, in: webView)
+        context.coordinator.show(self, in: webView)
     }
 
     static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
@@ -31,41 +32,65 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         private var loadedBaseURL: URL?
+        private var loadedPalette: MarkdownPreviewPalette?
         private var loadedBody: String?
         private var currentBody: String?
+        private var followOffset: Int?
+        private var appliedFollowOffset: Int?
         private var isPageLoaded = false
 
-        func show(_ body: String, baseURL: URL?, in webView: WKWebView) {
-            currentBody = body
-            if loadedBaseURL != baseURL || loadedBody == nil {
-                load(body, baseURL: baseURL, in: webView)
+        func show(_ view: MarkdownPreviewWebView, in webView: WKWebView) {
+            currentBody = view.bodyHTML
+            followOffset = view.followOffset
+            if loadedBaseURL != view.baseURL || loadedPalette != view.palette || loadedBody == nil {
+                load(view.bodyHTML, baseURL: view.baseURL, palette: view.palette, in: webView)
                 return
             }
-            guard isPageLoaded, loadedBody != body else { return }
-            apply(body, in: webView)
+            guard isPageLoaded else { return }
+            if loadedBody != view.bodyHTML {
+                apply(view.bodyHTML, in: webView)
+            }
+            follow(in: webView)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
             isPageLoaded = true
-            guard let currentBody, currentBody != loadedBody else { return }
-            apply(currentBody, in: webView)
+            webView.evaluateJavaScript(MarkdownPreviewScripts.pageScript, completionHandler: { _, _ in })
+            if let currentBody, currentBody != loadedBody {
+                apply(currentBody, in: webView)
+            }
+            appliedFollowOffset = nil
+            follow(in: webView)
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-            load(loadedBody ?? "", baseURL: loadedBaseURL, in: webView)
+            guard let loadedPalette else { return }
+            load(loadedBody ?? "", baseURL: loadedBaseURL, palette: loadedPalette, in: webView)
         }
 
-        private func load(_ body: String, baseURL: URL?, in webView: WKWebView) {
+        private func load(_ body: String, baseURL: URL?, palette: MarkdownPreviewPalette, in webView: WKWebView) {
             loadedBaseURL = baseURL
+            loadedPalette = palette
             loadedBody = body
             isPageLoaded = false
-            let document = MarkdownHTMLRenderer.documentHTML(body: body, baseURL: baseURL)
+            appliedFollowOffset = nil
+            webView.underPageBackgroundColor = palette.background.nsColor
+            let document = MarkdownHTMLRenderer.documentHTML(body: body, baseURL: baseURL, palette: palette)
             _ = webView.loadHTMLString(document, baseURL: baseURL)
         }
 
         private func apply(_ body: String, in webView: WKWebView) {
             loadedBody = body
-            webView.evaluateJavaScript(Self.replaceBodyScript(body), completionHandler: { _, _ in })
+            let literal = Self.javaScriptLiteral(body) ?? "\"\""
+            let script = MarkdownPreviewScripts.replaceBodyScript(bodyLiteral: literal, follow: followOffset != nil)
+            webView.evaluateJavaScript(script, completionHandler: { _, _ in })
+        }
+
+        private func follow(in webView: WKWebView) {
+            guard let followOffset, followOffset != appliedFollowOffset else { return }
+            appliedFollowOffset = followOffset
+            let script = MarkdownPreviewScripts.scrollScript(offset: followOffset)
+            webView.evaluateJavaScript(script, completionHandler: { _, _ in })
         }
 
         func webView(
@@ -95,17 +120,9 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
         private func scroll(toAnchor fragment: String, in webView: WKWebView) {
             guard let literal = Self.javaScriptLiteral(fragment) else { return }
             webView.evaluateJavaScript(
-                "(function(){var element = document.getElementById(\(literal));" +
-                "if (element) { element.scrollIntoView(); }})();",
+                MarkdownPreviewScripts.anchorScript(identifierLiteral: literal),
                 completionHandler: { _, _ in }
             )
-        }
-
-        private static func replaceBodyScript(_ body: String) -> String {
-            let literal = javaScriptLiteral(body) ?? "\"\""
-            return "(function(){var y = window.scrollY;" +
-                "document.body.innerHTML = \(literal);" +
-                "window.scrollTo(0, y);})();"
         }
 
         private static func javaScriptLiteral(_ value: String) -> String? {

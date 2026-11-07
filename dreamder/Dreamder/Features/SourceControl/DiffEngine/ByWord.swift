@@ -190,7 +190,7 @@ nonisolated enum ByWord {
         return result
     }
 
-    private static func subiterable(
+    static func subiterable(
         _ changed: [DiffRange],
         _ start1: Int,
         _ end1: Int,
@@ -217,7 +217,7 @@ nonisolated enum ByWord {
         return DiffChanges(changes: ranges, length1: end1 - start1, length2: end2 - start2)
     }
 
-    private static func matchAdjustmentDelimiters(
+    static func matchAdjustmentDelimiters(
         _ text1: DiffUnits,
         _ text2: DiffUnits,
         _ words1: [InlineChunk],
@@ -238,7 +238,7 @@ nonisolated enum ByWord {
         return try matcher.build()
     }
 
-    private static func matchAdjustmentWhitespaces(
+    static func matchAdjustmentWhitespaces(
         _ text1: DiffUnits,
         _ text2: DiffUnits,
         _ iterable: DiffChanges,

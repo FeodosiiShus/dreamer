@@ -15,7 +15,10 @@ struct DreamderCommands: Commands {
         Group { // SwiftUI limits to 9 items in an initializer, so we have to group every 9 items.
             MainCommands()
             FileCommands()
-            ViewCommands()
+            Group {
+                ViewCommands()
+                MarkdownCommands()
+            }
             FindCommands()
             NavigateCommands()
             TasksCommands()

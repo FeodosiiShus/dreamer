@@ -21,4 +21,6 @@ enum WorkspaceStateKey: String {
     case toolWindowBottomSplit
     case toolWindowSplitIDs
     case toolWindowSideWeights
+    case markdownPreviewLayouts
+    case markdownPreviewSplitWeights
 }

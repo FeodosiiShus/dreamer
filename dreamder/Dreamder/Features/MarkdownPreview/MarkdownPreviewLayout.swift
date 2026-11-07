@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import SwiftUI
 
-enum MarkdownPreviewLayout: String, CaseIterable, Identifiable {
+nonisolated enum MarkdownPreviewLayout: String, CaseIterable, Identifiable, Codable, Sendable {
     case editorOnly
     case editorAndPreview
     case previewOnly
@@ -17,10 +17,10 @@ enum MarkdownPreviewLayout: String, CaseIterable, Identifiable {
         }
     }
 
-    var iconName: String {
+    func iconName(isVerticalSplit: Bool) -> String {
         switch self {
         case .editorOnly: return "general/editorOnly"
-        case .editorAndPreview: return "general/editorPreview"
+        case .editorAndPreview: return isVerticalSplit ? "general/editorPreview" : "general/editorPreviewVertical"
         case .previewOnly: return "general/previewOnly"
         }
     }
@@ -32,57 +32,162 @@ enum MarkdownPreviewLayout: String, CaseIterable, Identifiable {
         case .previewOnly: return "eye"
         }
     }
+}
 
-    var icon: Image {
-        if IntelliJIcon.nsImage(iconName) == nil {
+extension MarkdownPreviewLayout {
+    func icon(isVerticalSplit: Bool) -> Image {
+        let name = iconName(isVerticalSplit: isVerticalSplit)
+        if IntelliJIcon.nsImage(name) == nil {
             return Image(systemName: symbolName)
         }
-        return Image(iconName)
+        return Image(name)
+    }
+}
+
+protocol MarkdownPreviewStateStorage: AnyObject {
+    func markdownPreviewState(for key: WorkspaceStateKey) -> Any?
+    func storeMarkdownPreviewState(_ value: Any?, for key: WorkspaceStateKey)
+}
+
+extension WorkspaceDocument: MarkdownPreviewStateStorage {
+    func markdownPreviewState(for key: WorkspaceStateKey) -> Any? {
+        getFromWorkspaceState(key)
+    }
+
+    func storeMarkdownPreviewState(_ value: Any?, for key: WorkspaceStateKey) {
+        addToWorkspaceState(key: key, value: value)
     }
 }
 
 @Observable
 final class MarkdownPreviewLayoutStore {
-    static let shared = MarkdownPreviewLayoutStore()
+    nonisolated static let defaultLayout: MarkdownPreviewLayout = .editorAndPreview
+    nonisolated static let defaultSplitWeights: [CGFloat] = [0.5, 0.5]
+    nonisolated static let markdownExtensions: Set<String> = ["md", "markdown"]
 
-    static let defaultLayout: MarkdownPreviewLayout = .editorAndPreview
-    static let keyPrefix = "markdownPreviewLayout."
-    static let markdownExtensions: Set<String> = ["md", "markdown"]
+    private static let stores = NSMapTable<WorkspaceDocument, MarkdownPreviewLayoutStore>(
+        keyOptions: .weakMemory,
+        valueOptions: .strongMemory
+    )
 
-    private(set) var layouts: [String: MarkdownPreviewLayout] = [:]
-
-    @ObservationIgnored private let defaults: UserDefaults
-
-    init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
+    static func store(for workspace: WorkspaceDocument) -> MarkdownPreviewLayoutStore {
+        if let existing = stores.object(forKey: workspace) {
+            return existing
+        }
+        let store = MarkdownPreviewLayoutStore(storage: workspace)
+        stores.setObject(store, forKey: workspace)
+        return store
     }
 
-    static func isMarkdownFile(_ url: URL?) -> Bool {
+    nonisolated static func isMarkdownFile(_ url: URL?) -> Bool {
         guard let url else { return false }
         return markdownExtensions.contains(url.pathExtension.lowercased())
     }
 
-    static func key(for url: URL) -> String {
-        keyPrefix + url.standardizedFileURL.path
+    nonisolated static func key(for url: URL) -> String {
+        url.standardizedFileURL.path
+    }
+
+    private(set) var fileLayouts: [String: MarkdownPreviewLayout]
+    private(set) var forcedLayouts: [String: MarkdownPreviewLayout] = [:]
+    private(set) var sessionOrientations: [String: Bool] = [:]
+
+    var splitWeights: [CGFloat] {
+        didSet {
+            guard splitWeights != oldValue else { return }
+            storage?.storeMarkdownPreviewState(splitWeights.map { Double($0) }, for: .markdownPreviewSplitWeights)
+        }
+    }
+
+    @ObservationIgnored private let storage: MarkdownPreviewStateStorage?
+    @ObservationIgnored private let settings: Settings
+
+    init(storage: MarkdownPreviewStateStorage?, settings: Settings = .shared) {
+        self.storage = storage
+        self.settings = settings
+        self.fileLayouts = Self.storedLayouts(storage?.markdownPreviewState(for: .markdownPreviewLayouts))
+        self.splitWeights = Self.storedWeights(storage?.markdownPreviewState(for: .markdownPreviewSplitWeights))
+    }
+
+    private static func storedLayouts(_ stored: Any?) -> [String: MarkdownPreviewLayout] {
+        guard let raw = stored as? [String: String] else { return [:] }
+        return raw.compactMapValues { MarkdownPreviewLayout(rawValue: $0) }
+    }
+
+    private static func storedWeights(_ stored: Any?) -> [CGFloat] {
+        guard let raw = stored as? [Double],
+              raw.count == defaultSplitWeights.count,
+              raw.allSatisfy({ $0.isFinite && $0 > 0 }) else {
+            return defaultSplitWeights
+        }
+        let total = raw.reduce(0, +)
+        return raw.map { CGFloat($0 / total) }
+    }
+
+    var isVerticalSplit: Bool {
+        settings.preferences.markdownPreview.isVerticalSplit
+    }
+
+    var isAutoScrollEnabled: Bool {
+        settings.preferences.markdownPreview.isAutoScrollEnabled
+    }
+
+    var lastUsedLayout: MarkdownPreviewLayout {
+        settings.preferences.markdownPreview.lastLayout
+    }
+
+    func setVerticalSplit(_ isVerticalSplit: Bool) {
+        settings.preferences.markdownPreview.isVerticalSplit = isVerticalSplit
+        sessionOrientations.removeAll()
+    }
+
+    func isVerticalSplit(for url: URL?) -> Bool {
+        guard let url, let session = sessionOrientations[Self.key(for: url)] else { return isVerticalSplit }
+        return session
+    }
+
+    func splitAxis(for url: URL?) -> Axis {
+        isVerticalSplit(for: url) ? .horizontal : .vertical
+    }
+
+    func toggleOrientation(for url: URL?) {
+        guard let url else { return }
+        sessionOrientations[Self.key(for: url)] = !isVerticalSplit(for: url)
     }
 
     func layout(for url: URL?) -> MarkdownPreviewLayout {
-        guard let url else { return Self.defaultLayout }
+        guard let url else { return lastUsedLayout }
         let key = Self.key(for: url)
-        if let cached = layouts[key] {
-            return cached
+        return forcedLayouts[key] ?? fileLayouts[key] ?? lastUsedLayout
+    }
+
+    func didOpen(_ url: URL?, isDocumentEmpty: Bool) {
+        guard let url else { return }
+        let key = Self.key(for: url)
+        if isDocumentEmpty {
+            forcedLayouts[key] = .editorOnly
+        } else {
+            forcedLayouts.removeValue(forKey: key)
         }
-        guard let stored = defaults.string(forKey: key),
-              let layout = MarkdownPreviewLayout(rawValue: stored) else {
-            return Self.defaultLayout
-        }
-        return layout
     }
 
     func setLayout(_ layout: MarkdownPreviewLayout, for url: URL?) {
         guard let url else { return }
         let key = Self.key(for: url)
-        defaults.set(layout.rawValue, forKey: key)
-        layouts[key] = layout
+        forcedLayouts.removeValue(forKey: key)
+        fileLayouts[key] = layout
+        storage?.storeMarkdownPreviewState(fileLayouts.mapValues(\.rawValue), for: .markdownPreviewLayouts)
+        settings.preferences.markdownPreview.lastLayout = layout
+    }
+
+    func select(_ layout: MarkdownPreviewLayout, for url: URL?) {
+        guard url != nil else { return }
+        if self.layout(for: url) == layout {
+            if layout == .editorAndPreview {
+                toggleOrientation(for: url)
+            }
+            return
+        }
+        setLayout(layout, for: url)
     }
 }

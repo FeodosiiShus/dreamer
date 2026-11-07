@@ -18,8 +18,6 @@ struct EditorTabBarTrailingAccessories: View {
 
     @Environment(Editor.self) private var editor
 
-    private let markdownLayouts = MarkdownPreviewLayoutStore.shared
-
     @State private var isHovering = false
 
     private var markdownFileURL: URL? {
@@ -35,10 +33,20 @@ struct EditorTabBarTrailingAccessories: View {
     }
 
     var body: some View {
-        Menu {
+        HStack(spacing: 2) {
             if let markdownFileURL {
-                markdownLayoutMenu(for: markdownFileURL)
+                MarkdownPreviewLayoutButtons(
+                    store: MarkdownPreviewLayoutStore.store(for: workspace),
+                    url: markdownFileURL
+                )
+                .opacity(accessoryOpacity)
             }
+            actionsMenu
+        }
+    }
+
+    private var actionsMenu: some View {
+        Menu {
             Button("Split Right") {
                 editorManager.split(editor, .trailing, workspace: workspace)
             }
@@ -87,21 +95,6 @@ struct EditorTabBarTrailingAccessories: View {
         .opacity(accessoryOpacity)
         .help("Tab Actions")
         .onHover { isHovering = $0 }
-    }
-
-    @ViewBuilder
-    private func markdownLayoutMenu(for url: URL) -> some View {
-        ForEach(MarkdownPreviewLayout.allCases) { mode in
-            Toggle(mode.title, isOn: Binding(
-                get: { markdownLayouts.layout(for: url) == mode },
-                set: { isOn in
-                    if isOn {
-                        markdownLayouts.setLayout(mode, for: url)
-                    }
-                }
-            ))
-        }
-        Divider()
     }
 
     private func closeAll() {

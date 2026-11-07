@@ -340,4 +340,16 @@ nonisolated enum TrimUtil {
 
         return DiffRange(cursorStart1, cursorEnd1, cursorStart2, cursorEnd2)
     }
+
+    static func trim(_ start: Int, _ end: Int, ignored: (Int) -> Bool) -> (start: Int, end: Int) {
+        var newStart = start
+        while newStart < end && ignored(newStart) {
+            newStart += 1
+        }
+        var newEnd = end
+        while newStart < newEnd && ignored(newEnd - 1) {
+            newEnd -= 1
+        }
+        return (newStart, newEnd)
+    }
 }

@@ -27,6 +27,7 @@ final class CodeFileViewControllerReference: TextViewCoordinator {
 final class CodeFileViewSession {
     let identity: CodeFileViewIdentity
     let treeSitterClient = TreeSitterClient()
+    let markdownHighlightProvider: MarkdownHighlightProvider?
     let coordinators: [TextViewCoordinator]
 
     private let editorInstance: EditorInstance
@@ -47,7 +48,9 @@ final class CodeFileViewSession {
         self.codeFile = codeFile
         self.controllerReference = controllerReference
         self.onCompletionTriggersApplied = onCompletionTriggersApplied
-        self.coordinators = [
+        let isMarkdown = MarkdownPreviewLayoutStore.isMarkdownFile(codeFile.fileURL)
+        self.markdownHighlightProvider = isMarkdown ? MarkdownHighlightProvider() : nil
+        var coordinators: [TextViewCoordinator] = [
             GitBlameCoordinator(editorInstance: editorInstance, codeFile: codeFile),
             EditorContextMenuCoordinator(editorInstance: editorInstance, codeFile: codeFile),
             GitGutterCoordinator(codeFile: codeFile),
@@ -57,6 +60,10 @@ final class CodeFileViewSession {
             EditorBackgroundCoordinator(),
             controllerReference
         ]
+        if isMarkdown {
+            coordinators.append(MarkdownTypingCoordinator(codeFile: codeFile))
+        }
+        self.coordinators = coordinators
         self.textUpdateSubscription = codeFile.contentCoordinator.textUpdatePublisher
             .sink { [weak codeFile] _ in
                 codeFile?.updateChangeCount(.changeDone)

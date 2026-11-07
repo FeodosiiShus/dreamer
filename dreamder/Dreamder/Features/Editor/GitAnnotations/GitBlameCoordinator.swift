@@ -33,6 +33,7 @@ final class GitBlameCoordinator: TextViewCoordinator {
     private var cancellables = Set<AnyCancellable>()
     private var repositoryObservation: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
+    private var isObservingScroll = false
     private var blameLines: [Int: GitBlameLine] = [:]
     private var caretLine = 1
     private var generation = 0
@@ -93,6 +94,7 @@ final class GitBlameCoordinator: TextViewCoordinator {
         repositoryObservation = nil
         observers.forEach { NotificationCenter.default.removeObserver($0) }
         observers.removeAll()
+        isObservingScroll = false
         inlineView?.removeFromSuperview()
         inlineView = nil
         displayedInlineText = nil
@@ -133,11 +135,35 @@ final class GitBlameCoordinator: TextViewCoordinator {
               let scrollView = controller.scrollView else { return }
 
         if inlineView == nil {
-            let view = GitBlameInlineView()
-            view.isHidden = true
+            let view = GitBlameInlineView(frame: textView.bounds)
+            view.anchorProvider = { [weak self] in
+                self?.inlineAnchor()
+            }
             textView.addSubview(view)
             inlineView = view
             displayedInlineText = nil
+            observers.append(
+                NotificationCenter.default.addObserver(
+                    forName: NSView.frameDidChangeNotification,
+                    object: textView,
+                    queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        self?.inlineView?.matchSuperviewBounds()
+                    }
+                }
+            )
+            observers.append(
+                NotificationCenter.default.addObserver(
+                    forName: InlayHintCoordinator.hintsDidChangeNotification,
+                    object: textView,
+                    queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        self?.inlineView?.needsDisplay = true
+                    }
+                }
+            )
         }
 
         if annotationView == nil {
@@ -167,7 +193,8 @@ final class GitBlameCoordinator: TextViewCoordinator {
     }
 
     private func observeEditor(controller: TextViewController) {
-        guard observers.isEmpty else { return }
+        guard !isObservingScroll else { return }
+        isObservingScroll = true
         observers.append(
             NotificationCenter.default.addObserver(
                 forName: TextViewController.scrollPositionDidUpdateNotification,
@@ -262,52 +289,27 @@ final class GitBlameCoordinator: TextViewCoordinator {
         }
     }
 
-    private func hideInlineView() {
-        guard let inlineView, !inlineView.isHidden else { return }
-        inlineView.isHidden = true
+    private func inlineAnchor() -> CGRect? {
+        guard let layoutManager = textView?.layoutManager,
+              caretLine <= layoutManager.lineCount,
+              let position = layoutManager.textLineForIndex(caretLine - 1) else {
+            return nil
+        }
+        if position.range.length > 0 {
+            return layoutManager.rectForOffset(position.range.max - 1)
+        }
+        return layoutManager.rectForOffset(position.range.location)
     }
 
     private func refreshInlineBlame() {
-        guard let inlineView, let textView = textView else { return }
-        guard let blame = blameLines[caretLine] else {
-            hideInlineView()
-            return
-        }
-        guard let layoutManager = textView.layoutManager else {
-            hideInlineView()
-            return
-        }
-        guard caretLine <= layoutManager.lineCount,
-              let position = layoutManager.textLineForIndex(caretLine - 1) else {
-            hideInlineView()
-            return
-        }
-
-        let anchor: CGRect? = if position.range.length > 0 {
-            layoutManager.rectForOffset(position.range.max - 1)
-        } else {
-            layoutManager.rectForOffset(position.range.location)
-        }
-        guard let anchor else {
-            hideInlineView()
-            return
-        }
-
-        let text = Self.inlineText(for: blame)
+        guard let inlineView else { return }
+        let text = blameLines[caretLine].map(Self.inlineText(for:))
         if displayedInlineText != text {
             inlineView.setText(text)
             displayedInlineText = text
         }
-        let origin = NSPoint(
-            x: anchor.maxX + Islands.smallFontSize * 3,
-            y: anchor.minY + max((anchor.height - inlineView.frame.height) / 2, 0)
-        )
-        if inlineView.frame.origin != origin {
-            inlineView.frame.origin = origin
-        }
-        if inlineView.isHidden {
-            inlineView.isHidden = false
-        }
+        inlineView.matchSuperviewBounds()
+        inlineView.needsDisplay = true
     }
 
     private func showGitToolWindow() {

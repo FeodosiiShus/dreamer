@@ -90,7 +90,23 @@
     "Utils/Extensions/SemanticToken/**",
     "Utils/Extensions/String/**",
     "Utils/Extensions/URL/**",
-    "Utils/Extensions/ZipFoundation/**"
+    "Utils/Extensions/ZipFoundation/**",
+    "Features/Markdown/Model/**",
+    "Features/Markdown/Actions/**",
+    "Features/Markdown/Structure/**",
+    "Features/Markdown/Typing/MarkdownListEnter.swift",
+    "Features/Markdown/Typing/MarkdownListRenumber.swift",
+    "Features/Markdown/Typing/MarkdownListStructure.swift",
+    "Features/Markdown/Typing/MarkdownTextState.swift",
+    "Features/Markdown/Highlighting/MarkdownBlockLexer.swift",
+    "Features/Markdown/Highlighting/MarkdownInlineLexer.swift",
+    "Features/Markdown/Highlighting/MarkdownHTMLScanner.swift",
+    "Features/Markdown/Highlighting/MarkdownToken.swift",
+    "Features/Markdown/Commands/MarkdownTableGridModel.swift",
+    "Features/MarkdownPreview/MarkdownHTMLEntities.swift",
+    "Features/MarkdownPreview/MarkdownRenderContext.swift",
+    "Features/MarkdownPreview/MarkdownPreviewStyles.swift",
+    "Features/MarkdownPreview/MarkdownPreviewScrollSync.swift"
   ],
   "viewModel": [
     "AppDelegate.swift",
@@ -131,7 +147,12 @@
     "Features/Settings/Pages/AppearanceSettings/BackgroundImageSettings.swift",
     "Utils/Limiter.swift",
     "Utils/DependencyInjection/**",
-    "Utils/Extensions/TextView/**"
+    "Utils/Extensions/TextView/**",
+    "Features/Markdown/Typing/MarkdownTypingCoordinator.swift",
+    "Features/Markdown/Highlighting/MarkdownHighlightProvider.swift",
+    "Features/MarkdownPreview/MarkdownPreviewModel.swift",
+    "Features/MarkdownPreview/MarkdownPreviewSettings.swift",
+    "Features/MarkdownPreview/MarkdownPreviewTheme.swift"
   ],
   "io": [
     "Features/CEWorkspace/Models/**",
@@ -236,6 +257,9 @@
     "Utils/Extensions/LocalProcess/**",
     "Utils/Extensions/SwiftTerm/**",
     "Utils/Extensions/Text/**",
-    "Utils/Extensions/View/**"
+    "Utils/Extensions/View/**",
+    "Features/Markdown/Commands/MarkdownCommands.swift",
+    "Features/Markdown/Commands/MarkdownTableGridPicker.swift",
+    "Features/MarkdownPreview/MarkdownPreviewScripts.swift"
   ]
 }

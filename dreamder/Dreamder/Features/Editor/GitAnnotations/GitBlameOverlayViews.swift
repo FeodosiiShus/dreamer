@@ -4,12 +4,15 @@ import CodeEditTextView
 final class GitBlameInlineView: NSView {
     private static let font = NSFont.systemFont(ofSize: Islands.smallFontSize)
     private static let textColor = NSColor(srgbRed: 0x8D / 255, green: 0x91 / 255, blue: 0x99 / 255, alpha: 1)
+    private static let gap = Islands.smallFontSize * 3
 
     private var content: NSAttributedString?
+    var anchorProvider: (() -> CGRect?)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         translatesAutoresizingMaskIntoConstraints = false
+        autoresizingMask = []
     }
 
     required init?(coder: NSCoder) {
@@ -20,26 +23,53 @@ final class GitBlameInlineView: NSView {
         true
     }
 
+    override var isOpaque: Bool {
+        false
+    }
+
     override func hitTest(_ point: NSPoint) -> NSView? {
         nil
     }
 
-    func setText(_ text: String) {
-        let content = NSAttributedString(
-            string: text,
-            attributes: [
-                .font: Self.font,
-                .foregroundColor: Self.textColor
-            ]
-        )
-        self.content = content
-        let size = content.size()
-        setFrameSize(NSSize(width: ceil(size.width) + 2, height: ceil(size.height)))
+    func matchSuperviewBounds() {
+        guard let superview, frame != superview.bounds else { return }
+        frame = superview.bounds
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
         needsDisplay = true
     }
 
+    var text: String? {
+        content?.string
+    }
+
+    func setText(_ text: String?) {
+        content = text.map {
+            NSAttributedString(
+                string: $0,
+                attributes: [
+                    .font: Self.font,
+                    .foregroundColor: Self.textColor
+                ]
+            )
+        }
+        needsDisplay = true
+    }
+
+    func textOrigin(anchor: CGRect) -> NSPoint? {
+        guard let content else { return nil }
+        let size = content.size()
+        return NSPoint(
+            x: anchor.maxX + Self.gap,
+            y: anchor.minY + max((anchor.height - size.height) / 2, 0)
+        )
+    }
+
     override func draw(_ dirtyRect: NSRect) {
-        content?.draw(at: .zero)
+        guard let content, let anchor = anchorProvider?(), let origin = textOrigin(anchor: anchor) else { return }
+        content.draw(at: origin)
     }
 }
 
