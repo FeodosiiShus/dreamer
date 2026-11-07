@@ -136,7 +136,8 @@ class CEActiveTask: Identifiable, Hashable {
 
     @concurrent
     private nonisolated static func waitForProcessGroup(_ processIdentifier: pid_t) async {
-        waitid(P_PGID, UInt32(processIdentifier), nil, 0)
+        var info = siginfo_t()
+        waitid(P_PGID, UInt32(processIdentifier), &info, WEXITED | WNOWAIT)
     }
 
     @MainActor

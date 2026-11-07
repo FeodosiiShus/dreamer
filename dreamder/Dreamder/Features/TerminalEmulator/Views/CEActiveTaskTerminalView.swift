@@ -71,8 +71,19 @@ class CEActiveTaskTerminalView: CELocalShellTerminalView {
     }
 
     override func processTerminated(_ source: LocalProcess, exitCode: Int32?) {
-        activeTask.handleProcessFinished(terminationStatus: exitCode ?? 1)
+        let status = exitCode ?? 1
+        Task { @MainActor [weak self] in
+            var attempts = 0
+            while let self, self.process.childfd != -1, attempts < Self.drainAttempts {
+                try? await Task.sleep(for: Self.drainInterval)
+                attempts += 1
+            }
+            self?.activeTask.handleProcessFinished(terminationStatus: status)
+        }
     }
+
+    private static let drainInterval: Duration = .milliseconds(10)
+    private static let drainAttempts = 200
 
     func sendOutputMessage(_ message: String) {
         sendSpecialSequence()
