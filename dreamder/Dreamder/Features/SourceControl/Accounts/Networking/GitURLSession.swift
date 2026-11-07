@@ -46,7 +46,7 @@ nonisolated protocol GitURLSessionDataTaskProtocol {
     func resume()
 }
 
-extension URLSessionDataTask: GitURLSessionDataTaskProtocol {}
+nonisolated extension URLSessionDataTask: GitURLSessionDataTaskProtocol {}
 
 nonisolated extension URLSession: GitURLSession {
 
