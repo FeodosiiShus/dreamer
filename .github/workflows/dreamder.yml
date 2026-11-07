@@ -66,7 +66,7 @@ jobs:
         run: make build
       - name: Unit tests with coverage
         env:
-          COVERAGE_CHECK: ${{ matrix.primary && '1' || '0' }}
+          COVERAGE_CHECK: "1"
         run: make coverage
       - name: Build Release app
         if: matrix.primary

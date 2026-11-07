@@ -5,6 +5,7 @@
 //  Created by Tommy Ludwig on 08.07.24.
 //
 
+import Foundation
 import Testing
 @testable import Dreamder
 
@@ -13,14 +14,26 @@ import Testing
 class CEActiveTaskTests {
     var task: CETask
     var activeTask: CEActiveTask
+    private let isolatedZshDirectory: URL
 
-    init() {
+    init() throws {
+        isolatedZshDirectory = try makeTemporaryDirectory(label: "zdotdir")
+        for name in [".zshenv", ".zprofile", ".zshrc", ".zlogin"] {
+            try "".write(to: isolatedZshDirectory.appending(path: name), atomically: true, encoding: .utf8)
+        }
         task = CETask(
             name: "Test Task",
             command: "echo $STATE",
-            environmentVariables: [CETask.EnvironmentVariable(key: "STATE", value: "Testing")]
+            environmentVariables: [
+                CETask.EnvironmentVariable(key: "STATE", value: "Testing"),
+                CETask.EnvironmentVariable(key: "ZDOTDIR", value: isolatedZshDirectory.path(percentEncoded: false))
+            ]
         )
         activeTask = CEActiveTask(task: task)
+    }
+
+    deinit {
+        try? FileManager.default.removeItem(at: isolatedZshDirectory)
     }
 
     @Test

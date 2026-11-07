@@ -35,6 +35,14 @@ def percent(covered, executable):
     return 100.0 * covered / executable if executable else 0.0
 
 
+def toolchain_identifier():
+    completed = subprocess.run(["xcrun", "swift", "--version"], capture_output=True, text=True)
+    match = re.search(r"Swift version (\d+)\.(\d+)", completed.stdout + completed.stderr)
+    if not match:
+        fail("cannot determine the Swift toolchain version from `xcrun swift --version`")
+    return f"swift-{match.group(1)}.{match.group(2)}"
+
+
 def read_json(path, description):
     try:
         with open(path, encoding="utf-8") as handle:
@@ -326,6 +334,11 @@ def main():
                 file=sys.stderr,
             )
             exit_code = EXIT_CONFIGURATION
+        elif baseline.get("toolchain") not in (None, toolchain_identifier()):
+            print(
+                f"Coverage check skipped: baseline was written with {baseline['toolchain']}, "
+                f"this run uses {toolchain_identifier()}; line counts differ between toolchains"
+            )
         else:
             violations = check(snapshot, baseline)
             if violations:
@@ -353,7 +366,7 @@ def main():
             for path in unclassified:
                 print(f"  {path}", file=sys.stderr)
             sys.exit(EXIT_CONFIGURATION)
-        write_json(arguments.baseline, snapshot)
+        write_json(arguments.baseline, {**snapshot, "toolchain": toolchain_identifier()})
         total = snapshot["total"]
         print(
             f"Wrote {os.path.relpath(arguments.baseline, ROOT)}: total {entry_percent(total):.2f}%, "
