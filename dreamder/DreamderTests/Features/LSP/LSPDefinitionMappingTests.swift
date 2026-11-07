@@ -13,16 +13,16 @@ struct LSPDefinitionMappingTests {
         #expect(targets == [LSPDefinitionTarget(uri: uri, range: range, selectionRange: range)])
     }
 
-    @Test func mapsLocationArrays() {
+    @Test func mapsLocationArrays() throws {
         let second = Location(uri: "file:///tmp/project/Sources/Other.swift", range: .zero)
         let targets = LSPDefinitionMapping.targets(from: .optionB([Location(uri: uri, range: range), second]))
-        #expect(targets.count == 2)
+        try #require(targets.count == 2)
         #expect(targets[0].uri == uri)
         #expect(targets[1].uri == second.uri)
         #expect(targets[1].selectionRange == .zero)
     }
 
-    @Test func mapsLocationLinksToSelectionRange() {
+    @Test func mapsLocationLinksToSelectionRange() throws {
         let fullRange = LSPRange(start: Position(line: 0, character: 0), end: Position(line: 20, character: 1))
         let link = LocationLink(
             originSelectionRange: nil,
@@ -31,7 +31,7 @@ struct LSPDefinitionMappingTests {
             targetSelectionRange: range
         )
         let targets = LSPDefinitionMapping.targets(from: .optionC([link]))
-        #expect(targets.count == 1)
+        try #require(targets.count == 1)
         #expect(targets[0].range == fullRange)
         #expect(targets[0].selectionRange == range)
     }

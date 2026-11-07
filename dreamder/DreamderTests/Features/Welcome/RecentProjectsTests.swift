@@ -113,7 +113,7 @@ class RecentsStoreTests {
         RecentsStore.documentOpened(at: file)
 
         let recents = RecentsStore.recentProjectURLs()
-        #expect(recents.count == 2)
+        try #require(recents.count == 2)
         #expect(recents[0].standardizedFileURL == file.standardizedFileURL)
         #expect(recents[1].standardizedFileURL == dir.standardizedFileURL)
     }
@@ -153,7 +153,7 @@ class RecentsStoreTests {
         RecentsStore.documentOpened(at: dir)
 
         let recents = RecentsStore.recentProjectURLs()
-        #expect(recents.count == 2)
+        try #require(recents.count == 2)
         #expect(recents[0].standardizedFileURL == dir.standardizedFileURL)
         #expect(recents[1].standardizedFileURL == file.standardizedFileURL)
     }
@@ -172,11 +172,11 @@ class RecentsStoreTests {
 
         let remaining = RecentsStore.removeRecentProjects([dir])
 
-        #expect(remaining.count == 1)
+        try #require(remaining.count == 1)
         #expect(remaining[0].standardizedFileURL == file.standardizedFileURL)
 
         let recents = RecentsStore.recentProjectURLs()
-        #expect(recents.count == 1)
+        try #require(recents.count == 1)
         #expect(recents[0].standardizedFileURL == file.standardizedFileURL)
 
     }

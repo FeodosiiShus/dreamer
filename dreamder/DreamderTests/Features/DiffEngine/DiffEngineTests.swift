@@ -278,7 +278,7 @@ struct LineRangeComparisonTests {
 
         let changes = try ranges(left, right, .default)
 
-        #expect(changes.count == 3)
+        try #require(changes.count == 3)
         #expect(changes[0] == Support.mod(10, 10, 1, 1))
         #expect(changes[1] == Support.ins(5_000, 5_000, 1))
         #expect(changes[2] == Support.del(8_999, 9_000, 1))

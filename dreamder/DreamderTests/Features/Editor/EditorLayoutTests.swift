@@ -315,7 +315,7 @@ struct EditorLayoutTests {
             return
         }
         #expect(outer.axis == .horizontal)
-        #expect(outer.editorLayouts.count == 2)
+        try #require(outer.editorLayouts.count == 2)
 
         let decodedFirst = try #require(singleEditor(outer.editorLayouts[0]))
         #expect(decodedFirst.id == first.id)

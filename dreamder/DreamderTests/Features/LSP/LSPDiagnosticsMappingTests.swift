@@ -57,12 +57,12 @@ struct LSPDiagnosticsMappingTests {
         #expect(LSPDiagnosticMapping.code(from: nil) == nil)
     }
 
-    @Test func mapsWholeLists() {
+    @Test func mapsWholeLists() throws {
         let mapped = LSPDiagnosticMapping.workspaceDiagnostics(
             from: [diagnostic(), diagnostic(line: 9, severity: .warning)],
             fileURL: fileURL
         )
-        #expect(mapped.count == 2)
+        try #require(mapped.count == 2)
         #expect(mapped[1].startLine == 9)
         #expect(mapped[1].severity == .warning)
     }

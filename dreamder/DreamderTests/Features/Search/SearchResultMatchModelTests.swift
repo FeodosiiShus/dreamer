@@ -44,7 +44,7 @@ struct SearchResultMatchModelTests {
     func keywordInMiddleIsBoldBetweenTwoRegularRuns() throws {
         let model = try makeModel(line: "let value = 42", keyword: "value")
         let runs = fontRuns(of: model.attributedLabel())
-        #expect(runs.count == 3)
+        try #require(runs.count == 3)
         #expect(runs[0].range == NSRange(location: 0, length: 4))
         #expect(runs[0].bold == false)
         #expect(runs[1].range == NSRange(location: 4, length: 5))
@@ -57,7 +57,7 @@ struct SearchResultMatchModelTests {
     func keywordAtStartHasNoLeadingRegularRun() throws {
         let model = try makeModel(line: "import Foundation", keyword: "import")
         let runs = fontRuns(of: model.attributedLabel())
-        #expect(runs.count == 2)
+        try #require(runs.count == 2)
         #expect(runs[0].range == NSRange(location: 0, length: 6))
         #expect(runs[0].bold)
         #expect(runs[1].range == NSRange(location: 6, length: 11))
@@ -68,7 +68,7 @@ struct SearchResultMatchModelTests {
     func keywordAtEndHasNoTrailingRegularRun() throws {
         let model = try makeModel(line: "import Foundation", keyword: "Foundation")
         let runs = fontRuns(of: model.attributedLabel())
-        #expect(runs.count == 2)
+        try #require(runs.count == 2)
         #expect(runs[0].range == NSRange(location: 0, length: 7))
         #expect(runs[0].bold == false)
         #expect(runs[1].range == NSRange(location: 7, length: 10))
@@ -79,7 +79,7 @@ struct SearchResultMatchModelTests {
     func lineEqualToKeywordIsEntirelyBold() throws {
         let model = try makeModel(line: "needle", keyword: "needle")
         let runs = fontRuns(of: model.attributedLabel())
-        #expect(runs.count == 1)
+        try #require(runs.count == 1)
         #expect(runs[0].range == NSRange(location: 0, length: 6))
         #expect(runs[0].bold)
     }

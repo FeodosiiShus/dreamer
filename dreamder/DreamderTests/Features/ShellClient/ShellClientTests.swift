@@ -46,7 +46,7 @@ struct ShellClientTests {
             let path = directory.path(percentEncoded: false)
             let result = try await Self.client().run("cd \"\(path)\" && pwd -P && echo $((6 * 7))")
             let lines = result.standardOutput.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-            #expect(lines.count == 3)
+            try #require(lines.count == 3)
             #expect(URL(filePath: lines[0]).resolvingSymlinksInPath().path == directory.resolvingSymlinksInPath().path)
             #expect(Array(lines.dropFirst()) == ["42", ""])
         }

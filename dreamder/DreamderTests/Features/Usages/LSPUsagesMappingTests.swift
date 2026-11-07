@@ -48,7 +48,7 @@ struct LSPUsagesMappingTests {
         #expect(rows.map(\.line) == [2, 9, 1])
     }
 
-    @Test func mergesUsagesOnTheSameLine() {
+    @Test func mergesUsagesOnTheSameLine() throws {
         let rows = LSPUsagesMapping.rows(
             from: [
                 LSPReferenceLocation(uri: firstURI, line: 4, startCharacter: 12, endCharacter: 17),
@@ -57,13 +57,13 @@ struct LSPUsagesMappingTests {
             fileTexts: [firstURI: "line0\nline1\nline2\nline3\nlet value = value + value\n"],
             workspacePath: "/tmp/project"
         )
-        #expect(rows.count == 1)
+        try #require(rows.count == 1)
         #expect(rows[0].column == 4)
         #expect(rows[0].lineText == "let value = value + value")
         #expect(rows[0].matchRange == NSRange(location: 4, length: 5))
     }
 
-    @Test func keepsUsageCountAsRowCount() {
+    @Test func keepsUsageCountAsRowCount() throws {
         let rows = LSPUsagesMapping.rows(
             from: [
                 LSPReferenceLocation(uri: firstURI, line: 0, startCharacter: 0, endCharacter: 3),
@@ -72,7 +72,7 @@ struct LSPUsagesMappingTests {
             fileTexts: [firstURI: "abc\n", secondURI: "abc\n"],
             workspacePath: "/tmp/project"
         )
-        #expect(rows.count == 2)
+        try #require(rows.count == 2)
         #expect(rows[0].displayLine == 1)
     }
 

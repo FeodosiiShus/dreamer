@@ -10,7 +10,7 @@ struct StructureTreeTests {
     }
 
     @Test
-    func documentSymbolsNestAndBecomeOneBased() {
+    func documentSymbolsNestAndBecomeOneBased() throws {
         let symbols = [
             DocumentSymbol(
                 name: "Outer",
@@ -31,13 +31,13 @@ struct StructureTreeTests {
             )
         ]
         let nodes = StructureTreeBuilder.nodes(from: symbols)
-        #expect(nodes.count == 1)
+        try #require(nodes.count == 1)
         let outer = nodes[0]
         #expect(outer.name == "Outer")
         #expect(outer.kind == .structType)
         #expect(outer.line == 1)
         #expect(outer.column == 8)
-        #expect(outer.children.count == 1)
+        try #require(outer.children.count == 1)
         #expect(outer.children[0].name == "inner")
         #expect(outer.children[0].kind == .method)
         #expect(outer.children[0].line == 3)
@@ -46,7 +46,7 @@ struct StructureTreeTests {
     }
 
     @Test
-    func symbolInformationStaysFlat() {
+    func symbolInformationStaysFlat() throws {
         let symbols = [
             SymbolInformation(
                 name: "load",
@@ -56,7 +56,7 @@ struct StructureTreeTests {
             )
         ]
         let nodes = StructureTreeBuilder.nodes(from: symbols)
-        #expect(nodes.count == 1)
+        try #require(nodes.count == 1)
         #expect(nodes[0].name == "load")
         #expect(nodes[0].detail == "Store")
         #expect(nodes[0].line == 5)
@@ -70,7 +70,7 @@ struct StructureTreeTests {
     }
 
     @Test
-    func fallbackNestsByIndentation() {
+    func fallbackNestsByIndentation() throws {
         let text = """
         struct Outer {
             func inner() {
@@ -83,7 +83,7 @@ struct StructureTreeTests {
             from: SymbolExtractor.symbols(in: text, fileExtension: "swift"),
             text: text
         )
-        #expect(nodes.count == 1)
+        try #require(nodes.count == 1)
         #expect(nodes[0].name == "Outer")
         #expect(nodes[0].children.map(\.name) == ["inner", "value"])
         #expect(nodes[0].children[0].children.isEmpty)

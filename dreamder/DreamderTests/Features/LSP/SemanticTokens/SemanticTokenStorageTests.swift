@@ -130,7 +130,7 @@ struct SemanticTokenStorageTests {
             _ = storage.applyDelta(deltas)
 
             let state = try #require(storage.state)
-            #expect(state.tokens.count == 4)
+            try #require(state.tokens.count == 4)
             #expect(storage.lastResultId == "1")
 
             // Should have inserted one at the beginning
@@ -153,7 +153,7 @@ struct SemanticTokenStorageTests {
             _ = storage.applyDelta(deltas)
 
             let state = try #require(storage.state)
-            #expect(state.tokens.count == 2)
+            try #require(state.tokens.count == 2)
             #expect(state.resultId == "2")
             // The remaining tokens should be the first and third tokens, except we deleted one line between them
             // so the third token's line is less one
@@ -169,7 +169,7 @@ struct SemanticTokenStorageTests {
             _ = storage.applyDelta(deltas)
 
             let state = try #require(storage.state)
-            #expect(state.tokens.count == 1)
+            try #require(state.tokens.count == 1)
             #expect(state.resultId == "3")
             // The only remaining token should be the original third token.
             #expect(state.tokens[0] == SemanticToken(line: 2, char: 8, length: 10, type: 1, modifiers: 0))
@@ -186,7 +186,7 @@ struct SemanticTokenStorageTests {
             _ = storage.applyDelta(deltas)
 
             let state = try #require(storage.state)
-            #expect(state.tokens.count == 3)
+            try #require(state.tokens.count == 3)
             #expect(storage.lastResultId == "4")
             // The new inserted token becomes the first token.
             #expect(state.tokens[0] == SemanticToken(line: 0, char: 2, length: 3, type: 0, modifiers: 1))

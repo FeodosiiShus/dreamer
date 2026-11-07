@@ -45,7 +45,7 @@ struct GitClientTests {
             let client = GitClient(directoryURL: dirURL, shellClient: .live())
             let status = try client.parseStatusString(string)
 
-            #expect(status.changedFiles.count == 2)
+            try #require(status.changedFiles.count == 2)
             // No null string at the end
             #expect(status.changedFiles[0].fileURL.lastPathComponent == "GitClient+Status.swift")
             #expect(status.changedFiles[1].fileURL.lastPathComponent == "GitClientTests.swift")
@@ -385,7 +385,7 @@ struct GitClientTests {
             try await repo.client.stash(message: nil)
 
             let entries = try await repo.client.stashList()
-            #expect(entries.count == 2)
+            try #require(entries.count == 2)
             #expect(entries[1].message == "first")
 
             try await repo.client.applyStashEntry(1)

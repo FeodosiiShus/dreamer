@@ -49,7 +49,7 @@ struct GitLineChangeTests {
     }
 
     @Test
-    func buildsMarkersFromDiffOutput() {
+    func buildsMarkersFromDiffOutput() throws {
         let output = """
         diff --git a/f.txt b/f.txt
         --- a/f.txt
@@ -66,7 +66,7 @@ struct GitLineChangeTests {
         -twenty
         """
         let markers = GitLineChange.markers(inDiff: output)
-        #expect(markers.count == 3)
+        try #require(markers.count == 3)
         #expect(markers[0].kind == .modified)
         #expect(markers[0].newLines == 1...2)
         #expect(markers[0].oldLines == 1...2)
@@ -78,10 +78,10 @@ struct GitLineChangeTests {
     }
 
     @Test
-    func buildsMarkersFromInMemoryDiff() {
+    func buildsMarkersFromInMemoryDiff() throws {
         let diff = TextDiff(left: "a\nb\nc", right: "a\nB\nc\nd")
         let markers = GitLineChange.markers(from: diff)
-        #expect(markers.count == 2)
+        try #require(markers.count == 2)
         #expect(markers[0].kind == .modified)
         #expect(markers[0].newLines == 2...2)
         #expect(markers[0].oldLines == 2...2)

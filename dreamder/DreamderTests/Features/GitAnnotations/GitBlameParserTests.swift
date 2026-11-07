@@ -60,7 +60,7 @@ struct GitBlameParserTests {
     }
 
     @Test
-    func reusesCommitMetadataForRepeatedCommits() {
+    func reusesCommitMetadataForRepeatedCommits() throws {
         let output = """
         \(recentHash) 1 1 2
         author Ann Marie
@@ -79,7 +79,7 @@ struct GitBlameParserTests {
 
         let lines = GitBlameParser.parse(output)
 
-        #expect(lines.count == 4)
+        try #require(lines.count == 4)
         #expect(lines[2].commitHash == olderHash)
         #expect(lines[2].author == "Bob")
         #expect(lines[2].authorDate == Date(timeIntervalSince1970: 200))
@@ -90,7 +90,7 @@ struct GitBlameParserTests {
     }
 
     @Test
-    func marksUncommittedLines() {
+    func marksUncommittedLines() throws {
         let output = """
         \(recentHash) 1 1 1
         author Ann
@@ -112,7 +112,7 @@ struct GitBlameParserTests {
 
         let lines = GitBlameParser.parse(output)
 
-        #expect(lines.count == 2)
+        try #require(lines.count == 2)
         #expect(lines[0].isUncommitted == false)
         #expect(lines[1].isUncommitted)
         #expect(lines[1].shortHash == "00000000")
@@ -120,7 +120,7 @@ struct GitBlameParserTests {
     }
 
     @Test
-    func ignoresUnknownMetadataFields() {
+    func ignoresUnknownMetadataFields() throws {
         let output = """
         \(olderHash) 1 1 1
         author Bob
@@ -140,7 +140,7 @@ struct GitBlameParserTests {
 
         let lines = GitBlameParser.parse(output)
 
-        #expect(lines.count == 1)
+        try #require(lines.count == 1)
         #expect(lines[0].author == "Bob")
         #expect(lines[0].summary == "Fix the thing")
         #expect(lines[0].authorDate == Date(timeIntervalSince1970: 42))
