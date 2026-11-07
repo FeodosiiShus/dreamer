@@ -65,12 +65,14 @@ struct ProcessSlotPoolTests {
         let pool = ProcessSlotPool(limit: 1)
         let order = Mutex<[Int]>([])
         try await pool.acquire()
-        let waiters = (1...3).map { index in
-            Task {
+        var waiters: [Task<Void, any Error>] = []
+        for index in 1...3 {
+            waiters.append(Task {
                 try await pool.withSlot {
                     order.withLock { $0.append(index) }
                 }
-            }
+            })
+            try await Task.sleep(for: .milliseconds(20))
         }
         try await Task.sleep(for: .milliseconds(50))
         pool.release()

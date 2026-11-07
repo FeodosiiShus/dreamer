@@ -12,17 +12,18 @@ final class AsyncIndexingTests: XCTestCase {
     func testAddDocuments() async throws {
         let index = try XCTUnwrap(SearchIndexer.Memory.create(), "Failed to create an index")
         let asyncManager = SearchIndexer.AsyncManager(index: index)
-        let first = TemporaryFile()
-        let second = TemporaryFile()
-        try "The first document mentions apples.".write(to: first.url, atomically: true, encoding: .utf8)
-        try "The second document mentions pears.".write(to: second.url, atomically: true, encoding: .utf8)
+        let directory = try makeTemporaryDirectory(label: "indexing")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = directory.appending(path: "first.txt")
+        let second = directory.appending(path: "second.txt")
+        try "The first document mentions apples.".write(to: first, atomically: true, encoding: .utf8)
+        try "The second document mentions pears.".write(to: second, atomically: true, encoding: .utf8)
 
-        let results = await asyncManager.addFiles(urls: [first.url, second.url])
+        let results = await asyncManager.addFiles(urls: [first, second])
         XCTAssertEqual(results, [true, true], "Unexpected indexing results.")
         asyncManager.index.flush()
         let documents = asyncManager.index.documents()
-        XCTAssertEqual(Set(documents), [first.url, second.url])
-        withExtendedLifetime((first, second)) {}
+        XCTAssertEqual(Set(documents.map(\.standardizedFileURL)), [first.standardizedFileURL, second.standardizedFileURL])
     }
 
     func testSearchDocuments() async throws {

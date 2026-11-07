@@ -80,4 +80,4 @@ Phase 3 execution plan (build-setting order with official citations, 12 file-own
 | 5 IntelliJ ports (Search Everywhere ranking, branch popup order, git log filter, commit graph, find model, split tool windows) and test slices T1–T9 | Not started. |
 | 6 Docs and final checks | Pending the phases above. |
 
-Known leftovers: five unsafe concurrency escapes to retire in phase 3 (`ProcessExecution.UnsafeSendable`, `GitBlameCoordinator.WeakBox`, `InitializationGatedConnection`, `WorkspaceDocument.SearchState: @unchecked Sendable`, `ExcludedDirectories.registry` as `nonisolated(unsafe)`; plus two test doubles), view-scope coverage 10 %, Gatekeeper warning on downloads (ad-hoc signature, no notarization).
+Known leftovers: the only `@unchecked Sendable` left is `ProcessExecution.UnsafeSendable`, a private wrapper that lets the non-Sendable `Process` live inside the execution's `Mutex` (an actor-based rewrite was tried and dropped: draining through actor hops loses output ordering); view-scope coverage 10 %; Gatekeeper warning on downloads (ad-hoc signature, no notarization).
