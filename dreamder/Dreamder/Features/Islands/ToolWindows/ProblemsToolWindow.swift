@@ -80,7 +80,7 @@ struct ProblemsToolWindowContent: View {
                 }
             } actions: {
                 ToolWindowActionButton(icon: "general/hide", help: "Hide") {
-                    toolWindowManager.hide(.bottom)
+                    toolWindowManager.hide(.problems)
                 }
             }
 

@@ -65,24 +65,6 @@ final class DreamderUIUnitTests: XCTestCase {
         assertSnapshot(matching: hosting, as: .image)
     }
 
-    // MARK: EffectView
-
-    func testEffectViewLight() throws {
-        let view = EffectView()
-        let hosting = NSHostingView(rootView: view)
-        hosting.appearance = .init(named: .aqua)
-        hosting.frame = CGRect(origin: .zero, size: .init(width: 20, height: 20))
-        assertSnapshot(matching: hosting, as: .image)
-    }
-
-    func testEffectViewDark() throws {
-        let view = EffectView()
-        let hosting = NSHostingView(rootView: view)
-        hosting.appearance = .init(named: .darkAqua)
-        hosting.frame = CGRect(origin: .zero, size: .init(width: 20, height: 20))
-        assertSnapshot(matching: hosting, as: .image)
-    }
-
     // MARK: ToolbarBranchPicker
 
     func testBranchPickerLight() throws {

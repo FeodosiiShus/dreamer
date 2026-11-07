@@ -20,31 +20,36 @@ nonisolated struct GitLogCommit: Identifiable, Hashable, Sendable {
     let authorName: String
     let authorEmail: String
     let date: Date
+    let commitDate: Date
     let refs: [GitLogRef]
     let subject: String
+    let message: String
+
+    init(
+        hash: String,
+        parents: [String],
+        authorName: String,
+        authorEmail: String,
+        date: Date,
+        commitDate: Date? = nil,
+        refs: [GitLogRef],
+        subject: String,
+        message: String? = nil
+    ) {
+        self.hash = hash
+        self.parents = parents
+        self.authorName = authorName
+        self.authorEmail = authorEmail
+        self.date = date
+        self.commitDate = commitDate ?? date
+        self.refs = refs
+        self.subject = subject
+        self.message = message ?? subject
+    }
 
     var id: String { hash }
 
     var shortHash: String { String(hash.prefix(8)) }
 
     var isMerge: Bool { parents.count > 1 }
-
-    func matches(graphText query: String) -> Bool {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return true }
-        let needle = trimmed.lowercased()
-        if subject.lowercased().contains(needle) || authorName.lowercased().contains(needle) {
-            return true
-        }
-        return hash.lowercased().hasPrefix(needle) || shortHash.lowercased().hasPrefix(needle)
-    }
-}
-
-nonisolated struct GitLogBranchFilter: Hashable, Identifiable, Sendable {
-    let ref: String?
-    let title: String
-
-    var id: String { ref ?? "HEAD" }
-
-    static let all = GitLogBranchFilter(ref: nil, title: "HEAD")
 }

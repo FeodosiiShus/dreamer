@@ -70,16 +70,10 @@ struct UtilityAreaDebugView: View {
                         )
                     }
                     .background {
-                        if utilityAreaViewModel.selectedTerminals.isEmpty {
-                            EffectView(.contentBackground)
-                        } else if useThemeBackground {
-                            Color(nsColor: backgroundColor)
+                        if utilityAreaViewModel.selectedTerminals.isEmpty || !useThemeBackground {
+                            Color.clear
                         } else {
-                            if colorScheme == .dark {
-                                EffectView(.underPageBackground)
-                            } else {
-                                EffectView(.contentBackground)
-                            }
+                            Color(nsColor: backgroundColor)
                         }
                     }
                     .colorScheme(

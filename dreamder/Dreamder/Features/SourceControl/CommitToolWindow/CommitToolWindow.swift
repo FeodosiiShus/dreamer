@@ -43,7 +43,7 @@ struct CommitToolWindow: View {
                         }
                     }
                     ToolWindowActionButton(icon: "general/hide", help: "Hide") {
-                        workspace.toolWindowManager.hide(ToolWindowID.commit.anchor)
+                        workspace.toolWindowManager.hide(.commit)
                     }
                 }
             )
@@ -151,7 +151,7 @@ struct CommitToolWindow: View {
                         .frame(height: 26)
                         .background(
                             RoundedRectangle(cornerRadius: Islands.controlRadius)
-                                .fill(Islands.islandRaised)
+                                .fill(Islands.islandRaised.opacity(0.8))
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: Islands.controlRadius)
@@ -288,7 +288,7 @@ struct CommitMessageEditor: View {
             }
             .background(
                 RoundedRectangle(cornerRadius: Islands.controlRadius)
-                    .fill(Islands.islandRaised)
+                    .fill(Islands.islandRaised.opacity(0.6))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Islands.controlRadius)

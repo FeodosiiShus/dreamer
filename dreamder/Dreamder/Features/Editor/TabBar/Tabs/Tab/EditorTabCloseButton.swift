@@ -21,11 +21,16 @@ struct EditorTabCloseButton: View {
             .resizable()
             .frame(width: 16, height: 16)
             .frame(width: buttonSize, height: buttonSize)
-            .background(
-                RoundedRectangle(cornerRadius: Islands.rowRadius, style: .continuous)
-                    .fill(isHoveringClose || isPressingClose ? Islands.actionHover : Color.clear)
-            )
-            .contentShape(Rectangle())
+            .background {
+                if isHoveringClose || isPressingClose {
+                    Capsule()
+                        .fill(Islands.tabHoverFill)
+                        .overlay {
+                            Capsule().strokeBorder(Islands.glassBorder, lineWidth: 1)
+                        }
+                }
+            }
+            .contentShape(Capsule())
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged({ _ in

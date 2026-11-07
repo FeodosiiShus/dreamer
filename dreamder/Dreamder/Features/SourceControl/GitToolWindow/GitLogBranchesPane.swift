@@ -21,9 +21,9 @@ struct GitLogBranchesPane: View {
                     title: "HEAD",
                     subtitle: sourceControlManager.currentBranch?.name,
                     icon: "vcs/currentBranchLabel",
-                    isSelected: viewModel.branchFilter.ref == nil
+                    isSelected: viewModel.filters.branch == nil
                 ) {
-                    select(.all)
+                    select(nil)
                 }
 
                 if !localBranches.isEmpty {
@@ -33,9 +33,9 @@ struct GitLogBranchesPane: View {
                             title: branch.name,
                             subtitle: branch.upstream,
                             icon: "vcs/branch",
-                            isSelected: viewModel.branchFilter.ref == branch.longName
+                            isSelected: viewModel.filters.branch == .fromBranch(branch.logFilterName)
                         ) {
-                            select(GitLogBranchFilter(ref: branch.longName, title: branch.name))
+                            select(.fromBranch(branch.logFilterName))
                         }
                     }
                 }
@@ -47,9 +47,9 @@ struct GitLogBranchesPane: View {
                             title: branch.name,
                             subtitle: nil,
                             icon: "vcs/branch",
-                            isSelected: viewModel.branchFilter.ref == branch.longName
+                            isSelected: viewModel.filters.branch == .fromBranch(branch.logFilterName)
                         ) {
-                            select(GitLogBranchFilter(ref: branch.longName, title: branch.name))
+                            select(.fromBranch(branch.logFilterName))
                         }
                     }
                 }
@@ -67,7 +67,7 @@ struct GitLogBranchesPane: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func select(_ filter: GitLogBranchFilter) {
+    private func select(_ filter: GitLogBranchFilter?) {
         Task {
             await viewModel.setBranchFilter(filter)
         }
@@ -112,5 +112,13 @@ struct GitLogBranchRow: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: action)
         .onHover { isHovering = $0 }
+    }
+}
+
+extension GitBranch {
+    var logFilterName: String {
+        let remotePrefix = "refs/remotes/"
+        guard isRemote, longName.hasPrefix(remotePrefix) else { return name }
+        return String(longName.dropFirst(remotePrefix.count))
     }
 }

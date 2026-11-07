@@ -17,4 +17,8 @@ enum WorkspaceStateKey: String {
     case toolWindowLeftWidth
     case toolWindowBottomHeight
     case toolWindowBottomMaximized
+    case toolWindowLeftSplit
+    case toolWindowBottomSplit
+    case toolWindowSplitIDs
+    case toolWindowSideWeights
 }

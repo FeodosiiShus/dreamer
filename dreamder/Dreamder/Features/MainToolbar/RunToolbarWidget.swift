@@ -23,20 +23,22 @@ struct RunToolbarWidget: View {
     }
 
     var body: some View {
-        HStack(spacing: 2) {
-            taskSelector
-            MainToolbarIconButton(
-                icon: "run/run",
-                help: "Run",
-                isEnabled: !taskManager.availableTasks.isEmpty,
-                action: run
-            )
-            MainToolbarIconButton(
-                icon: "run/stop",
-                help: "Stop",
-                isEnabled: isRunning,
-                action: { taskManager.terminateActiveTask() }
-            )
+        GlassEffectContainer(spacing: 4) {
+            HStack(spacing: 2) {
+                taskSelector
+                MainToolbarIconButton(
+                    icon: "run/run",
+                    help: "Run",
+                    isEnabled: !taskManager.availableTasks.isEmpty,
+                    action: run
+                )
+                MainToolbarIconButton(
+                    icon: "run/stop",
+                    help: "Stop",
+                    isEnabled: isRunning,
+                    action: { taskManager.terminateActiveTask() }
+                )
+            }
         }
     }
 
@@ -51,7 +53,7 @@ struct RunToolbarWidget: View {
                 .interpolation(.high)
                 .frame(width: 12, height: 12)
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, 10)
         .frame(
             minWidth: 84,
             maxWidth: 180,
@@ -59,12 +61,9 @@ struct RunToolbarWidget: View {
             maxHeight: Islands.toolbarControlHeight,
             alignment: .leading
         )
-        .background {
-            RoundedRectangle(cornerRadius: Islands.controlRadius)
-                .fill(isHoveringSelector ? Islands.actionHover : Color.clear)
-        }
+        .mainToolbarGlass(isHovering: isHoveringSelector)
         .background(MainToolbarMenuAnchorView(anchor: menuAnchor))
-        .contentShape(Rectangle())
+        .contentShape(Capsule())
         .onTapGesture {
             menuAnchor.present(MainToolbarMenuActions.shared.taskMenu(taskManager: taskManager))
         }

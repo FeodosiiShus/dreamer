@@ -76,14 +76,13 @@ struct TerminalToolWindow: View {
                 .fixedSize()
                 .help("Show Terminals")
                 ToolWindowActionButton(icon: "general/hide", help: "Hide") {
-                    toolWindowManager.hide(.bottom)
+                    toolWindowManager.hide(.terminal)
                 }
             }
 
             terminalContent
         }
         .background(Color.clear)
-        .environment(\.colorScheme, .dark)
         .onAppear(perform: ensureTerminal)
     }
 

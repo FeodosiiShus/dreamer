@@ -92,3 +92,75 @@ class SearchResultMatchModel: Hashable, Identifiable {
         return attributedString
     }
 }
+
+nonisolated struct FileMatchSnapshot: Sendable {
+    static let contextLength = 60
+    static let maxKeywordLength = 120
+    static let lineBreakGlyph: Character = "⏎"
+
+    let rangeWithinFile: Range<String.Index>
+    let lineContent: String
+    let keywordRange: Range<String.Index>
+
+    static func make(matchRange: NSRange, in content: String) -> FileMatchSnapshot? {
+        let text = content as NSString
+        guard matchRange.location != NSNotFound,
+              NSMaxRange(matchRange) <= text.length,
+              let fileRange = Range(matchRange, in: content) else { return nil }
+
+        var contextStart = max(matchRange.location - contextLength, 0)
+        if contextStart > 0 {
+            contextStart = text.rangeOfComposedCharacterSequence(at: contextStart).location
+        }
+        var lineStart = contextStart
+        if matchRange.location > contextStart {
+            let newline = text.range(
+                of: "\n",
+                options: .backwards,
+                range: NSRange(location: contextStart, length: matchRange.location - contextStart)
+            )
+            if newline.location != NSNotFound {
+                lineStart = NSMaxRange(newline)
+            }
+        }
+        let before = text.substring(with: NSRange(location: lineStart, length: matchRange.location - lineStart))
+        let leading = String(before.drop(while: \.isWhitespace))
+
+        let keyword = displayText(for: text.substring(with: matchRange))
+
+        let afterStart = NSMaxRange(matchRange)
+        var afterEnd = min(afterStart + contextLength, text.length)
+        if afterEnd > afterStart, afterEnd < text.length {
+            afterEnd = NSMaxRange(text.rangeOfComposedCharacterSequence(at: afterEnd - 1))
+        }
+        var after = text.substring(with: NSRange(location: afterStart, length: afterEnd - afterStart))
+        if let newline = after.firstIndex(where: \.isNewline) {
+            after = String(after[..<newline])
+        }
+        after = String(after.reversed().drop(while: \.isWhitespace).reversed())
+
+        let lineContent = leading + keyword + after
+        let units = lineContent.utf16
+        let keywordLower = units.index(units.startIndex, offsetBy: leading.utf16.count)
+        let keywordUpper = units.index(keywordLower, offsetBy: keyword.utf16.count)
+        return FileMatchSnapshot(
+            rangeWithinFile: fileRange,
+            lineContent: lineContent,
+            keywordRange: keywordLower..<keywordUpper
+        )
+    }
+
+    private static func displayText(for matched: String) -> String {
+        var display = ""
+        var count = 0
+        for character in matched {
+            if count == maxKeywordLength {
+                display.append("…")
+                break
+            }
+            display.append(character.isNewline ? lineBreakGlyph : character)
+            count += 1
+        }
+        return display
+    }
+}

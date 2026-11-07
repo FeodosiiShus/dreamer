@@ -15,7 +15,7 @@ extension WorkspaceDocument.SearchState {
     /// - Returns: A modified search term according to the specified search mode.
     func getSearchTerm(_ query: String) -> String {
         let newQuery = stripSpecialCharacters(from: (caseSensitive ? query : query.lowercased()))
-        guard let mode = selectedMode.third else {
+        guard let mode = selectedMode.third, !wholeWordsOnly else {
             return newQuery
         }
 
@@ -53,6 +53,10 @@ extension WorkspaceDocument.SearchState {
     /// Except its using the word boundary anchor(\b) instead of the asterisk(\*).
     /// This is needed to highlight the search results correctly.
     func getRegexPattern(_ query: String) -> String {
+        if isRegularExpression {
+            return query
+        }
+
         let newQuery = NSRegularExpression.escapedPattern(for: query.trimmingCharacters(in: .whitespacesAndNewlines))
 
         guard let mode = selectedMode.third else {
@@ -96,52 +100,44 @@ extension WorkspaceDocument.SearchState {
             self.findNavigatorStatus = .searching
         }
 
-        let searchQuery = getSearchTerm(query)
-        let regexPattern = getRegexPattern(query)
-
-        guard let indexer = indexer else {
-            await setStatus(.failed(errorMessage: "No index found. Try rebuilding the index."))
+        guard !query.isEmpty else {
+            await MainActor.run {
+                self.setSearchResults()
+            }
             return
         }
 
-        let asyncController = SearchIndexer.AsyncManager(index: indexer)
-        let caseSensitive = self.caseSensitive
+        let plan: FindPlan
+        do {
+            plan = try await makeFindPlan(query: query)
+        } catch let failure as FindFailure {
+            await setStatus(.failed(errorMessage: failure.message))
+            return
+        } catch {
+            await setStatus(.failed(errorMessage: error.localizedDescription))
+            return
+        }
 
-        let searchStream = await asyncController.search(query: searchQuery, 20)
         await withTaskGroup(of: (URL, Float, FileEvaluation).self) { group in
-            for await result in searchStream {
-                for file in result.results {
-                    let fileURL = file.url
-                    let fileScore = file.score
-
-                    group.addTask {
-                        let evaluation = Self.evaluateFile(
-                            at: fileURL,
-                            query: regexPattern,
-                            caseSensitive: caseSensitive
-                        )
-                        return (fileURL, fileScore, evaluation)
-                    }
+            for candidate in plan.files {
+                group.addTask {
+                    let evaluation = Self.evaluateFile(at: candidate.url, model: plan.model, regex: plan.regex)
+                    return (candidate.url, candidate.score, evaluation)
                 }
             }
 
-            for await (fileURL, fileScore, evaluation) in group {
-                if let failureMessage = evaluation.failureMessage {
-                    await setStatus(.failed(errorMessage: failureMessage))
+            for await (fileURL, fileScore, evaluation) in group where !evaluation.matches.isEmpty {
+                let file = CEWorkspaceFile(url: fileURL)
+                let newResult = SearchResultModel(file: file, score: fileScore)
+                newResult.lineMatches = evaluation.matches.map {
+                    SearchResultMatchModel(
+                        rangeWithinFile: $0.rangeWithinFile,
+                        file: file,
+                        lineContent: $0.lineContent,
+                        keywordRange: $0.keywordRange
+                    )
                 }
-                if !evaluation.matches.isEmpty {
-                    let file = CEWorkspaceFile(url: fileURL)
-                    let newResult = SearchResultModel(file: file, score: fileScore)
-                    newResult.lineMatches = evaluation.matches.map {
-                        SearchResultMatchModel(
-                            rangeWithinFile: $0.rangeWithinFile,
-                            file: file,
-                            lineContent: $0.lineContent,
-                            keywordRange: $0.keywordRange
-                        )
-                    }
-                    appendNewResultsToTempResults(newResult: newResult)
-                }
+                appendNewResultsToTempResults(newResult: newResult)
             }
         }
 
@@ -166,196 +162,80 @@ extension WorkspaceDocument.SearchState {
     /// display or use the final search results.
     @MainActor
     func setSearchResults() {
-        self.searchResult = self.tempSearchResults.sorted { $0.score > $1.score }
+        self.searchResult = self.tempSearchResults.sorted {
+            $0.score == $1.score ? $0.file.url.path < $1.file.url.path : $0.score > $1.score
+        }
         self.searchResultsCount = self.tempSearchResults.map { $0.lineMatches.count }.reduce(0, +)
         self.searchResultsFileCount = self.tempSearchResults.count
         self.findNavigatorStatus = .found
         self.tempSearchResults = []
     }
 
-    /// Evaluates a search query within the content of a file and updates
-    /// the provided `SearchResultModel` with matching occurrences.
-    ///
-    /// - Parameters:
-    ///   - query: The search query to be evaluated, potentially containing a regular expression.
-    ///   - searchResult: The `SearchResultModel` object to be updated with the matching occurrences.
-    ///
-    /// This function retrieves the content of a file specified in the `searchResult` parameter
-    /// and applies a search query using a regular expression.
-    /// It then iterates over the matches found in the file content,
-    /// creating `SearchResultMatchModel` instances for each match.
-    /// The resulting matches are appended to the `lineMatches` property of the `searchResult`.
-    /// Line matches are the preview lines that are shown in the search results.
-    ///
-    /// # Example Usage
-    /// ```swift
-    /// var resultModel = SearchResultModel()
-    /// await evaluateFile(query: "example", searchResult: &resultModel)
-    /// ```
-    nonisolated private static func evaluateFile(
+    nonisolated static func evaluateFile(
         at fileURL: URL,
-        query: String,
-        caseSensitive: Bool
+        model: FindModel,
+        regex: NSRegularExpression
     ) -> FileEvaluation {
-        guard let data = try? Data(contentsOf: fileURL) else {
-            return FileEvaluation(matches: [], failureMessage: nil)
-        }
-        guard let fileContent = String(bytes: data, encoding: .utf8) else {
-            return FileEvaluation(matches: [], failureMessage: "Failed to decode file content.")
+        guard let data = try? Data(contentsOf: fileURL),
+              let fileContent = String(bytes: data, encoding: .utf8) else {
+            return FileEvaluation(matches: [])
         }
 
-        // Attempt to create a regular expression from the provided query
-        guard let regex = try? NSRegularExpression(
-            pattern: query,
-            options: caseSensitive ? [] : .caseInsensitive
-        ) else {
-            return FileEvaluation(matches: [], failureMessage: "Invalid regular expression.")
+        let snapshots = model.findMatches(in: fileContent, using: regex).compactMap { match -> FileMatchSnapshot? in
+            guard match.range.length > 0 else { return nil }
+            return FileMatchSnapshot.make(matchRange: match.range, in: fileContent)
         }
+        return FileEvaluation(matches: snapshots)
+    }
 
-        // Find all matches of the query within the file content using the regular expression
-        let matches = regex.matches(in: fileContent, range: NSRange(location: 0, length: fileContent.utf16.count))
+    func makeFindPlan(query: String, replacement: String? = nil) async throws -> FindPlan {
+        let model = makeFindModel(query: query, replacement: replacement)
+        guard let regex = model.compileMatcher() else { throw FindFailure.invalidRegularExpression }
+        let mask: FileMask
+        do {
+            mask = try FileMask(filter: model.fileFilter)
+        } catch {
+            throw FindFailure.invalidFileMask
+        }
+        guard let indexer else { throw FindFailure.noIndex }
 
-        var newMatches = [FileMatchSnapshot]()
+        let indexTerm = model.isRegularExpressions || !Self.hasIndexableWords(query) ? nil : getSearchTerm(query)
+        let files = await Self.candidateFiles(
+            index: indexer,
+            term: indexTerm,
+            model: model,
+            scope: model.makeScope(projectRoot: workspace?.fileURL),
+            mask: mask
+        )
+        return FindPlan(model: model, regex: regex, files: files)
+    }
 
-        // Process each match and add it to the array of `newMatches`
-        for match in matches {
-            if let matchRange = Range(match.range, in: fileContent) {
-                let matchWordLength = match.range.length
-                let matchModel = createMatchModel(
-                    from: matchRange,
-                    fileContent: fileContent,
-                    matchWordLength: matchWordLength
-                )
-                newMatches.append(matchModel)
+    nonisolated static func hasIndexableWords(_ query: String) -> Bool {
+        query.contains { $0.isASCII && ($0.isLetter || $0.isNumber) }
+    }
+
+    @concurrent
+    static func candidateFiles(
+        index: SearchIndexer,
+        term: String?,
+        model: FindModel,
+        scope: FindScope?,
+        mask: FileMask
+    ) async -> [FileCandidate] {
+        var candidates: [FileCandidate] = []
+        if let term {
+            let searchStream = await SearchIndexer.AsyncManager(index: index).search(query: term, 20)
+            for await chunk in searchStream {
+                for file in chunk.results where model.accepts(file.url, scope: scope, mask: mask) {
+                    candidates.append(FileCandidate(url: file.url, score: file.score))
+                }
+            }
+        } else {
+            for url in index.documents() where model.accepts(url, scope: scope, mask: mask) {
+                candidates.append(FileCandidate(url: url, score: 0))
             }
         }
-
-        return FileEvaluation(matches: newMatches, failureMessage: nil)
-    }
-
-    /// Creates a `SearchResultMatchModel` instance based on the provided parameters,
-    /// representing a matching occurrence within a file.
-    ///
-    /// - Parameters:
-    ///   - matchRange: The range of the matched substring within the entire file content.
-    ///   - fileContent: The content of the file where the match was found.
-    ///   - file: The `CEWorkspaceFile` object representing the file containing the match.
-    ///   - matchWordLength: The length of the matched substring.
-    ///
-    /// - Returns: A `SearchResultMatchModel` instance representing the matching occurrence.
-    ///
-    /// This function is responsible for constructing a `SearchResultMatchModel`
-    /// based on the provided parameters. It extracts the relevant portions of the file content,
-    /// including the lines before and after the match, and combines them into a final line.
-    /// The resulting model includes information about the match's range within the file,
-    /// the file itself, the content of the line containing the match,
-    /// and the range of the matched keyword within that line.
-    nonisolated private static func createMatchModel(
-        from matchRange: Range<String.Index>,
-        fileContent: String,
-        matchWordLength: Int
-    ) -> FileMatchSnapshot {
-        let preLine = extractPreLine(from: matchRange, fileContent: fileContent)
-        let keywordRange = extractKeywordRange(from: preLine, matchWordLength: matchWordLength)
-        let postLine = extractPostLine(from: matchRange, fileContent: fileContent)
-
-        let finalLine = preLine + postLine
-
-        return FileMatchSnapshot(
-            rangeWithinFile: matchRange,
-            lineContent: finalLine,
-            keywordRange: keywordRange
-        )
-    }
-
-    /// Extracts the line preceding a matching occurrence within a file.
-    ///
-    /// - Parameters:
-    ///   - matchRange: The range of the matched substring within the entire file content.
-    ///   - fileContent: The content of the file where the match was found.
-    ///
-    /// - Returns: A string representing the line preceding the match.
-    ///
-    /// This function retrieves the line preceding a matching occurrence within the provided file content.
-    /// It considers a context of up to 60 characters before the match and clips the result to the last
-    /// occurrence of a newline character, ensuring that only the line containing the search term is displayed.
-    /// The extracted line is then trimmed of leading and trailing whitespaces and
-    /// newline characters before being returned.
-    nonisolated private static func extractPreLine(
-        from matchRange: Range<String.Index>,
-        fileContent: String
-    ) -> String {
-        let preRangeStart = fileContent.index(
-            matchRange.lowerBound,
-            offsetBy: -60,
-            limitedBy: fileContent.startIndex
-        ) ?? fileContent.startIndex
-
-        let preRangeEnd = matchRange.upperBound
-        let preRange = preRangeStart..<preRangeEnd
-
-        let preLineWithNewLines = fileContent[preRange]
-        // Clip the range of the preview to the last occurrence of a new line
-        let lastNewLineIndexInPreLine = preLineWithNewLines.lastIndex(of: "\n") ?? preLineWithNewLines.startIndex
-        let preLineWithNewLinesPrefix = preLineWithNewLines[lastNewLineIndexInPreLine...]
-
-        return preLineWithNewLinesPrefix.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// Extracts the range of the search term within the line preceding a matching occurrence.
-    ///
-    /// - Parameters:
-    ///   - preLine: The line preceding the matching occurrence within the file content.
-    ///   - matchWordLength: The length of the search term.
-    ///
-    /// - Returns: A range representing the position of the search term within the `preLine`.
-    ///
-    /// This function calculates the range of the search term within
-    /// the provided line preceding a matching occurrence.
-    /// It considers the length of the search term to determine
-    /// the lower and upper bounds of the keyword range within the line.
-    nonisolated private static func extractKeywordRange(
-        from preLine: String,
-        matchWordLength: Int
-    ) -> Range<String.Index> {
-        let keywordLowerBound = preLine.index(
-            preLine.endIndex,
-            offsetBy: -matchWordLength,
-            limitedBy: preLine.startIndex
-        ) ?? preLine.endIndex
-        let keywordUpperBound = preLine.endIndex
-
-        return keywordLowerBound..<keywordUpperBound
-    }
-
-    /// Extracts the line following a matching occurrence within a file.
-    ///
-    /// - Parameters:
-    ///   - matchRange: The range of the matched substring within the entire file content.
-    ///   - fileContent: The content of the file where the match was found.
-    ///
-    /// - Returns: A string representing the line following the match.
-    ///
-    /// This function retrieves the line following a matching occurrence within the provided file content.
-    /// It considers a context of up to 60 characters after the match and clips the result to the first
-    /// occurrence of a newline character, ensuring that only the relevant portion of the line is displayed.
-    /// The extracted line is then converted to a string before being returned.
-    nonisolated private static func extractPostLine(
-        from matchRange: Range<String.Index>,
-        fileContent: String
-    ) -> String {
-        let postRangeStart = matchRange.upperBound
-        let postRangeEnd = fileContent.index(
-            matchRange.upperBound,
-            offsetBy: 60,
-            limitedBy: fileContent.endIndex
-        ) ?? fileContent.endIndex
-
-        let postRange = postRangeStart..<postRangeEnd
-        let postLineWithNewLines = fileContent[postRange]
-
-        let firstNewLineIndexInPostLine = postLineWithNewLines.firstIndex(of: "\n") ?? postLineWithNewLines.endIndex
-        return String(postLineWithNewLines[..<firstNewLineIndexInPostLine])
+        return candidates
     }
 
     /// Resets the search results along with counts for overall results and file-specific results.
@@ -369,13 +249,33 @@ extension WorkspaceDocument.SearchState {
     }
 }
 
-nonisolated struct FileMatchSnapshot: Sendable {
-    let rangeWithinFile: Range<String.Index>
-    let lineContent: String
-    let keywordRange: Range<String.Index>
-}
-
 nonisolated struct FileEvaluation: Sendable {
     let matches: [FileMatchSnapshot]
-    let failureMessage: String?
+}
+
+nonisolated struct FileCandidate: Sendable {
+    let url: URL
+    let score: Float
+}
+
+nonisolated struct FindPlan: Sendable {
+    let model: FindModel
+    let regex: NSRegularExpression
+    let files: [FileCandidate]
+}
+
+nonisolated enum FindFailure: Error, Equatable, Sendable {
+    case noIndex
+    case invalidRegularExpression
+    case invalidFileMask
+    case invalidReplacement(String)
+
+    var message: String {
+        switch self {
+        case .noIndex: "No index found. Try rebuilding the index."
+        case .invalidRegularExpression: "Invalid regular expression."
+        case .invalidFileMask: "Invalid file mask."
+        case .invalidReplacement(let detail): "Invalid replacement string: \(detail)"
+        }
+    }
 }

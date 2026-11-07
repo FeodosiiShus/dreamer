@@ -100,9 +100,7 @@ struct WorkspacePanelTabBar<Tab: WorkspacePanelTab>: View {
             }
         }
         .if(.tahoe) {
-            if #available(macOS 14.0, *) {
-                $0.background(GlassEffectView(tintColor: .secondarySystemFill)).clipShape(Capsule())
-            }
+            $0.glassEffect(.regular.tint(Color(nsColor: .secondarySystemFill)), in: .capsule)
         }
     }
 

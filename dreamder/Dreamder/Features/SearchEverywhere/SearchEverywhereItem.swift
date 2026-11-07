@@ -1,6 +1,6 @@
 import AppKit
 
-enum SearchEverywhereSectionKind: String, CaseIterable, Identifiable {
+nonisolated enum SearchEverywhereSectionKind: String, CaseIterable, Identifiable {
     case recent
     case files
     case classes
@@ -73,17 +73,20 @@ final class SearchEverywhereAction {
     let identity: String
     let path: String
     let shortcut: String
+    let selector: String
     private let performBlock: @MainActor () -> Void
 
     init(
         identity: String,
         path: String,
         shortcut: String,
+        selector: String = "",
         perform: @escaping @MainActor () -> Void
     ) {
         self.identity = identity
         self.path = path
         self.shortcut = shortcut
+        self.selector = selector
         self.performBlock = perform
     }
 
@@ -101,6 +104,10 @@ final class SearchEverywhereAction {
         let joined = components.joined(separator: " | ")
         return joined == "Command" ? "" : joined
     }
+
+    var equalityKey: String {
+        selector.isEmpty ? "action:\(identity)" : "action:\(selector)|\(title)"
+    }
 }
 
 struct SearchEverywhereItem: Identifiable {
@@ -115,7 +122,20 @@ struct SearchEverywhereItem: Identifiable {
     let line: Int?
     let column: Int?
     let action: SearchEverywhereAction?
-    let score: Int
+    let weight: SearchEverywhereComposedWeight
+    let isExactMatch: Bool
+    let equalityKey: String?
+
+    var rankingCandidate: SearchEverywhereCandidate {
+        SearchEverywhereCandidate(
+            id: id,
+            provider: section.provider,
+            title: title,
+            weight: weight,
+            isExactMatch: isExactMatch,
+            equalityKey: equalityKey
+        )
+    }
 }
 
 extension SearchEverywhereItem: Hashable {
@@ -198,6 +218,7 @@ enum SearchEverywhereActionProvider {
                 identity: "menu:\(path)",
                 path: path,
                 shortcut: shortcut,
+                selector: NSStringFromSelector(action),
                 perform: {
                     if let index = capturedMenu.items.firstIndex(where: { $0 === capturedItem }) {
                         capturedMenu.performActionForItem(at: index)

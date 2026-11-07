@@ -31,8 +31,10 @@ final class ExtensionDiscovery {
     private var availabilityTask: Task<Void, Never>?
 
     // Init is private as only 1 instance of this class may (needs to) exist.
-    private init() {
-        // Two separate tasks need to be used, as the awaits never finish.
+    private init() {}
+
+    func start() {
+        guard discoverTask == nil else { return }
         discoverTask = discover()
         availabilityTask = availabilityOverview()
     }

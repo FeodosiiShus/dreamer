@@ -86,7 +86,7 @@ struct FeatureIcon: View {
         case .symbol, .text:
             return AnyShapeStyle((color ?? .accentColor).gradient)
         case .image:
-            return AnyShapeStyle(.regularMaterial)
+            return AnyShapeStyle(Islands.islandRaised)
         }
     }
 }

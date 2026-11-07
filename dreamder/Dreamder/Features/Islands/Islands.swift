@@ -109,6 +109,10 @@ enum Islands {
     static var glassIslandTint: Color { island.opacity(glassTintOpacity) }
     static var glassPopupTint: Color { popup.opacity(glassTintOpacity) }
     static var glassBorder: Color { popupBorder.opacity(0.6) }
+    static var glassHoverTint: Color { componentBorder.opacity(glassTintOpacity) }
+    static var tabHoverFill: Color { islandRaised.opacity(0.9) }
+    static var glassRaisedFill: Color { islandRaised.opacity(0.5) }
+    static var glassFieldFill: Color { islandRaised.opacity(0.7) }
 
     static var uiFont: Font { .system(size: uiFontSize) }
     static var smallFont: Font { .system(size: smallFontSize) }

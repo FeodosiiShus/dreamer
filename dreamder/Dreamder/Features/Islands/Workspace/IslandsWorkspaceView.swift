@@ -60,7 +60,7 @@ struct IslandsWorkspaceView: View {
         .task(id: backgroundImagePath) {
             backgroundImage = BackgroundImageLayer.loadImage(at: backgroundImagePath)
         }
-        .onChange(of: toolWindowManager.visible) { _, _ in
+        .onChange(of: toolWindowManager.placement) { _, _ in
             saveLayout()
         }
         .onChange(of: toolWindowManager.bottomMaximized) { _, _ in
@@ -68,8 +68,8 @@ struct IslandsWorkspaceView: View {
         }
         .onChange(of: utilityAreaViewModel.isCollapsed) { _, isCollapsed in
             if isCollapsed {
-                if toolWindowManager.active(.bottom) == .terminal {
-                    toolWindowManager.hide(.bottom)
+                if toolWindowManager.isVisible(.terminal) {
+                    toolWindowManager.hide(.terminal)
                 }
             } else {
                 toolWindowManager.show(taskManager.taskShowingOutput == nil ? .terminal : .run)
@@ -86,7 +86,7 @@ struct IslandsWorkspaceView: View {
 
     private var islandsColumn: some View {
         GeometryReader { geometry in
-            glassContainer {
+            GlassEffectContainer(spacing: 0) {
                 columnContent(available: geometry.size)
             }
         }
@@ -96,26 +96,15 @@ struct IslandsWorkspaceView: View {
     }
 
     @ViewBuilder
-    private func glassContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        if #available(macOS 26, *) {
-            GlassEffectContainer(spacing: 0) {
-                content()
-            }
-        } else {
-            content()
-        }
-    }
-
-    @ViewBuilder
     private func columnContent(available: CGSize) -> some View {
         VStack(spacing: 0) {
-            if toolWindowManager.bottomMaximized, let bottom = toolWindowManager.active(.bottom) {
-                toolWindowIsland(bottom)
+            if toolWindowManager.bottomMaximized, toolWindowManager.active(.bottom) != nil {
+                anchorGroup(.bottom)
                     .frame(maxHeight: .infinity)
             } else {
                 HStack(spacing: 0) {
-                    if let left = toolWindowManager.active(.left) {
-                        toolWindowIsland(left)
+                    if toolWindowManager.active(.left) != nil {
+                        anchorGroup(.left)
                             .frame(width: ToolWindowLayout.clampLeftWidth(
                                 toolWindowManager.leftWidth,
                                 availableWidth: available.width
@@ -126,9 +115,9 @@ struct IslandsWorkspaceView: View {
                 }
                 .frame(maxHeight: .infinity)
 
-                if let bottom = toolWindowManager.active(.bottom) {
+                if toolWindowManager.active(.bottom) != nil {
                     bottomResizeHandle(availableHeight: available.height)
-                    toolWindowIsland(bottom)
+                    anchorGroup(.bottom)
                         .frame(height: ToolWindowLayout.clampBottomHeight(
                             toolWindowManager.bottomHeight,
                             availableHeight: available.height
@@ -139,16 +128,68 @@ struct IslandsWorkspaceView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    private func toolWindowIsland(_ id: ToolWindowID) -> some View {
-        let content = ToolWindowContentView(id: id)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        return Group {
-            if id == .project {
-                content.island()
-            } else {
-                content.glassIsland()
+    @ViewBuilder
+    private func anchorGroup(_ anchor: ToolWindowAnchor) -> some View {
+        let main = toolWindowManager.visible(on: anchor, side: .main)
+        let split = toolWindowManager.visible(on: anchor, side: .split)
+        if let main, let split {
+            GeometryReader { geometry in
+                let isStacked = anchor.splitsVertically
+                let total = isStacked ? geometry.size.height : geometry.size.width
+                let sizes = ToolWindowSplitState.partSizes(
+                    total: total,
+                    proportion: toolWindowManager.mainProportion(on: anchor),
+                    gap: Islands.islandGap,
+                    minimumPart: ToolWindowLayout.minSplitPart
+                )
+                if isStacked {
+                    VStack(spacing: 0) {
+                        toolWindowIsland(main)
+                            .frame(height: sizes.first)
+                        splitHandle(anchor: anchor, total: total)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: Islands.islandGap)
+                        toolWindowIsland(split)
+                            .frame(height: sizes.second)
+                    }
+                } else {
+                    HStack(spacing: 0) {
+                        toolWindowIsland(main)
+                            .frame(width: sizes.first)
+                        splitHandle(anchor: anchor, total: total)
+                            .frame(width: Islands.islandGap)
+                            .frame(maxHeight: .infinity)
+                        toolWindowIsland(split)
+                            .frame(width: sizes.second)
+                    }
+                }
             }
+        } else if let only = main ?? split {
+            toolWindowIsland(only)
         }
+    }
+
+    private func splitHandle(anchor: ToolWindowAnchor, total: CGFloat) -> some View {
+        IslandResizeHandle(
+            orientation: anchor.splitsVertically ? .horizontal : .vertical,
+            onDrag: { delta in
+                let proportion = ToolWindowSplitState.proportion(
+                    movingDividerBy: delta,
+                    from: toolWindowManager.mainProportion(on: anchor),
+                    total: total,
+                    gap: Islands.islandGap,
+                    minimumPart: ToolWindowLayout.minSplitPart
+                )
+                toolWindowManager.setMainProportion(on: anchor, proportion)
+            },
+            onDragEnded: saveLayout
+        )
+    }
+
+    private func toolWindowIsland(_ id: ToolWindowID) -> some View {
+        ToolWindowContentView(id: id)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .glassIsland()
     }
 
     private func leftResizeHandle(availableWidth: CGFloat) -> some View {

@@ -58,7 +58,7 @@ struct ProjectToolWindow: View {
                     }
                 }
                 ToolWindowActionButton(icon: "general/hide", help: "Hide") {
-                    toolWindowManager.hide(.left)
+                    toolWindowManager.hide(.project)
                 }
             }
 
@@ -75,7 +75,6 @@ struct ProjectToolWindow: View {
             }
         }
         .background(Color.clear)
-        .environment(\.colorScheme, .dark)
         .onAppear {
             DispatchQueue.main.async {
                 controllerReference.controller?.clearSearchFieldFocus()

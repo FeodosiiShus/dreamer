@@ -22,9 +22,18 @@ nonisolated extension GitClient {
     }
 
     func branchOpsRecentBranchNames(limit: Int) async throws -> [String] {
-        let safeLimit = max(limit, 1) * 4
-        let output = try await run(arguments: ["reflog", "--format=%gs", "-n", "\(safeLimit)"])
-        return BranchesPopupReflogParser.recentBranchNames(from: output, limit: limit)
+        let reflog = try await run(arguments: [
+            "reflog", "--format=%gs",
+            "--max-count", "\(BranchesPopupReflogParser.reflogEntryCount)",
+            "--grep-reflog", "checkout:",
+            "--"
+        ])
+        let localRefs = try await run(arguments: ["for-each-ref", "--format=%(refname)", "refs/heads"])
+        return BranchesPopupReflogParser.recentBranchNames(
+            from: reflog,
+            existingBranches: BranchesPopupReflogParser.localBranchNames(fromRefs: localRefs),
+            limit: limit
+        )
     }
 
     func branchOpsOperationState() async -> GitBranchOperationState {

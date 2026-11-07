@@ -70,7 +70,7 @@ struct BranchesPopupTreeTests {
     }
 
     @Test
-    func recentIsNotCapped() {
+    func recentIsCappedAtFive() {
         let locals = (1...8).map { local("branch\($0)") }
         let sections = BranchesPopupTreeBuilder.build(input(
             locals: locals,
@@ -78,8 +78,9 @@ struct BranchesPopupTreeTests {
             current: "branch8"
         ))
         let recentSection = sections.first { $0.id == .recent }
-        #expect(recentSection?.nodes.count == 8)
+        #expect(recentSection?.nodes.count == 5)
         #expect(recentSection?.nodes.first?.title == "branch1")
+        #expect(recentSection?.nodes.last?.title == "branch5")
     }
 
     @Test
@@ -175,7 +176,7 @@ struct BranchesPopupTreeTests {
         let remoteSection = sections.first { $0.id == .remote }
         #expect(remoteSection?.nodes.map(\.title) == ["origin", "upstream"])
         let originGroup = remoteSection?.nodes.first { $0.title == "origin" }
-        #expect(originGroup?.children.map(\.title) == ["master", "feature"])
+        #expect(originGroup?.children.map(\.title) == ["feature", "master"])
         let featureGroup = originGroup?.children.first { $0.title == "feature" }
         #expect(featureGroup?.children.map(\.title) == ["login"])
         let upstreamGroup = remoteSection?.nodes.first { $0.title == "upstream" }
@@ -288,9 +289,304 @@ struct BranchesPopupTreeTests {
         checkout: moving from fix/login to feature
         commit: Fix the build
         checkout: moving from feature to HEAD
+        checkout: moving from feature to 1a2b3c4
         """
-        let names = BranchesPopupReflogParser.recentBranchNames(from: output, limit: 10)
+        let existing: Set<String> = ["main", "feature", "fix/login"]
+        let names = BranchesPopupReflogParser.recentBranchNames(from: output, existingBranches: existing, limit: 10)
         #expect(names == ["feature", "fix/login"])
+    }
+
+    @Test
+    func reflogParserSkipsDeletedBranchesBeforeApplyingTheLimit() {
+        let output = """
+        checkout: moving from a to gone
+        checkout: moving from gone to b
+        checkout: moving from b to c
+        checkout: moving from c to d
+        """
+        let existing: Set<String> = ["a", "b", "c", "d"]
+        #expect(BranchesPopupReflogParser.recentBranchNames(from: output, existingBranches: existing, limit: 2) == ["b", "c"])
+        #expect(BranchesPopupReflogParser.recentBranchNames(from: output, existingBranches: existing, limit: 0).isEmpty)
+    }
+
+    @Test
+    func reflogParserTakesTheNameAfterTheLastSeparator() {
+        let output = "checkout: moving from a to b to c"
+        let names = BranchesPopupReflogParser.recentBranchNames(from: output, existingBranches: ["c"], limit: 5)
+        #expect(names == ["c"])
+    }
+
+    @Test
+    func localBranchNamesComeFromFullRefNames() {
+        let output = "refs/heads/main\nrefs/heads/feature/login\nrefs/remotes/origin/main\n\n"
+        #expect(BranchesPopupReflogParser.localBranchNames(fromRefs: output) == ["main", "feature/login"])
+    }
+
+    @Test
+    func recentIsCappedAtFiveAfterFilteringMissingBranches() {
+        let names = ["a", "b", "c", "d", "e", "f"]
+        let sections = BranchesPopupTreeBuilder.build(input(
+            locals: names.map { local($0) } + [local("main")],
+            recent: ["gone1", "gone2"] + names,
+            current: "main"
+        ))
+        #expect(BranchesPopupTreeBuilder.maxRecentBranches == 5)
+        #expect(sections.first { $0.id == .recent }?.nodes.map(\.title) == ["a", "b", "c", "d", "e"])
+        #expect(sections.first { $0.id == .local }?.nodes.map(\.title) == ["main", "f"])
+    }
+
+    @Test
+    func currentBranchInRecentIsNotRepeatedInLocal() {
+        let sections = BranchesPopupTreeBuilder.build(input(
+            locals: [local("main"), local("feature"), local("fix")],
+            recent: ["main", "feature", "main", "feature"],
+            current: "main"
+        ))
+        let all = sections.flatMap(\.refs)
+        #expect(all.filter { $0.shortName == "main" }.count == 1)
+        #expect(all.filter { $0.shortName == "feature" }.count == 1)
+        #expect(sections.first { $0.id == .recent }?.nodes.map(\.title) == ["main", "feature"])
+        #expect(sections.first { $0.id == .local }?.nodes.map(\.title) == ["fix"])
+    }
+
+    @Test
+    func currentBranchBeyondTheRecentCapStaysInLocalOnce() {
+        let names = (1...7).map { "branch\($0)" }
+        let sections = BranchesPopupTreeBuilder.build(input(
+            locals: names.map { local($0) },
+            recent: names,
+            current: "branch7"
+        ))
+        let all = sections.flatMap(\.refs)
+        #expect(all.filter { $0.shortName == "branch7" }.count == 1)
+        #expect(sections.first { $0.id == .local }?.nodes.map(\.title) == ["branch7", "branch6"])
+    }
+
+    @Test
+    func sectionsAppearAsRecentLocalRemoteTags() {
+        let sections = BranchesPopupTreeBuilder.build(input(
+            locals: [local("main"), local("feature")],
+            remotes: [remote("origin/main")],
+            tags: [GitTag(name: "v1", objectName: "abc")],
+            recent: ["feature"],
+            current: "main"
+        ))
+        #expect(sections.map(\.id) == [.recent, .local, .remote, .tags])
+    }
+
+    @Test
+    func namesAreOrderedNaturallyAndCaseInsensitively() {
+        let sections = BranchesPopupTreeBuilder.build(input(
+            locals: [local("branch10"), local("branch2"), local("Branch1"), local("Alpha")],
+            groupsByDirectory: false
+        ))
+        #expect(sections.first?.nodes.map(\.title) == ["Alpha", "Branch1", "branch2", "branch10"])
+    }
+
+    @Test
+    func tagsAreOrderedNaturally() {
+        let tags = ["v10", "v2", "v1"].map { GitTag(name: $0, objectName: "abc") }
+        let sections = BranchesPopupTreeBuilder.build(input(tags: tags))
+        #expect(sections.first { $0.id == .tags }?.nodes.map(\.title) == ["v1", "v2", "v10"])
+    }
+
+    @Test
+    func currentThenFavoritesThenGroupsThenOtherNames() {
+        let sections = BranchesPopupTreeBuilder.build(input(
+            locals: [local("feature/a"), local("release/1"), local("zeta"), local("alpha"), local("main")],
+            current: "main",
+            favorites: ["local:zeta"]
+        ))
+        #expect(sections.first?.nodes.map(\.title) == ["main", "zeta", "feature", "release", "alpha"])
+    }
+
+    @Test
+    func favoriteBranchInsideAGroupFloatsItsGroup() {
+        let sections = BranchesPopupTreeBuilder.build(input(
+            locals: [local("alpha/one"), local("beta/two"), local("gamma/three"), local("main")],
+            current: "main",
+            favorites: ["local:gamma/three"]
+        ))
+        #expect(sections.first?.nodes.map(\.title) == ["main", "gamma", "alpha", "beta"])
+    }
+
+    @Test
+    func currentBranchInsideAGroupFloatsItsGroup() {
+        let sections = BranchesPopupTreeBuilder.build(input(
+            locals: [local("alpha/one"), local("beta/two"), local("gamma/three")],
+            current: "beta/two"
+        ))
+        #expect(sections.first?.nodes.map(\.title) == ["beta", "alpha", "gamma"])
+    }
+
+    @Test
+    func groupChildrenListPinnedRefsThenGroupsThenOtherRefs() {
+        let sections = BranchesPopupTreeBuilder.build(input(
+            locals: [local("g/b"), local("g/a"), local("g/sub/x"), local("g/fav")],
+            favorites: ["local:g/fav"]
+        ))
+        let group = sections.first?.nodes.first
+        #expect(group?.id == .group(.local, "g"))
+        #expect(group?.children.map(\.title) == ["fav", "sub", "a", "b"])
+        #expect(group?.children.first { $0.title == "sub" }?.id == .group(.local, "g/sub"))
+    }
+
+    @Test
+    func groupsAreOrderedNaturally() {
+        let sections = BranchesPopupTreeBuilder.build(input(
+            locals: [local("r/10/x"), local("r/2/x"), local("r/1/x")]
+        ))
+        let group = sections.first?.nodes.first
+        #expect(group?.children.map(\.title) == ["1", "2", "10"])
+    }
+
+    @Test
+    func recentGroupsFollowReflogOrder() {
+        let sections = BranchesPopupTreeBuilder.build(input(
+            locals: [local("zed/a"), local("alpha/b"), local("main")],
+            recent: ["zed/a", "main", "alpha/b"],
+            current: "main"
+        ))
+        #expect(sections.first { $0.id == .recent }?.nodes.map(\.title) == ["zed", "main", "alpha"])
+    }
+
+    @Test
+    func sectionRefsListTheSortedMatchingReferences() {
+        let sections = BranchesPopupTreeBuilder.build(input(
+            locals: [local("zeta"), local("g/b"), local("alpha")],
+            current: "alpha"
+        ))
+        let localSection = sections.first { $0.id == .local }
+        #expect(localSection?.refs.map(\.shortName) == ["alpha", "g/b", "zeta"])
+        #expect(localSection?.nodes.map(\.title) == ["alpha", "g", "zeta"])
+    }
+
+    private func preferred(
+        _ input: BranchesPopupTreeInput,
+        query: String? = nil
+    ) -> BranchesPopupPreferredRef? {
+        var treeInput = input
+        if let query { treeInput.query = query }
+        return BranchesPopupPreferredSelection.resolve(
+            sections: BranchesPopupTreeBuilder.build(treeInput),
+            matcher: BranchesPopupMatcher(query: treeInput.query),
+            recentNames: treeInput.recentNames
+        )
+    }
+
+    @Test
+    func withoutQueryThePreviousRecentBranchIsPreferred() {
+        let result = preferred(input(
+            locals: [local("main"), local("feature"), local("fix")],
+            recent: ["main", "fix", "feature"],
+            current: "main"
+        ))
+        #expect(result?.ref.shortName == "fix")
+        #expect(result?.section == .recent)
+        #expect(result?.itemID == .ref(.recent, "fix"))
+    }
+
+    @Test
+    func withoutQueryTheCurrentBranchIsPreferredWhenNothingWasCheckedOutBefore() {
+        let onlyCurrentRecent = preferred(input(
+            locals: [local("main"), local("feature")],
+            recent: ["main"],
+            current: "main"
+        ))
+        #expect(onlyCurrentRecent?.ref.shortName == "main")
+        #expect(onlyCurrentRecent?.section == .recent)
+
+        let noRecent = preferred(input(
+            locals: [local("main"), local("feature")],
+            current: "main"
+        ))
+        #expect(noRecent?.ref.shortName == "main")
+        #expect(noRecent?.section == .local)
+    }
+
+    @Test
+    func withoutQueryThePreviousBranchIsFoundEvenWhenRecentIsHidden() {
+        let result = preferred(input(
+            locals: [local("main"), local("feature")],
+            recent: ["main", "feature"],
+            current: "main",
+            showsRecent: false
+        ))
+        #expect(result?.ref.shortName == "feature")
+        #expect(result?.section == .local)
+    }
+
+    @Test
+    func withoutQueryAndWithoutCurrentNothingIsPreferred() {
+        #expect(preferred(input(locals: [local("feature")])) == nil)
+    }
+
+    @Test
+    func queryPrefersRecentThenLocalThenRemoteThenTags() {
+        let all = input(
+            locals: [local("main"), local("feature/main")],
+            remotes: [remote("origin/main")],
+            tags: [GitTag(name: "main-tag", objectName: "abc")],
+            recent: ["feature/main"],
+            current: "main"
+        )
+        let recentWins = preferred(all, query: "main")
+        #expect(recentWins?.section == .recent)
+        #expect(recentWins?.ref.shortName == "feature/main")
+
+        var withoutRecent = all
+        withoutRecent.recentNames = []
+        let localWins = preferred(withoutRecent, query: "main")
+        #expect(localWins?.section == .local)
+
+        var remoteAndTag = all
+        remoteAndTag.localBranches = []
+        remoteAndTag.recentNames = []
+        let remoteWins = preferred(remoteAndTag, query: "main")
+        #expect(remoteWins?.section == .remote)
+        #expect(remoteWins?.ref.shortName == "origin/main")
+
+        var tagOnly = remoteAndTag
+        tagOnly.remoteBranches = []
+        let tagWins = preferred(tagOnly, query: "main")
+        #expect(tagWins?.section == .tags)
+        #expect(tagWins?.ref.shortName == "main-tag")
+    }
+
+    @Test
+    func queryPicksTheHighestWeightInsideTheFirstMatchingSection() {
+        let result = preferred(
+            input(locals: [local("release/feature/login"), local("feature/login"), local("login")], current: "other"),
+            query: "login"
+        )
+        #expect(result?.section == .local)
+        #expect(result?.ref.shortName == "login")
+    }
+
+    @Test
+    func queryTiesKeepTheFirstReferenceInSortedOrder() {
+        let result = preferred(
+            input(locals: [local("release/2"), local("release/1")]),
+            query: "rel"
+        )
+        #expect(result?.ref.shortName == "release/1")
+    }
+
+    @Test
+    func queryWithoutMatchesPrefersNothing() {
+        #expect(preferred(input(locals: [local("main")], current: "main"), query: "zzz") == nil)
+    }
+
+    @Test
+    func slashQueryIsTreatedAsNoQuery() {
+        let result = preferred(input(
+            locals: [local("main"), local("feature")],
+            recent: ["main", "feature"],
+            current: "main"
+        ), query: "/")
+        #expect(result?.ref.shortName == "feature")
+        let sections = BranchesPopupTreeBuilder.build(input(locals: [local("main"), local("feature")], query: "/"))
+        #expect(sections.first?.refs.count == 2)
     }
 
     @Test

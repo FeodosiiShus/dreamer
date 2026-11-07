@@ -4,6 +4,7 @@ import SwiftUI
 struct MergeConflictEditorBanner: View {
     @Environment(WorkspaceDocument.self) private var workspace
     private let center = MergeConflictsCenter.shared
+    private static let stripHeight: CGFloat = 30
 
     let fileURL: URL
 
@@ -28,14 +29,11 @@ struct MergeConflictEditorBanner: View {
                     .help("Open the Merge Revisions window for \(entry.path)")
                     Spacer(minLength: 8)
                 }
-                .padding(.horizontal, 10)
-                .frame(height: 30)
-                .background(Islands.islandRaised)
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(Islands.separator)
-                        .frame(height: 1)
-                }
+                .padding(.horizontal, 12)
+                .frame(height: Self.stripHeight)
+                .glassPopup(radius: Self.stripHeight / 2)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
             }
         }
         .task(id: fileURL) {

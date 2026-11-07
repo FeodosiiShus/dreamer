@@ -75,10 +75,11 @@ struct EditorTabView: View {
         if isActive {
             return isFocused ? Islands.tabSelectedBackground : Islands.tabInactiveSelectedBackground
         }
-        if isHovering || isInHoldingState {
-            return Islands.actionHover
-        }
-        return isTestFile ? Islands.testFileBackground.opacity(0.4) : .clear
+        return .clear
+    }
+
+    private var showsHoverCapsule: Bool {
+        !isActive && (isHovering || isInHoldingState)
     }
 
     @ViewBuilder private var fileColorFill: some View {
@@ -164,6 +165,12 @@ struct EditorTabView: View {
                 .fill(backgroundColor)
                 .overlay(fileColorFill)
         )
+        .background {
+            if showsHoverCapsule {
+                Capsule()
+                    .fill(Islands.tabHoverFill)
+            }
+        }
         .overlay(
             RoundedRectangle(cornerRadius: Islands.tabPillRadius, style: .continuous)
                 .strokeBorder(borderColor, lineWidth: 1)

@@ -30,7 +30,7 @@ struct GitToolWindow: View {
                         }
                     }
                     ToolWindowActionButton(icon: "general/hide", help: "Hide") {
-                        workspace.toolWindowManager.hide(ToolWindowID.git.anchor)
+                        workspace.toolWindowManager.hide(.git)
                     }
                 }
             )
@@ -78,7 +78,7 @@ struct GitToolWindow: View {
             GitPaneDivider(width: $branchesWidth, range: 150...420)
 
             VStack(spacing: 0) {
-                GitLogFilterField(text: $viewModel.searchText)
+                GitLogFilterBar(viewModel: viewModel)
                 GitLogCommitTable(viewModel: viewModel)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

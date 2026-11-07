@@ -19,6 +19,7 @@ struct GitHunkPopoverView: View {
         }
         .padding(10)
         .frame(width: 360, alignment: .leading)
+        .glassPopup(radius: Islands.popupRadius)
     }
 
     @ViewBuilder
@@ -35,7 +36,7 @@ struct GitHunkPopoverView: View {
             .frame(maxHeight: 180)
             .background(
                 RoundedRectangle(cornerRadius: Islands.rowRadius)
-                    .fill(Islands.island)
+                    .fill(Islands.islandRaised.opacity(0.6))
             )
         } else {
             Text("No previous content")
@@ -53,7 +54,7 @@ struct GitHunkPopoverView: View {
                 .frame(height: 24)
                 .background(
                     RoundedRectangle(cornerRadius: Islands.controlRadius)
-                        .fill(Islands.islandRaised)
+                        .fill(Islands.islandRaised.opacity(0.8))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: Islands.controlRadius)

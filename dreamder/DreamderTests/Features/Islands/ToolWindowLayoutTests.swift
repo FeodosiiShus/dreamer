@@ -114,4 +114,125 @@ struct ToolWindowLayoutTests {
         #expect(layout.bottomHeight == 210)
         #expect(layout.bottomMaximized)
     }
+
+    @Test
+    func layoutRoundTripsSplitWindowsAndWeights() {
+        let manager = ToolWindowManager()
+        manager.setSplit(.find, true)
+        manager.show(.find)
+        manager.setSplit(.commit, true)
+        manager.show(.commit)
+        manager.setMainProportion(on: .bottom, 0.65)
+
+        let layout = ToolWindowLayout(manager: manager)
+
+        #expect(layout.bottom == .terminal)
+        #expect(layout.bottomSplit == .find)
+        #expect(layout.left == .project)
+        #expect(layout.leftSplit == .commit)
+        #expect(layout.splitWindows == [.commit, .find])
+        #expect(abs((layout.sideWeights[.find] ?? 0) - 0.35) < 1e-9)
+
+        let restored = ToolWindowManager()
+        layout.apply(to: restored)
+
+        #expect(restored.visible(on: .bottom, side: .split) == .find)
+        #expect(restored.visible(on: .left, side: .split) == .commit)
+        #expect(abs(restored.mainProportion(on: .bottom) - 0.65) < 1e-9)
+        #expect(ToolWindowLayout(manager: restored) == layout)
+    }
+
+    @Test
+    func layoutWithoutSplitFieldsRestoresTheOldTwoSlotLayout() {
+        let manager = ToolWindowManager()
+        let layout = ToolWindowLayout(
+            left: .commit,
+            bottom: .git,
+            leftWidth: 300,
+            bottomHeight: 250,
+            bottomMaximized: true
+        )
+
+        layout.apply(to: manager)
+
+        #expect(manager.visible(on: .left, side: .main) == .commit)
+        #expect(manager.visible(on: .bottom, side: .main) == .git)
+        #expect(manager.visible(on: .left, side: .split) == nil)
+        #expect(manager.visible(on: .bottom, side: .split) == nil)
+        #expect(manager.bottomMaximized)
+    }
+
+    @Test
+    func applyClearsSplitFlagsThatTheLayoutDoesNotList() {
+        let manager = ToolWindowManager()
+        manager.setSplit(.find, true)
+        manager.setSideWeight(.find, 0.2)
+
+        ToolWindowLayout(
+            left: nil,
+            bottom: nil,
+            leftWidth: 300,
+            bottomHeight: 300,
+            bottomMaximized: false
+        ).apply(to: manager)
+
+        #expect(manager.isSplit(.find) == false)
+        #expect(manager.sideWeight(of: .find) == ToolWindowSplitState.defaultSideWeight)
+    }
+
+    @Test
+    func applyIgnoresWindowStoredOnTheWrongSide() {
+        let manager = ToolWindowManager()
+        let layout = ToolWindowLayout(
+            left: .project,
+            bottom: nil,
+            leftWidth: 300,
+            bottomHeight: 300,
+            bottomMaximized: false,
+            leftSplit: .commit,
+            bottomSplit: nil,
+            splitWindows: [.project],
+            sideWeights: [:]
+        )
+
+        layout.apply(to: manager)
+
+        #expect(manager.visible(on: .left, side: .main) == nil)
+        #expect(manager.visible(on: .left, side: .split) == nil)
+    }
+
+    @Test
+    func maximizedBottomIsValidWithOnlyASplitWindowShown() {
+        let manager = ToolWindowManager()
+        let layout = ToolWindowLayout(
+            left: nil,
+            bottom: nil,
+            leftWidth: 300,
+            bottomHeight: 300,
+            bottomMaximized: true,
+            leftSplit: nil,
+            bottomSplit: .git,
+            splitWindows: [.git],
+            sideWeights: [:]
+        )
+
+        layout.apply(to: manager)
+
+        #expect(manager.active(.bottom) == .git)
+        #expect(manager.bottomMaximized)
+    }
+
+    @Test
+    func storedSplitWindowsDropUnknownIdentifiers() {
+        #expect(ToolWindowLayout.storedSplitWindows(["find", "bogus", "git"]) == [.find, .git])
+        #expect(ToolWindowLayout.storedSplitWindows(nil) == [])
+        #expect(ToolWindowLayout.storedSplitWindows("find") == [])
+    }
+
+    @Test
+    func storedSideWeightsDropUnknownIdentifiers() {
+        let weights = ToolWindowLayout.storedSideWeights(["find": 0.25, "bogus": 0.9])
+        #expect(weights == [.find: 0.25])
+        #expect(ToolWindowLayout.storedSideWeights(nil).isEmpty)
+    }
 }

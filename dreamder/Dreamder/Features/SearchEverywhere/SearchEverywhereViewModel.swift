@@ -222,7 +222,7 @@ final class SearchEverywhereViewModel {
 
         if text.isEmpty {
             if kindSet.contains(.recent) {
-                newPools[.recent] = buildRecentItems(text: "", limit: limit(for: .recent))
+                newPools[.recent] = buildRecentItems(text: "", limit: providerLimit)
             }
             if kindSet.contains(.actions) {
                 newPools[.actions] = buildActionItems(text: "", limit: kinds.count == 1 ? 300 : 8)
@@ -298,7 +298,14 @@ final class SearchEverywhereViewModel {
                 line: line,
                 column: column,
                 action: nil,
-                score: match.score
+                weight: SearchEverywhereComposedWeight(match.score),
+                isExactMatch: SearchEverywhereRanking.isExactMatch(
+                    degree: match.score,
+                    presentableText: url.lastPathComponent,
+                    inputQuery: text,
+                    isFile: true
+                ),
+                equalityKey: "file:\(relative)"
             ))
         }
         return ranked(items, limit: 200)
@@ -324,7 +331,14 @@ final class SearchEverywhereViewModel {
                 line: symbol.line,
                 column: nil,
                 action: nil,
-                score: match.score
+                weight: SearchEverywhereComposedWeight(match.score),
+                isExactMatch: SearchEverywhereRanking.isExactMatch(
+                    degree: match.score,
+                    presentableText: symbol.name,
+                    inputQuery: text,
+                    isFile: false
+                ),
+                equalityKey: "symbol:\(relative):\(symbol.line):\(symbol.name)"
             ))
         }
         return ranked(items, limit: 300)
@@ -355,7 +369,9 @@ final class SearchEverywhereViewModel {
                 line: nil,
                 column: nil,
                 action: action,
-                score: match.score
+                weight: SearchEverywhereComposedWeight(match.score),
+                isExactMatch: false,
+                equalityKey: action.equalityKey
             ))
         }
         return ranked(items, limit: limit)
@@ -368,15 +384,17 @@ final class SearchEverywhereViewModel {
 
         let root = workspace.fileURL
         var items: [SearchEverywhereItem] = []
-        for url in urls {
+        for (position, url) in urls.enumerated() {
             let filename = url.lastPathComponent
             let relative = root.map { SearchEverywhereFileScanner.relativePath(of: url, from: $0) } ?? filename
             let match: SearchEverywhereMatch?
             if text.isEmpty {
                 match = SearchEverywhereMatch(score: 0, ranges: [])
+            } else if let root {
+                let fileMatch = SearchEverywhereProjectSearch.matchFile(query: text, url: url, root: root)
+                match = fileMatch.map { SearchEverywhereMatch(score: $0.score, ranges: $0.ranges) }
             } else {
-                match = SearchEverywhereMatcher.match(query: text, in: relative)
-                    ?? SearchEverywhereMatcher.match(query: text, in: filename)
+                match = SearchEverywhereMatcher.match(query: text, in: filename)
             }
             guard let match else { continue }
             items.append(SearchEverywhereItem(
@@ -386,16 +404,22 @@ final class SearchEverywhereViewModel {
                 title: filename,
                 detail: (relative as NSString).deletingLastPathComponent,
                 iconName: IntelliJIcon.fileIcon(for: filename),
-                ranges: SearchEverywhereMatcher.match(query: text, in: filename)?.ranges ?? [],
+                ranges: match.ranges,
                 url: url,
                 line: nil,
                 column: nil,
                 action: nil,
-                score: match.score
+                weight: SearchEverywhereComposedWeight(match: match.score, recency: urls.count - position),
+                isExactMatch: !text.isEmpty && SearchEverywhereRanking.isExactMatch(
+                    degree: match.score,
+                    presentableText: filename,
+                    inputQuery: text,
+                    isFile: true
+                ),
+                equalityKey: "file:\(relative)"
             ))
         }
 
-        guard !text.isEmpty else { return Array(items.prefix(limit)) }
         return ranked(items, limit: limit)
     }
 
@@ -437,42 +461,39 @@ final class SearchEverywhereViewModel {
             line: match.line,
             column: nil,
             action: nil,
-            score: 0
+            weight: SearchEverywhereComposedWeight(0),
+            isExactMatch: false,
+            equalityKey: nil
         )
     }
 
     private func ranked(_ items: [SearchEverywhereItem], limit: Int) -> [SearchEverywhereItem] {
-        let sorted = items.sorted { lhs, rhs in
-            if lhs.score != rhs.score {
-                return lhs.score > rhs.score
-            }
-            return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
-        }
-        return Array(sorted.prefix(limit))
+        let order = SearchEverywhereRanking.rank(items.map(\.rankingCandidate), limitPerProvider: limit)
+        return order.map { items[$0] }
     }
 
     private func rebuildSections() {
         let previousID = selectedItem?.id
 
-        sections = tab.sections.compactMap { kind in
-            let items = pools[kind] ?? []
-            guard !items.isEmpty else { return nil }
-            return SearchEverywhereSection(kind: kind, items: Array(items.prefix(limit(for: kind))))
+        let merged = tab.sections.flatMap { pools[$0] ?? [] }
+        let items = ranked(merged, limit: providerLimit)
+        sections = SearchEverywhereRanking.contiguousRuns(items.map(\.section)).map { run in
+            SearchEverywhereSection(kind: run.element, items: Array(items[run.range]))
         }
 
-        let items = flatItems
-        if let previousID, let index = items.firstIndex(where: { $0.id == previousID }) {
+        let flat = flatItems
+        if let previousID, let index = flat.firstIndex(where: { $0.id == previousID }) {
             selection = index
-        } else if items.isEmpty {
+        } else if flat.isEmpty {
             selection = 0
         } else {
-            selection = min(max(selection, 0), items.count - 1)
+            selection = min(max(selection, 0), flat.count - 1)
         }
 
         updatePreview()
     }
 
-    private func limit(for kind: SearchEverywhereSectionKind) -> Int {
+    private var providerLimit: Int {
         tab == .all ? 8 : 300
     }
 

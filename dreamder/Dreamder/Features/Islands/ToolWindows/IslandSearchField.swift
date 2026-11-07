@@ -70,7 +70,7 @@ struct IslandSearchField: View {
         .frame(minHeight: 26)
         .background {
             RoundedRectangle(cornerRadius: Islands.controlRadius)
-                .fill(Islands.islandRaised)
+                .fill(Islands.glassFieldFill)
         }
         .overlay {
             RoundedRectangle(cornerRadius: Islands.controlRadius)

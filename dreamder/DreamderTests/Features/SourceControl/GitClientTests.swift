@@ -645,11 +645,16 @@ struct GitClientTests {
             try repo.fixture.write("a.txt", "two\n")
             try repo.fixture.commit("second")
 
-            let commits = try await repo.client.logGraph(ref: nil)
+            let commits = try await repo.client.logGraph()
+            try #require(commits.count == 2)
             #expect(commits.map(\.subject) == ["second", "initial"])
             #expect(commits[0].parents == [commits[1].hash])
             #expect(commits[1].parents.isEmpty)
-            #expect(try await repo.client.logGraph(ref: "main", limit: 1).count == 1)
+            #expect(commits[0].message == "second")
+            #expect(commits[0].authorName == "Merge")
+            #expect(commits[0].authorEmail == "merge@dreamder.test")
+            #expect(abs(commits[0].commitDate.timeIntervalSinceNow) < 300)
+            #expect(try await repo.client.logGraph(filters: GitLogFilterCollection(branch: .fromBranch("main")), limit: 1).count == 1)
 
             #expect(try await repo.client.logGraphMessage(hash: commits[0].hash) == "second")
             let changed = try await repo.client.logGraphChangedFiles(commit: commits[0])
@@ -660,12 +665,223 @@ struct GitClientTests {
     }
 
     @Test
-    func logGraphOfAnUnbornRepositoryIsEmptyAndOfAnUnknownRefFails() async throws {
+    func logGraphKeepsTheFullMessageBody() async throws {
+        try await withTempDir { directory in
+            let repo = try makeRepo(directory)
+            try repo.fixture.write("a.txt", "two\n")
+            try repo.fixture.commit("second\n\nbody line")
+
+            let commit = try #require(try await repo.client.logGraph(limit: 1).first)
+            #expect(commit.subject == "second")
+            #expect(commit.message == "second\n\nbody line")
+        }
+    }
+
+    @Test
+    func logGraphOfAnUnbornRepositoryIsEmpty() async throws {
         try await withTempDir { directory in
             _ = try GitMergeFixture(root: directory)
             let client = GitClient(directoryURL: directory, shellClient: .live())
-            #expect(try await client.logGraph(ref: nil).isEmpty)
-            await #expect(throws: GitClient.GitClientError.self) { try await client.logGraph(ref: "main") }
+            #expect(try await client.logGraph().isEmpty)
+            #expect(await client.logGraphHeadIsResolvable() == false)
+        }
+    }
+
+    @Test
+    func logGraphBranchFilterOfAnUnknownBranchMatchesNothing() async throws {
+        try await withTempDir { directory in
+            let repo = try makeRepo(directory)
+            let filters = GitLogFilterCollection(branch: .fromBranch("no-such-branch"))
+            #expect(try await repo.client.logGraph(filters: filters).isEmpty)
+        }
+    }
+
+    @Test
+    func logGraphBranchFilterOfAnUnbornRepositoryMatchesNothing() async throws {
+        try await withTempDir { directory in
+            _ = try GitMergeFixture(root: directory)
+            let client = GitClient(directoryURL: directory, shellClient: .live())
+            #expect(try await client.logGraph(filters: GitLogFilterCollection(branch: .fromBranch("main"))).isEmpty)
+        }
+    }
+
+    @Test
+    func logGraphTextFilterMatchesTheMessage() async throws {
+        try await withTempDir { directory in
+            let repo = try makeRepo(directory)
+            try repo.fixture.write("a.txt", "two\n")
+            try repo.fixture.commit("second")
+            try repo.fixture.write("a.txt", "three\n")
+            try repo.fixture.commit("third")
+
+            let filters = GitLogFilterCollection(text: GitLogTextFilter.fromPattern("SECOND"))
+            #expect(try await repo.client.logGraph(filters: filters).map(\.subject) == ["second"])
+
+            let matchCase = GitLogFilterCollection(text: GitLogTextFilter.fromPattern("SECOND", isMatchCase: true))
+            #expect(try await repo.client.logGraph(filters: matchCase).isEmpty)
+        }
+    }
+
+    @Test
+    func logGraphRegexTextFilterMatchesTheMessage() async throws {
+        try await withTempDir { directory in
+            let repo = try makeRepo(directory)
+            try repo.fixture.write("a.txt", "two\n")
+            try repo.fixture.commit("second")
+            try repo.fixture.write("a.txt", "three\n")
+            try repo.fixture.commit("third")
+
+            let filters = GitLogFilterCollection(text: GitLogTextFilter.fromPattern("^(sec|thi)", isRegexpAllowed: true))
+            #expect(try await repo.client.logGraph(filters: filters).map(\.subject) == ["third", "second"])
+        }
+    }
+
+    @Test
+    func logGraphNoMergesFilterDropsMergeCommits() async throws {
+        try await withTempDir { directory in
+            let repo = try makeRepo(directory)
+            try repo.fixture.run("checkout", "-q", "-b", "feature")
+            try repo.fixture.write("feature.txt", "f\n")
+            try repo.fixture.commit("feature work")
+            try repo.fixture.run("checkout", "-q", "main")
+            try repo.fixture.write("main.txt", "m\n")
+            try repo.fixture.commit("main work")
+            try repo.fixture.run("merge", "-q", "--no-ff", "-m", "merge feature", "feature")
+
+            let all = try await repo.client.logGraph()
+            #expect(all.filter(\.isMerge).map(\.subject) == ["merge feature"])
+
+            let noMerges = try await repo.client.logGraph(filters: GitLogFilterCollection(parent: .noMerges))
+            #expect(noMerges.count == all.count - 1)
+            #expect(noMerges.allSatisfy { !$0.isMerge })
+
+            let onlyMerges = try await repo.client.logGraph(filters: GitLogFilterCollection(parent: .onlyMerges))
+            #expect(onlyMerges.map(\.subject) == ["merge feature"])
+        }
+    }
+
+    @Test
+    func logGraphStructureFilterKeepsCommitsTouchingThePaths() async throws {
+        try await withTempDir { directory in
+            let repo = try makeRepo(directory)
+            try repo.fixture.write("other.txt", "x\n")
+            try repo.fixture.commit("add other")
+            try repo.fixture.write("a.txt", "two\n")
+            try repo.fixture.commit("touch a")
+
+            let filters = GitLogFilterCollection().settingPaths(from: "other.txt")
+            #expect(try await repo.client.logGraph(filters: filters).map(\.subject) == ["add other"])
+
+            let both = GitLogFilterCollection().settingPaths(from: "a.txt, other.txt")
+            #expect(try await repo.client.logGraph(filters: both).map(\.subject) == ["touch a", "add other", "initial"])
+        }
+    }
+
+    @Test
+    func logGraphUserFilterResolvesNamesAgainstKnownAuthors() async throws {
+        try await withTempDir { directory in
+            let repo = try makeRepo(directory)
+            try repo.fixture.write("a.txt", "two\n")
+            try repo.fixture.run("add", "-A")
+            try repo.fixture.run(
+                "-c", "user.name=Other Person", "-c", "user.email=other@dreamder.test",
+                "commit", "-qm", "by other"
+            )
+
+            let everyone = try await repo.client.logGraph()
+            let resolver = GitLogUserResolver(allUsers: GitLogUserResolver.users(of: everyone))
+
+            let other = GitLogFilterCollection(user: GitLogUserFilter(userNames: ["Other Person"]))
+            let byOther = try await repo.client.logGraph(filters: other, userResolver: resolver)
+            #expect(byOther.map(\.subject) == ["by other"])
+
+            let merge = GitLogFilterCollection(user: GitLogUserFilter(userNames: ["merge"]))
+            let byMerge = try await repo.client.logGraph(filters: merge, userResolver: resolver)
+            #expect(byMerge.map(\.subject) == ["initial"])
+        }
+    }
+
+    @Test
+    func logGraphUserFilterMatchesNothingWhenTheNameIsUnresolved() async throws {
+        try await withTempDir { directory in
+            let repo = try makeRepo(directory)
+            let filters = GitLogFilterCollection(user: GitLogUserFilter(userNames: ["nobody"]))
+            #expect(try await repo.client.logGraph(filters: filters).isEmpty)
+        }
+    }
+
+    @Test
+    func logGraphFirstParentOptionSkipsMergedBranchCommits() async throws {
+        try await withTempDir { directory in
+            let repo = try makeRepo(directory)
+            try repo.fixture.run("checkout", "-q", "-b", "feature")
+            try repo.fixture.write("feature.txt", "f\n")
+            try repo.fixture.commit("feature work")
+            try repo.fixture.run("checkout", "-q", "main")
+            try repo.fixture.write("main.txt", "m\n")
+            try repo.fixture.commit("main work")
+            try repo.fixture.run("merge", "-q", "--no-ff", "-m", "merge feature", "feature")
+
+            var options = GitLogOptions()
+            options.firstParent = true
+            let filters = GitLogFilterCollection(branch: .fromBranch("main"))
+            let commits = try await repo.client.logGraph(filters: filters, options: options)
+            #expect(commits.map(\.subject) == ["merge feature", "main work", "initial"])
+        }
+    }
+
+    @Test
+    func logGraphCurrentUserReadsTheRepositoryConfig() async throws {
+        try await withTempDir { directory in
+            let repo = try makeRepo(directory)
+            let user = await repo.client.logGraphCurrentUser()
+            #expect(user == GitLogUser(name: "Merge", email: "merge@dreamder.test"))
+            #expect(user?.exactString == "Merge <merge@dreamder.test>")
+        }
+    }
+
+    @Test
+    func logGraphCurrentUserIsNilExactlyWhenNeitherNameNorEmailIsConfigured() async throws {
+        try await withTempDir { directory in
+            let repo = try makeRepo(directory)
+            try repo.fixture.run("config", "--unset", "user.name")
+            try repo.fixture.run("config", "--unset", "user.email")
+            let name: String? = try await repo.client.getConfig(key: "user.name")
+            let email: String? = try await repo.client.getConfig(key: "user.email")
+
+            let user = await repo.client.logGraphCurrentUser()
+
+            #expect((user == nil) == (name == nil && email == nil))
+        }
+    }
+
+    @Test
+    func logGraphHeadIsResolvableOnlyOnceTheRepositoryHasACommit() async throws {
+        try await withTempDir { directory in
+            let fixture = try GitMergeFixture(root: directory)
+            let client = GitClient(directoryURL: directory, shellClient: .live())
+            #expect(await client.logGraphHeadIsResolvable() == false)
+
+            try fixture.write("a.txt", "one\n")
+            try fixture.commit("initial")
+            #expect(await client.logGraphHeadIsResolvable())
+        }
+    }
+
+    @Test
+    func logGraphHeadIsNotResolvableOutsideARepository() async throws {
+        try await withTempDir { directory in
+            let client = GitClient(directoryURL: directory, shellClient: .live())
+            #expect(await client.logGraphHeadIsResolvable() == false)
+        }
+    }
+
+    @Test
+    func logGraphHeadIsNotResolvableInAMissingDirectory() async throws {
+        try await withTempDir { directory in
+            let missing = directory.appending(path: "missing", directoryHint: .isDirectory)
+            let client = GitClient(directoryURL: missing, shellClient: .live())
+            #expect(await client.logGraphHeadIsResolvable() == false)
         }
     }
 

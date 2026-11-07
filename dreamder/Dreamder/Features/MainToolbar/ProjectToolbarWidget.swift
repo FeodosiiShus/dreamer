@@ -24,15 +24,12 @@ struct ProjectToolbarWidget: View {
                 .interpolation(.high)
                 .frame(width: 12, height: 12)
         }
-        .padding(.leading, 4)
-        .padding(.trailing, 8)
+        .padding(.leading, 6)
+        .padding(.trailing, 10)
         .frame(height: Islands.toolbarControlHeight)
-        .background {
-            RoundedRectangle(cornerRadius: Islands.controlRadius)
-                .fill(isHovering ? Islands.actionHover : Color.clear)
-        }
+        .mainToolbarGlass(isHovering: isHovering)
         .background(MainToolbarMenuAnchorView(anchor: menuAnchor))
-        .contentShape(Rectangle())
+        .contentShape(Capsule())
         .onTapGesture {
             menuAnchor.present(
                 MainToolbarMenuActions.shared.projectMenu(window: menuAnchor.view?.window)

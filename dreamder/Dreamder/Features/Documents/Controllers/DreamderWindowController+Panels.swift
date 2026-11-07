@@ -32,6 +32,16 @@ extension DreamderWindowController {
         }
     }
 
+    func toggleLeftPanel() {
+        guard let manager = workspace?.toolWindowManager else { return }
+
+        if manager.active(.left) != nil {
+            manager.hide(.left)
+        } else {
+            manager.show(.project)
+        }
+    }
+
     func toggleToolWindow(_ id: ToolWindowID) {
         workspace?.toolWindowManager.toggle(id)
     }
@@ -68,7 +78,7 @@ extension DreamderWindowController {
                 isCollapsed: { self.workspace?.toolWindowManager.active(.left) == nil },
                 getPrevCollapsed: { self.prevLeftToolWindowHidden },
                 setPrevCollapsed: { self.prevLeftToolWindowHidden = $0 },
-                toggle: { self.toggleFirstPanel() }
+                toggle: { self.toggleLeftPanel() }
             ),
             PanelDescriptor(
                 isCollapsed: { self.workspace?.toolWindowManager.active(.bottom) == nil },

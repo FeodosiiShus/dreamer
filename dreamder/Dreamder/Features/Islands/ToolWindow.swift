@@ -72,40 +72,81 @@ enum ToolWindowID: String, Codable, CaseIterable, Identifiable {
 @Observable
 @MainActor
 final class ToolWindowManager {
-    private(set) var visible: [ToolWindowAnchor: ToolWindowID] = [.left: .project, .bottom: .terminal]
+    private(set) var placement = ToolWindowSplitState()
     var leftWidth: CGFloat = 280
     var bottomHeight: CGFloat = 300
     var bottomMaximized = false
 
+    var visibleWindows: [ToolWindowSlot: ToolWindowID] {
+        placement.visible
+    }
+
     func active(_ anchor: ToolWindowAnchor) -> ToolWindowID? {
-        visible[anchor]
+        visible(on: anchor, side: .main) ?? visible(on: anchor, side: .split)
+    }
+
+    func visible(on anchor: ToolWindowAnchor, side: ToolWindowSide) -> ToolWindowID? {
+        placement.window(at: ToolWindowSlot(anchor, side))
     }
 
     func isVisible(_ id: ToolWindowID) -> Bool {
-        visible[id.anchor] == id
+        placement.isVisible(id)
+    }
+
+    func isSplit(_ id: ToolWindowID) -> Bool {
+        placement.isSplit(id)
+    }
+
+    func setSplit(_ id: ToolWindowID, _ isSplit: Bool) {
+        placement.setSplit(id, isSplit)
+    }
+
+    func sideWeight(of id: ToolWindowID) -> Double {
+        placement.sideWeight(of: id)
+    }
+
+    func setSideWeight(_ id: ToolWindowID, _ weight: Double) {
+        placement.setSideWeight(id, weight)
+    }
+
+    func mainProportion(on anchor: ToolWindowAnchor) -> Double {
+        placement.mainProportion(on: anchor)
+    }
+
+    func setMainProportion(on anchor: ToolWindowAnchor, _ proportion: Double) {
+        placement.setMainProportion(on: anchor, proportion)
     }
 
     func toggle(_ id: ToolWindowID) {
         if isVisible(id) {
-            hide(id.anchor)
+            hide(id)
         } else {
             show(id)
         }
     }
 
     func show(_ id: ToolWindowID) {
-        visible[id.anchor] = id
+        placement.show(id)
+    }
+
+    func hide(_ id: ToolWindowID) {
+        placement.hide(id)
+        clearMaximizedIfBottomIsEmpty()
     }
 
     func hide(_ anchor: ToolWindowAnchor) {
-        visible[anchor] = nil
-        if anchor == .bottom {
-            bottomMaximized = false
-        }
+        placement.hide(anchor: anchor)
+        clearMaximizedIfBottomIsEmpty()
     }
 
     func hideAll() {
-        visible.removeAll()
+        placement.hideAll()
         bottomMaximized = false
+    }
+
+    private func clearMaximizedIfBottomIsEmpty() {
+        if !placement.hasVisibleWindow(on: .bottom) {
+            bottomMaximized = false
+        }
     }
 }

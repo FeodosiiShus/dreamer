@@ -91,7 +91,6 @@ struct SearchPanelView<RowView: View, PreviewView: View, Option: Identifiable & 
                 .padding(.vertical, 12)
                 .padding(.horizontal, 12)
                 .foregroundColor(.primary.opacity(0.85))
-                .background(EffectView(.sidebar, blendingMode: .behindWindow))
             }
             if !text.isEmpty || alwaysShowOptions == true {
                 Divider()
@@ -134,7 +133,7 @@ struct SearchPanelView<RowView: View, PreviewView: View, Option: Identifiable & 
         .overlay {
             keyHandlers
         }
-        .background(EffectView(.sidebar, blendingMode: .behindWindow))
+        .glassPopup()
         .edgesIgnoringSafeArea(.vertical)
         .frame(
             minWidth: 680,

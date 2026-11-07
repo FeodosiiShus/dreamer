@@ -111,14 +111,14 @@ struct BranchesPopupViewModelTests {
     }
 
     @Test
-    func reloadListsBranchesAndTagsAndSelectsTheCurrentBranch() async throws {
+    func reloadListsBranchesAndTagsAndSelectsThePreviousBranch() async throws {
         try await withTempDir { dir in
             let harness = try await loaded(dir)
             let model = harness.model
 
             #expect(model.currentBranchName == "main")
-            #expect(model.selectedRow?.ref?.shortName == "main")
-            #expect(model.selectedRow?.ref?.isCurrent == true)
+            #expect(model.selectedRow?.ref?.shortName == "feature")
+            #expect(model.selectedRow?.ref?.isCurrent == false)
             for name in ["main", "feature", "obsolete"] {
                 #expect(harness.anyRow(name) != nil)
             }
@@ -145,10 +145,29 @@ struct BranchesPopupViewModelTests {
 
             model.query = "push"
             #expect(model.visibleActions == [.push])
+            #expect(model.selectedRow?.action == .push)
 
             model.query = "zzzz-no-branch"
             #expect(model.emptyMessage == "Nothing found")
             #expect(model.visibleActions.isEmpty)
+        }
+    }
+
+    @Test
+    func recentSectionIsCappedAtFiveAndSkipsDeletedBranches() async throws {
+        try await withTempDir { dir in
+            let harness = try await loaded(dir)
+            for number in 1...7 {
+                try harness.fixture.run("branch", "b\(number)")
+                try harness.fixture.run("checkout", "-q", "b\(number)")
+            }
+            try harness.fixture.run("checkout", "-q", "main")
+            try harness.fixture.run("branch", "-D", "b6")
+            await harness.model.reload()
+
+            let recent = try #require(harness.model.sections.first { $0.id == .recent })
+            #expect(recent.refs.map(\.shortName) == ["main", "b7", "b5", "b4", "b3"])
+            #expect(harness.model.sections.flatMap(\.refs).filter { $0.shortName == "main" }.count == 1)
         }
     }
 

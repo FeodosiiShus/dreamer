@@ -82,3 +82,21 @@ extension SearchModeModel: Equatable {
             && lhs.needSelectionHighlight == rhs.needSelectionHighlight
     }
 }
+
+extension Array where Element == SearchModeModel {
+    var isReplaceMode: Bool { first == .Replace }
+    var isRegularExpressionMode: Bool { count > 1 && self[1] == .RegularExpression }
+    var matchingMode: SearchModeModel? { count > 2 ? self[2] : nil }
+
+    func switchingRegularExpression(_ enabled: Bool) -> [SearchModeModel] {
+        let kind = first ?? .Find
+        return enabled ? [kind, .RegularExpression] : [kind, .Text, .Containing]
+    }
+
+    func switchingMatchingMode(_ mode: SearchModeModel) -> [SearchModeModel] {
+        guard count > 2 else { return self }
+        var modes = self
+        modes[2] = mode
+        return modes
+    }
+}

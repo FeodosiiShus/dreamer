@@ -62,11 +62,13 @@ struct EditorTabBarTrailingAccessories: View {
                 .resizable()
                 .frame(width: 16, height: 16)
                 .frame(width: 26, height: 26)
-                .background(
-                    RoundedRectangle(cornerRadius: Islands.controlRadius, style: .continuous)
-                        .fill(isHovering ? Islands.actionHover : Color.clear)
-                )
-                .contentShape(Rectangle())
+                .background {
+                    if isHovering {
+                        Capsule()
+                            .fill(Islands.tabHoverFill)
+                    }
+                }
+                .contentShape(Capsule())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)

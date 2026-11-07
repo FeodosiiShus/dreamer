@@ -91,7 +91,7 @@ struct GitLogViewModelTests {
             let model = GitLogViewModel()
             await model.load(manager: manager)
 
-            await model.setBranchFilter(GitLogBranchFilter(ref: "feature", title: "feature"))
+            await model.setBranchFilter(.fromBranch("feature"))
 
             #expect(model.commits.map(\.subject) == ["Feature subject", "initial"])
             #expect(model.tabTitle == "Log: feature")
@@ -119,27 +119,210 @@ struct GitLogViewModelTests {
     }
 
     @Test
-    func searchFiltersBySubjectAuthorAndHashPrefix() async throws {
+    func textFilterMatchesMessagesAndHashFilterMatchesPrefixes() async throws {
         try await withTempDir { dir in
             let (_, manager) = try await makeRepo(dir)
             let model = GitLogViewModel()
             await model.load(manager: manager)
             let feature = try #require(model.commits.first { $0.subject == "Feature subject" })
 
-            model.searchText = "  FEATURE "
+            await model.setFilters(model.filters.settingText("  FEATURE ", isRegexpAllowed: false, isMatchCase: false))
             #expect(model.visibleCommits.map(\.subject) == ["Feature subject"])
+            #expect(model.graphRows.count == 1)
 
-            model.searchText = String(feature.hash.prefix(6))
-            #expect(model.visibleCommits.map(\.hash) == [feature.hash])
-
-            model.searchText = "merge"
-            #expect(model.visibleCommits.count == 3)
-
-            model.searchText = "nothing-matches"
+            await model.setFilters(model.filters.settingText("FEATURE", isRegexpAllowed: false, isMatchCase: true))
             #expect(model.visibleCommits.isEmpty)
 
-            model.searchText = ""
+            await model.setFilters(model.filters.settingText(String(feature.hash.prefix(8)), isRegexpAllowed: false, isMatchCase: false))
+            #expect(model.visibleCommits.map(\.hash) == [feature.hash])
+
+            await model.setFilters(model.filters.settingText("nothing-matches", isRegexpAllowed: false, isMatchCase: false))
+            #expect(model.visibleCommits.isEmpty)
+
+            await model.setFilters(model.filters.settingText("", isRegexpAllowed: false, isMatchCase: false))
             #expect(model.visibleCommits.count == 3)
+            #expect(model.graphRows.count == 3)
+        }
+    }
+
+    @Test
+    func userAndMergeFiltersApplyInMemory() async throws {
+        try await withTempDir { dir in
+            let (_, manager) = try await makeRepo(dir)
+            let model = GitLogViewModel()
+            await model.load(manager: manager)
+            let author = try #require(model.commits.first)
+
+            await model.setFilters(model.filters.settingUserNames([author.authorName]))
+            #expect(model.visibleCommits.count == 3)
+
+            await model.setFilters(model.filters.settingUserNames(["nobody"]))
+            #expect(model.visibleCommits.isEmpty)
+
+            await model.setFilters(GitLogFilterCollection().settingParent(.onlyMerges))
+            #expect(model.visibleCommits.isEmpty)
+
+            await model.setFilters(GitLogFilterCollection().settingParent(.noMerges))
+            #expect(model.visibleCommits.count == 3)
+        }
+    }
+
+    @Test
+    func pathFilterReloadsFromGitAndKeepsTheGraphConsistent() async throws {
+        try await withTempDir { dir in
+            let (_, manager) = try await makeRepo(dir)
+            let model = GitLogViewModel()
+            await model.load(manager: manager)
+
+            await model.setFilters(model.filters.settingPaths(from: "src"))
+
+            #expect(model.visibleCommits.map(\.subject) == ["Feature subject"])
+            #expect(model.graphRows.count == 1)
+        }
+    }
+
+    private func makeManager(_ dir: URL, build: @escaping @Sendable (GitMergeFixture) throws -> Void) async throws -> SourceControlManager {
+        _ = try await GitMergeFixture.offMain {
+            let fixture = try GitMergeFixture(root: dir)
+            try build(fixture)
+            return fixture
+        }
+        return SourceControlManager(workspaceURL: dir, editorManager: EditorManager())
+    }
+
+    private nonisolated static func buildLinearHistory(_ fixture: GitMergeFixture) throws {
+        for index in 1...5 {
+            try fixture.write("f\(index).txt", "\(index)\n")
+            try fixture.commit("c\(index)")
+        }
+    }
+
+    @Test
+    func firstParentOptionHidesMergedSideBranchCommitsAndRestoresThem() async throws {
+        try await withTempDir { dir in
+            let manager = try await makeManager(dir) { fixture in
+                try fixture.write("a.txt", "a\n")
+                try fixture.commit("initial")
+                try fixture.run("checkout", "-q", "-b", "side")
+                try fixture.write("side.txt", "s\n")
+                try fixture.commit("side work")
+                try fixture.run("checkout", "-q", "main")
+                try fixture.write("main.txt", "m\n")
+                try fixture.commit("main work")
+                try fixture.run("merge", "-q", "--no-ff", "-m", "merge side", "side")
+                try fixture.run("branch", "-q", "-d", "side")
+            }
+            let model = GitLogViewModel()
+            await model.load(manager: manager)
+            #expect(Set(model.visibleCommits.map(\.subject)) == ["merge side", "main work", "side work", "initial"])
+
+            await model.setFirstParent(true)
+            #expect(Set(model.visibleCommits.map(\.subject)) == ["merge side", "main work", "initial"])
+            #expect(model.graphRows.count == 3)
+            #expect(model.options.firstParent)
+
+            await model.setFirstParent(true)
+            #expect(model.visibleCommits.count == 3)
+
+            await model.setFirstParent(false)
+            #expect(Set(model.visibleCommits.map(\.subject)) == ["merge side", "main work", "side work", "initial"])
+            #expect(model.graphRows.count == 4)
+        }
+    }
+
+    @Test
+    func meUserFilterResolvesTheConfiguredUserAndKeepsOnlyTheirCommits() async throws {
+        try await withTempDir { dir in
+            let manager = try await makeManager(dir) { fixture in
+                try fixture.write("a.txt", "a\n")
+                try fixture.commit("mine one")
+                try fixture.write("b.txt", "b\n")
+                try fixture.commit("mine two")
+                try fixture.write("c.txt", "c\n")
+                try fixture.run("add", "-A")
+                try fixture.run(
+                    "-c", "user.name=Other Person", "-c", "user.email=other@dreamder.test",
+                    "commit", "-qm", "by other"
+                )
+            }
+            let model = GitLogViewModel()
+            await model.load(manager: manager)
+            #expect(model.visibleCommits.count == 3)
+            #expect(model.currentUser == nil)
+
+            await model.setFilters(GitLogFilterCollection().settingUserNames([GitLogUserFilter.me]))
+
+            #expect(model.currentUser == GitLogUser(name: "Merge", email: "merge@dreamder.test"))
+            #expect(Set(model.visibleCommits.map(\.subject)) == ["mine one", "mine two"])
+            #expect(model.graphRows.count == 2)
+        }
+    }
+
+    @Test
+    func textFilterStaysInMemoryWhenTheHistoryFitsTheLoadLimit() async throws {
+        try await withTempDir { dir in
+            let manager = try await makeManager(dir, build: Self.buildLinearHistory)
+            let model = GitLogViewModel()
+            await model.load(manager: manager)
+
+            await model.setFilters(GitLogFilterCollection().settingText("c2", isRegexpAllowed: false, isMatchCase: false))
+
+            #expect(model.detailsAppliedByGit == false)
+            #expect(model.commits.count == 5)
+            #expect(model.visibleCommits.map(\.subject) == ["c2"])
+        }
+    }
+
+    @Test
+    func textFilterRefetchesFromGitWhenTheHistoryExceedsTheLoadLimit() async throws {
+        try await withTempDir { dir in
+            let manager = try await makeManager(dir, build: Self.buildLinearHistory)
+            let model = GitLogViewModel(loadLimit: 3)
+            await model.load(manager: manager)
+            #expect(model.commits.count == 3)
+            #expect(model.detailsAppliedByGit == false)
+
+            await model.setFilters(GitLogFilterCollection().settingText("c2", isRegexpAllowed: false, isMatchCase: false))
+            #expect(model.detailsAppliedByGit)
+            #expect(model.visibleCommits.map(\.subject) == ["c2"])
+
+            await model.setFilters(GitLogFilterCollection())
+            #expect(model.detailsAppliedByGit == false)
+            #expect(model.commits.count == 3)
+            #expect(model.visibleCommits.map(\.subject) == ["c5", "c4", "c3"])
+        }
+    }
+
+    @Test
+    func filtersSetBeforeTheFirstLoadAreAppliedByGitWhenTheLogIsTruncated() async throws {
+        try await withTempDir { dir in
+            let manager = try await makeManager(dir, build: Self.buildLinearHistory)
+            let model = GitLogViewModel(loadLimit: 3)
+            await model.setFilters(GitLogFilterCollection().settingText("c2", isRegexpAllowed: false, isMatchCase: false))
+            #expect(model.commits.isEmpty)
+
+            await model.load(manager: manager)
+
+            #expect(model.detailsAppliedByGit)
+            #expect(model.visibleCommits.map(\.subject) == ["c2"])
+            #expect(model.selectedHash == model.visibleCommits.first?.hash)
+        }
+    }
+
+    @Test
+    func selectingACommitWithoutChangedFilesLeavesTheListEmpty() async throws {
+        try await withTempDir { dir in
+            let manager = try await makeManager(dir) { fixture in
+                try fixture.write("a.txt", "a\n")
+                try fixture.commit("initial")
+                try fixture.run("commit", "-q", "--allow-empty", "-m", "empty commit")
+            }
+            let model = GitLogViewModel()
+            await model.load(manager: manager)
+
+            #expect(model.selectedCommit?.subject == "empty commit")
+            #expect(model.selectedFiles.isEmpty)
+            #expect(model.selectedMessage == "empty commit")
         }
     }
 
@@ -220,10 +403,9 @@ struct GitLogSmallModelTests {
         )
         #expect(commit.isMerge)
         #expect(commit.shortHash == "01234567")
-        #expect(commit.matches(graphText: "ann"))
-        #expect(commit.matches(graphText: "0123"))
-        #expect(commit.matches(graphText: "4567") == false)
+        #expect(commit.message == "Merge")
+        #expect(commit.commitDate == now)
         #expect(commit.refs.first?.id == "branch:main")
-        #expect(GitLogBranchFilter.all.id == "HEAD")
+        #expect(GitLogBranchFilter.fromBranch("main").displayText == "main")
     }
 }

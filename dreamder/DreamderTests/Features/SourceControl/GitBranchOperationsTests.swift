@@ -237,6 +237,38 @@ struct GitBranchOperationsTests {
     }
 
     @Test
+    func recentBranchesAreCappedAfterSkippingDeletedBranches() async throws {
+        try await withTempDir { dir in
+            let repo = try makeRepo(dir)
+            for number in 1...6 {
+                try repo.fixture.run("branch", "b\(number)")
+                try repo.fixture.run("checkout", "-q", "b\(number)")
+            }
+            try repo.fixture.run("checkout", "-q", "main")
+            try repo.fixture.run("branch", "-D", "b3")
+
+            let names = try await repo.client.branchOpsRecentBranchNames(limit: BranchesPopupTreeBuilder.maxRecentBranches)
+            #expect(names == ["main", "b6", "b5", "b4", "b2"])
+        }
+    }
+
+    @Test
+    func recentBranchesIgnoreDetachedCheckoutsAndNeverRepeatABranch() async throws {
+        try await withTempDir { dir in
+            let repo = try makeRepo(dir)
+            try repo.fixture.run("branch", "first")
+            try repo.fixture.run("checkout", "-q", "first")
+            try repo.fixture.run("checkout", "-q", "main")
+            try repo.fixture.run("checkout", "-q", "first")
+            try repo.fixture.run("checkout", "-q", "--detach")
+            try repo.fixture.run("checkout", "-q", "main")
+
+            let names = try await repo.client.branchOpsRecentBranchNames(limit: 5)
+            #expect(names == ["main", "first"])
+        }
+    }
+
+    @Test
     func setAndUnsetUpstream() async throws {
         try await withTempDir { dir in
             let origin = try makeRepo(dir, name: "origin")

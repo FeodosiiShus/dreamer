@@ -24,7 +24,7 @@ struct StructureToolWindow: View {
                 EmptyView()
             } actions: {
                 ToolWindowActionButton(icon: "general/hide", help: "Hide") {
-                    toolWindowManager.hide(.left)
+                    toolWindowManager.hide(.structure)
                 }
             }
 

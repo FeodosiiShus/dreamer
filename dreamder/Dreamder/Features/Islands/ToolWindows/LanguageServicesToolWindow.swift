@@ -109,7 +109,7 @@ struct LanguageServicesToolWindow: View {
                 EmptyView()
             } actions: {
                 ToolWindowActionButton(icon: "general/hide", help: "Hide") {
-                    toolWindowManager.hide(.bottom)
+                    toolWindowManager.hide(.languageServices)
                 }
             }
             if rows.isEmpty {
@@ -272,7 +272,7 @@ private struct LanguageServerLogPreview: View {
         .frame(maxHeight: 160)
         .background(
             RoundedRectangle(cornerRadius: Islands.controlRadius)
-                .fill(Color.black.opacity(0.2))
+                .fill(Islands.glassRaisedFill)
         )
     }
 }

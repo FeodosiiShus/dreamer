@@ -12,10 +12,12 @@ struct GitLogParsingTests {
         author: String = "Ada Lovelace",
         email: String = "ada@example.com",
         seconds: String = "1700000000",
+        commitSeconds: String = "1700000500",
         decoration: String = "",
-        subject: String
+        subject: String,
+        message: String = ""
     ) -> String {
-        [hash, parents, author, email, seconds, decoration, subject].joined(separator: field)
+        [hash, parents, author, email, seconds, commitSeconds, decoration, subject, message].joined(separator: field)
     }
 
     @Test
@@ -38,6 +40,42 @@ struct GitLogParsingTests {
         #expect(commit.authorEmail == "ada@example.com")
         #expect(commit.date == Date(timeIntervalSince1970: 1_700_000_000))
         #expect(commit.subject == "Merge branch 'feature'")
+    }
+
+    @Test
+    func parsesCommitDateFromTheCommitterTimestamp() throws {
+        let output = record(hash: "aaaa", parents: "", subject: "Dated")
+        let commit = try #require(GitClient.logGraphParse(output).first)
+        #expect(commit.date == Date(timeIntervalSince1970: 1_700_000_000))
+        #expect(commit.commitDate == Date(timeIntervalSince1970: 1_700_000_500))
+    }
+
+    @Test
+    func commitDateFallsBackToAuthorDateWhenNotNumeric() throws {
+        let output = record(hash: "aaaa", parents: "", commitSeconds: "oops", subject: "Dated")
+        let commit = try #require(GitClient.logGraphParse(output).first)
+        #expect(commit.commitDate == commit.date)
+    }
+
+    @Test
+    func messageFallsBackToSubjectWhenEmpty() throws {
+        let output = record(hash: "aaaa", parents: "", subject: "Only subject", message: "")
+        let commit = try #require(GitClient.logGraphParse(output).first)
+        #expect(commit.message == "Only subject")
+    }
+
+    @Test
+    func messageFallsBackToSubjectWhenOnlyWhitespace() throws {
+        let output = record(hash: "aaaa", parents: "", subject: "Only subject", message: " \n\n ")
+        let commit = try #require(GitClient.logGraphParse(output).first)
+        #expect(commit.message == "Only subject")
+    }
+
+    @Test
+    func messageBodyIsTrimmed() throws {
+        let output = record(hash: "aaaa", parents: "", subject: "Title", message: "Title\n\nBody line\n\n")
+        let commit = try #require(GitClient.logGraphParse(output).first)
+        #expect(commit.message == "Title\n\nBody line")
     }
 
     @Test
@@ -70,13 +108,14 @@ struct GitLogParsingTests {
     }
 
     @Test
-    func keepsSeparatorsInsideSubject() throws {
-        let subject = "Fix \u{1f} parsing, keep it"
-        let output = record(hash: "aaaa", parents: "bbbb", subject: subject)
+    func keepsSeparatorsInsideMessage() throws {
+        let message = "Subject\n\nFix \u{1f} parsing, keep it"
+        let output = record(hash: "aaaa", parents: "bbbb", subject: "Subject", message: message)
         let commits = GitClient.logGraphParse(output)
         #expect(commits.count == 1)
         let commit = try #require(commits.first)
-        #expect(commit.subject == subject)
+        #expect(commit.subject == "Subject")
+        #expect(commit.message == message)
     }
 
     @Test
@@ -96,11 +135,18 @@ struct GitLogParsingTests {
         let output = [
             record(hash: "aaaa", parents: "bbbb", subject: "Good"),
             "only\u{1f}two",
-            record(hash: "cccc", parents: "", seconds: "not-a-number", subject: "Bad timestamp")
+            "aaaa\u{1f}bbbb\u{1f}name\u{1f}mail\u{1f}1700000000\u{1f}1700000000\u{1f}\u{1f}subject",
+            record(hash: "cccc", parents: "", seconds: "not-a-number", subject: "Bad timestamp"),
+            record(hash: "", parents: "", subject: "No hash")
         ].joined(separator: "\0")
 
         let commits = GitClient.logGraphParse(output)
         #expect(commits.count == 1)
         #expect(commits.first?.hash == "aaaa")
+    }
+
+    @Test
+    func formatHasNineUnitSeparatedFields() {
+        #expect(GitClient.logGraphFormat.components(separatedBy: "%x1f").count == 9)
     }
 }

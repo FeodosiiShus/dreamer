@@ -40,18 +40,19 @@ extension WorkspaceDocument {
 
         var shouldFocusSearchField: Bool = false
 
-        @ObservationIgnored weak var workspace: WorkspaceDocument?
-        @ObservationIgnored var tempSearchResults = [SearchResultModel]()
-        @ObservationIgnored var caseSensitive: Bool = false
-        @ObservationIgnored var indexer: SearchIndexer?
-        @ObservationIgnored var indexGeneration: Int = 0
-        @ObservationIgnored var indexingTask: Task<Void, Never>?
-        @ObservationIgnored var indexingNotificationID: String?
-        @ObservationIgnored var selectedMode: [SearchModeModel] = [
+        var findModel = FindModel()
+        var selectedMode: [SearchModeModel] = [
             .Find,
             .Text,
             .Containing
         ]
+
+        @ObservationIgnored weak var workspace: WorkspaceDocument?
+        @ObservationIgnored var tempSearchResults = [SearchResultModel]()
+        @ObservationIgnored var indexer: SearchIndexer?
+        @ObservationIgnored var indexGeneration: Int = 0
+        @ObservationIgnored var indexingTask: Task<Void, Never>?
+        @ObservationIgnored var indexingNotificationID: String?
 
         init(_ workspace: WorkspaceDocument) {
             self.workspace = workspace
@@ -62,18 +63,62 @@ extension WorkspaceDocument {
             indexingTask?.cancel()
         }
 
-        var replaceOptions: NSString.CompareOptions {
-            var options: NSString.CompareOptions = []
+        var caseSensitive: Bool {
+            get { findModel.isCaseSensitive }
+            set { findModel.isCaseSensitive = newValue }
+        }
 
-            if selectedMode.second == .RegularExpression {
-                options.insert(.regularExpression)
+        var isRegularExpression: Bool {
+            get { selectedMode.isRegularExpressionMode }
+            set {
+                guard newValue != selectedMode.isRegularExpressionMode else { return }
+                selectedMode = selectedMode.switchingRegularExpression(newValue)
             }
+        }
 
-            if !caseSensitive {
-                options.insert(.caseInsensitive)
+        var wholeWordsOnly: Bool {
+            get { findModel.isWholeWordsOnly || selectedMode.matchingMode == .MatchingWord }
+            set {
+                findModel.isWholeWordsOnly = newValue
+                if !newValue, selectedMode.matchingMode == .MatchingWord {
+                    selectedMode = selectedMode.switchingMatchingMode(.Containing)
+                }
             }
+        }
 
-            return options
+        var directoryScopePath: String {
+            get { findModel.directoryName ?? "" }
+            set { findModel.directoryName = newValue.isEmpty ? nil : newValue }
+        }
+
+        var fileMask: String {
+            get { findModel.fileFilter ?? "" }
+            set { findModel.fileFilter = newValue.isEmpty ? nil : newValue }
+        }
+
+        var scopeDescription: String {
+            guard !findModel.isProjectScope, let directory = findModel.directoryName, !directory.isEmpty else {
+                return "Project"
+            }
+            return directory
+        }
+
+        func makeFindModel(query: String, replacement: String? = nil) -> FindModel {
+            var model = findModel
+            model.initStringToFind(query)
+            model.stringToReplace = replacement ?? replaceText
+            model.isReplaceState = selectedMode.isReplaceMode
+            model.isRegularExpressions = isRegularExpression
+            model.isWholeWordsOnly = !isRegularExpression && wholeWordsOnly
+            model.textAnchor = isRegularExpression ? .anywhere : Self.textAnchor(for: selectedMode.matchingMode)
+            return model
+        }
+
+        private static func textAnchor(for mode: SearchModeModel?) -> FindModel.TextAnchor {
+            guard let mode else { return .anywhere }
+            if mode == .StartingWith { return .wordStart }
+            if mode == .EndingWith { return .wordEnd }
+            return .anywhere
         }
     }
 }

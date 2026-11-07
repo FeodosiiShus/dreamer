@@ -12,7 +12,7 @@ struct FindToolWindow: View {
                 EmptyView()
             } actions: {
                 ToolWindowActionButton(icon: "general/hide", help: "Hide") {
-                    toolWindowManager.hide(.bottom)
+                    toolWindowManager.hide(.find)
                 }
             }
             FindNavigatorView()

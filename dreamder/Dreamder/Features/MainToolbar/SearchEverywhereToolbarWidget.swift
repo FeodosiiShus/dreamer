@@ -20,23 +20,10 @@ struct SearchEverywhereToolbarWidget: View {
                     .font(Islands.smallFont)
                     .foregroundColor(Islands.disabledForeground)
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 12)
             .frame(width: 260, height: Islands.toolbarControlHeight)
-            .background {
-                RoundedRectangle(cornerRadius: Islands.controlRadius)
-                    .fill(Islands.island)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: Islands.controlRadius)
-                    .strokeBorder(Islands.componentBorder, lineWidth: 1)
-            }
-            .overlay {
-                if isHovering {
-                    RoundedRectangle(cornerRadius: Islands.controlRadius)
-                        .fill(Islands.actionHover)
-                }
-            }
-            .contentShape(Rectangle())
+            .mainToolbarGlass(isHovering: isHovering)
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }

@@ -29,7 +29,7 @@ struct StatusBarNotificationsButton: View {
             .frame(width: 22, height: 22)
             .background(
                 RoundedRectangle(cornerRadius: Islands.rowRadius)
-                    .fill(isHovering ? Islands.hover : Color.clear)
+                    .fill(isHovering ? Islands.islandRaised.opacity(0.8) : Color.clear)
             )
             .contentShape(Rectangle())
         }

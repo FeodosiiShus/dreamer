@@ -3,73 +3,89 @@ import Testing
 
 @Suite
 struct BranchesPopupMatcherTests {
-    @Test
-    func matchesWordPrefix() {
-        #expect(BranchesPopupMatcher.matches(query: "feat", candidate: "feature/login"))
-        #expect(BranchesPopupMatcher.matches(query: "master", candidate: "master"))
+    private func matcher(_ query: String) throws -> BranchesPopupMatcher {
+        try #require(BranchesPopupMatcher(query: query))
     }
 
     @Test
-    func matchesCamelHumps() {
-        #expect(BranchesPopupMatcher.matches(query: "cb", candidate: "checkoutBranch"))
-        #expect(BranchesPopupMatcher.matches(query: "fc", candidate: "fluxCapacitor"))
-        #expect(BranchesPopupMatcher.matches(query: "nbf", candidate: "newBranchFrom"))
+    func emptyAndSlashQueriesDoNotFilter() {
+        #expect(BranchesPopupMatcher(query: "") == nil)
+        #expect(BranchesPopupMatcher(query: "   ") == nil)
+        #expect(BranchesPopupMatcher(query: "/") == nil)
+        #expect(BranchesPopupMatcher(query: " / ") == nil)
+        #expect(BranchesPopupMatcher(query: "a") != nil)
     }
 
     @Test
-    func matchesAnywhereInTheName() {
-        #expect(BranchesPopupMatcher.matches(query: "eature", candidate: "feature"))
-        #expect(BranchesPopupMatcher.matches(query: "fc", candidate: "reformatCode"))
-        #expect(!BranchesPopupMatcher.matches(query: "xyz", candidate: "master"))
+    func matchesWordPrefix() throws {
+        #expect(try matcher("feat").matches("feature/login"))
+        #expect(try matcher("master").matches("master"))
     }
 
     @Test
-    func matchesPathSegments() {
-        #expect(BranchesPopupMatcher.matches(query: "fl", candidate: "feature/login"))
-        #expect(BranchesPopupMatcher.matches(query: "master", candidate: "origin/master"))
-        #expect(BranchesPopupMatcher.matches(query: "ol", candidate: "origin/login"))
-        #expect(!BranchesPopupMatcher.matches(query: "fm", candidate: "feature/login"))
+    func matchesCamelHumps() throws {
+        #expect(try matcher("cb").matches("checkoutBranch"))
+        #expect(try matcher("fc").matches("fluxCapacitor"))
+        #expect(try matcher("nbf").matches("newBranchFrom"))
     }
 
     @Test
-    func matchesHyphenAndUnderscoreSegments() {
-        #expect(BranchesPopupMatcher.matches(query: "nb", candidate: "new-branch"))
-        #expect(BranchesPopupMatcher.matches(query: "nb", candidate: "new_branch"))
-        #expect(BranchesPopupMatcher.matches(query: "fm", candidate: "feature_merge"))
+    func matchesPathSegments() throws {
+        #expect(try matcher("master").matches("origin/master"))
+        #expect(try matcher("login").matches("feature/login"))
+        #expect(try matcher("fl").matches("feature/login"))
     }
 
     @Test
-    func spaceSeparatesWords() {
-        #expect(BranchesPopupMatcher.matches(query: "origin master", candidate: "origin/master"))
-        #expect(BranchesPopupMatcher.matches(query: "or ma", candidate: "origin/master"))
-        #expect(BranchesPopupMatcher.matches(query: "ma st", candidate: "master"))
+    func matchesHyphenAndUnderscoreSegments() throws {
+        #expect(try matcher("nb").matches("new-branch"))
+        #expect(try matcher("nb").matches("new_branch"))
     }
 
     @Test
-    func matchesCaseInsensitively() {
-        #expect(BranchesPopupMatcher.matches(query: "MASTER", candidate: "origin/master"))
-        #expect(BranchesPopupMatcher.matches(query: "Feature", candidate: "featureLogin"))
+    func rejectsUnrelatedNames() throws {
+        #expect(try matcher("xyz").matches("master") == false)
+        #expect(try matcher("xyz").weight("master") == nil)
+        #expect(try matcher("xyz").ranges("master") == nil)
     }
 
     @Test
-    func emptyQueryMatchesEverything() {
-        #expect(BranchesPopupMatcher.matches(query: "", candidate: "anything"))
-        #expect(BranchesPopupMatcher.matches(query: "   ", candidate: "anything"))
+    func matchesCaseInsensitively() throws {
+        #expect(try matcher("feature").matches("FeatureLogin"))
+        #expect(try matcher("openquick").matches("OpenQuicklyView"))
     }
 
     @Test
-    func scoresPrefixMatchesLower() throws {
-        let prefixScore = try #require(BranchesPopupMatcher.score(query: "master", candidate: "master"))
-        let nestedScore = try #require(BranchesPopupMatcher.score(query: "master", candidate: "origin/master"))
-        #expect(prefixScore < nestedScore)
-        #expect(BranchesPopupMatcher.score(query: "xyz", candidate: "master") == nil)
+    func surroundingWhitespaceIsIgnored() throws {
+        #expect(try matcher("  feat  ").matches("feature"))
+        #expect(try matcher("  feat  ").ranges("feature") == (try matcher("feat").ranges("feature")))
     }
 
     @Test
-    func reportsHighlightRanges() {
-        #expect(BranchesPopupMatcher.ranges(query: "feat", candidate: "feature/login") == [0..<4])
-        #expect(BranchesPopupMatcher.ranges(query: "login", candidate: "feature/login") == [8..<13])
-        #expect(BranchesPopupMatcher.ranges(query: "fl", candidate: "feature/login") == [0..<1, 8..<9])
-        #expect(BranchesPopupMatcher.ranges(query: "zzz", candidate: "feature/login") == nil)
+    func weightAddsTenThousandMinusFirstFragmentStart() throws {
+        let reference = MinusculeMatcher(pattern: "*log")
+        let wrapped = try matcher("log")
+        for name in ["login", "feature/login", "release/v2/login"] {
+            let result = try #require(reference.matchWithDegree(name))
+            let start = try #require(result.fragments.first?.lowerBound)
+            #expect(wrapped.weight(name) == result.degree + 10000 - start)
+        }
+    }
+
+    @Test
+    func weightPrefersMatchesThatStartEarlier() throws {
+        let wrapped = try matcher("login")
+        let flat = try #require(wrapped.weight("login"))
+        let nested = try #require(wrapped.weight("feature/login"))
+        let deeper = try #require(wrapped.weight("release/feature/login"))
+        #expect(flat > nested)
+        #expect(nested > deeper)
+    }
+
+    @Test
+    func reportsHighlightRangesAsCharacterOffsets() throws {
+        #expect(try matcher("feat").ranges("feature/login") == [0..<4])
+        #expect(try matcher("login").ranges("feature/login") == [8..<13])
+        #expect(try matcher("feature").ranges("\u{1F600}feature") == [1..<8])
     }
 }

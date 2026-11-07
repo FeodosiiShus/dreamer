@@ -195,4 +195,76 @@ struct SearchResultMatchModelTests {
         #expect(set.contains(first))
         #expect(set.contains(second))
     }
+
+    private func snapshot(of content: String, matching keyword: String) throws -> FileMatchSnapshot {
+        let range = (content as NSString).range(of: keyword)
+        return try #require(FileMatchSnapshot.make(matchRange: range, in: content))
+    }
+
+    @Test
+    func snapshotCapturesTheLineAroundTheMatch() throws {
+        let content = "let value = 42\nlet other = 1"
+        let result = try snapshot(of: content, matching: "value")
+        #expect(result.lineContent == "let value = 42")
+        #expect(String(result.lineContent[result.keywordRange]) == "value")
+        #expect(String(content[result.rangeWithinFile]) == "value")
+    }
+
+    @Test
+    func snapshotTrimsLeadingIndentation() throws {
+        let result = try snapshot(of: "    \tlet value = 1", matching: "value")
+        #expect(result.lineContent == "let value = 1")
+        #expect(String(result.lineContent[result.keywordRange]) == "value")
+    }
+
+    @Test
+    func snapshotExcludesNeighbouringLines() throws {
+        let result = try snapshot(of: "first\nsecond KEY third\nfourth", matching: "KEY")
+        #expect(result.lineContent == "second KEY third")
+    }
+
+    @Test
+    func snapshotKeepsSixtyCharactersOfContextOnEachSide() throws {
+        let before = String(repeating: "a", count: 100)
+        let after = String(repeating: "b", count: 100)
+        let result = try snapshot(of: before + "KEY" + after, matching: "KEY")
+        #expect(result.lineContent == String(repeating: "a", count: 60) + "KEY" + String(repeating: "b", count: 60))
+        #expect(String(result.lineContent[result.keywordRange]) == "KEY")
+    }
+
+    @Test
+    func snapshotShowsMultilineMatchesOnOneLine() throws {
+        let result = try snapshot(of: "a KEY\nnext b", matching: "KEY\nnext")
+        #expect(result.lineContent == "a KEY⏎next b")
+        #expect(String(result.lineContent[result.keywordRange]) == "KEY⏎next")
+    }
+
+    @Test
+    func snapshotAbbreviatesVeryLongMatches() throws {
+        let keyword = String(repeating: "k", count: 130)
+        let result = try snapshot(of: "x " + keyword + " y", matching: keyword)
+        let highlighted = String(result.lineContent[result.keywordRange])
+        #expect(highlighted == String(repeating: "k", count: 120) + "…")
+    }
+
+    @Test
+    func snapshotOfAnEmptyMatchHasAnEmptyKeywordRange() throws {
+        let content = "abcdef"
+        let result = try #require(FileMatchSnapshot.make(matchRange: NSRange(location: 3, length: 0), in: content))
+        #expect(result.lineContent == "abcdef")
+        #expect(result.keywordRange.isEmpty)
+    }
+
+    @Test
+    func snapshotKeywordRangeIsCorrectAfterWideCharacters() throws {
+        let result = try snapshot(of: "😀😀 KEY 😀", matching: "KEY")
+        #expect(result.lineContent == "😀😀 KEY 😀")
+        #expect(String(result.lineContent[result.keywordRange]) == "KEY")
+    }
+
+    @Test
+    func snapshotRejectsRangesOutsideTheContent() {
+        #expect(FileMatchSnapshot.make(matchRange: NSRange(location: 10, length: 5), in: "abc") == nil)
+        #expect(FileMatchSnapshot.make(matchRange: NSRange(location: NSNotFound, length: 0), in: "abc") == nil)
+    }
 }

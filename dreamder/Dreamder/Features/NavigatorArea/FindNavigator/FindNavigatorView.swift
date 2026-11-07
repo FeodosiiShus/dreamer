@@ -74,7 +74,7 @@ struct FindNavigatorView: View {
                 if self.searchResultCount == 0 {
                     CEContentUnavailableView(
                         "No Results",
-                        description: "No Results for \"\(state.searchQuery)\" in Project",
+                        description: "No Results for \"\(state.searchQuery)\" in \(state.scopeDescription)",
                         systemImage: "exclamationmark.magnifyingglass"
                     )
                 } else {

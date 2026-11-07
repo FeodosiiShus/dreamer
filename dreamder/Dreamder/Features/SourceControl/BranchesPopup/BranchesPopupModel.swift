@@ -196,6 +196,7 @@ nonisolated struct BranchesPopupNode: Identifiable, Hashable {
 nonisolated struct BranchesPopupSection: Identifiable, Hashable {
     let id: BranchesPopupSectionID
     let nodes: [BranchesPopupNode]
+    let refs: [BranchesPopupRef]
 
     var title: String { id.title }
 }
@@ -213,10 +214,53 @@ nonisolated struct BranchesPopupTreeInput {
     var groupsByDirectory: Bool = true
 }
 
+nonisolated struct BranchesPopupRefOrdering {
+    let favorites: Set<String>
+    let groupsByDirectory: Bool
+
+    func isPinned(_ ref: BranchesPopupRef) -> Bool {
+        ref.isCurrent || favorites.contains(ref.id)
+    }
+
+    func compare(_ lhs: BranchesPopupRef, _ rhs: BranchesPopupRef) -> Int {
+        if lhs.isCurrent != rhs.isCurrent { return lhs.isCurrent ? -1 : 1 }
+        let lhsFavorite = favorites.contains(lhs.id)
+        let rhsFavorite = favorites.contains(rhs.id)
+        if lhsFavorite != rhsFavorite { return lhsFavorite ? -1 : 1 }
+        if groupsByDirectory {
+            let lhsNested = lhs.shortName.contains("/")
+            let rhsNested = rhs.shortName.contains("/")
+            if lhsNested != rhsNested { return lhsNested ? -1 : 1 }
+        }
+        return lhs.shortName.naturalCompare(rhs.shortName)
+    }
+
+    func sorted(_ refs: [BranchesPopupRef]) -> [BranchesPopupRef] {
+        refs.enumerated()
+            .sorted { lhs, rhs in
+                let result = compare(lhs.element, rhs.element)
+                return result != 0 ? result < 0 : lhs.offset < rhs.offset
+            }
+            .map(\.element)
+    }
+
+    func arrangedChildren(_ nodes: [BranchesPopupNode]) -> [BranchesPopupNode] {
+        let pinned = nodes.filter { $0.kind == .ref && $0.ref.map(isPinned) == true }
+        let groups = nodes.filter { $0.kind == .group }
+        let others = nodes.filter { $0.kind == .ref && $0.ref.map(isPinned) != true }
+        return pinned + groups + others
+    }
+}
+
 nonisolated enum BranchesPopupTreeBuilder {
+    static let maxRecentBranches = 5
+
     static func build(_ input: BranchesPopupTreeInput) -> [BranchesPopupSection] {
-        let query = input.query.trimmingCharacters(in: .whitespaces)
-        let isSearching = !query.isEmpty
+        let matcher = BranchesPopupMatcher(query: input.query)
+        let ordering = BranchesPopupRefOrdering(
+            favorites: input.favorites,
+            groupsByDirectory: input.groupsByDirectory
+        )
 
         let localRefs = input.localBranches.map { branch in
             BranchesPopupRef(
@@ -234,113 +278,46 @@ nonisolated enum BranchesPopupTreeBuilder {
         var recentRefs: [BranchesPopupRef] = []
         if input.showsRecentBranches {
             var seenNames = Set<String>()
-            for name in input.recentNames where !seenNames.contains(name) {
-                guard let ref = localRefsByName[name] else { continue }
-                seenNames.insert(name)
+            for name in input.recentNames {
+                guard recentRefs.count < maxRecentBranches else { break }
+                guard let ref = localRefsByName[name], seenNames.insert(name).inserted else { continue }
                 recentRefs.append(ref)
             }
         }
         let recentShortNames = Set(recentRefs.map(\.shortName))
-        if isSearching {
-            recentRefs = recentRefs.filter { matches(query, ref: $0) }
+
+        let remoteRefs = input.remoteBranches.compactMap { branch -> BranchesPopupRef? in
+            guard let parts = remoteParts(for: branch), parts.name != "HEAD" else { return nil }
+            return BranchesPopupRef(
+                kind: .remote,
+                name: parts.name,
+                shortName: "\(parts.remote)/\(parts.name)",
+                upstream: nil,
+                isCurrent: false
+            )
         }
 
-        let localRefsForSection = localRefs
-            .filter { ref in
-                guard !recentShortNames.contains(ref.shortName) else { return false }
-                guard isSearching else { return true }
-                return matches(query, ref: ref)
+        let tagRefs: [BranchesPopupRef] = input.showsTags
+            ? input.tags.map { tag in
+                BranchesPopupRef(kind: .tag, name: tag.name, shortName: tag.name, upstream: nil, isCurrent: false)
             }
-            .sorted(by: refOrder(favorites: input.favorites, currentName: input.currentBranchName))
+            : []
 
-        let remoteRefs = input.remoteBranches
-            .compactMap { branch -> BranchesPopupRef? in
-                guard let parts = remoteParts(for: branch), parts.name != "HEAD" else { return nil }
-                return BranchesPopupRef(
-                    kind: .remote,
-                    name: parts.name,
-                    shortName: "\(parts.remote)/\(parts.name)",
-                    upstream: nil,
-                    isCurrent: false
-                )
-            }
-            .filter { ref in
-                guard isSearching else { return true }
-                return matches(query, ref: ref)
-            }
-
-        var tagRefs: [BranchesPopupRef] = []
-        if input.showsTags {
-            tagRefs = input.tags
-                .map { tag in
-                    BranchesPopupRef(
-                        kind: .tag,
-                        name: tag.name,
-                        shortName: tag.name,
-                        upstream: nil,
-                        isCurrent: false
-                    )
-                }
-                .filter { ref in
-                    guard isSearching else { return true }
-                    return matches(query, ref: ref)
-                }
+        let candidates: [(BranchesPopupSectionID, [BranchesPopupRef])] = [
+            (.recent, recentRefs),
+            (.local, ordering.sorted(localRefs.filter { !recentShortNames.contains($0.shortName) })),
+            (.remote, ordering.sorted(remoteRefs)),
+            (.tags, ordering.sorted(tagRefs))
+        ]
+        return candidates.compactMap { id, refs in
+            let matched = matcher.map { matcher in refs.filter { matcher.matches($0.shortName) } } ?? refs
+            guard !matched.isEmpty else { return nil }
+            return BranchesPopupSection(
+                id: id,
+                nodes: nodes(for: matched, section: id, ordering: ordering),
+                refs: matched
+            )
         }
-
-        var sections: [BranchesPopupSection] = []
-        if !recentRefs.isEmpty {
-            sections.append(BranchesPopupSection(
-                id: .recent,
-                nodes: nodes(
-                    for: recentRefs,
-                    section: .recent,
-                    groupsByDirectory: input.groupsByDirectory,
-                    favorites: input.favorites,
-                    currentName: input.currentBranchName,
-                    preservesOrder: true
-                )
-            ))
-        }
-        if !localRefsForSection.isEmpty {
-            sections.append(BranchesPopupSection(
-                id: .local,
-                nodes: nodes(
-                    for: localRefsForSection,
-                    section: .local,
-                    groupsByDirectory: input.groupsByDirectory,
-                    favorites: input.favorites,
-                    currentName: input.currentBranchName,
-                    preservesOrder: false
-                )
-            ))
-        }
-        if !remoteRefs.isEmpty {
-            sections.append(BranchesPopupSection(
-                id: .remote,
-                nodes: nodes(
-                    for: remoteRefs,
-                    section: .remote,
-                    groupsByDirectory: input.groupsByDirectory,
-                    favorites: input.favorites,
-                    currentName: input.currentBranchName,
-                    preservesOrder: false
-                )
-            ))
-        }
-        if !tagRefs.isEmpty {
-            sections.append(BranchesPopupSection(
-                id: .tags,
-                nodes: nodes(
-                    for: tagRefs,
-                    section: .tags,
-                    groupsByDirectory: input.groupsByDirectory,
-                    favorites: input.favorites,
-                    currentName: input.currentBranchName,
-                    preservesOrder: false
-                )
-            ))
-        }
-        return sections
     }
 
     static func remoteParts(for branch: GitBranch) -> (remote: String, name: String)? {
@@ -367,27 +344,16 @@ nonisolated enum BranchesPopupTreeBuilder {
     private static func nodes(
         for refs: [BranchesPopupRef],
         section: BranchesPopupSectionID,
-        groupsByDirectory: Bool,
-        favorites: Set<String>,
-        currentName: String?,
-        preservesOrder: Bool
+        ordering: BranchesPopupRefOrdering
     ) -> [BranchesPopupNode] {
-        let ordered: [BranchesPopupRef]
-        if preservesOrder {
-            ordered = refs
-        } else {
-            ordered = refs.sorted(by: refOrder(favorites: favorites, currentName: currentName))
-        }
-        guard groupsByDirectory else {
-            return ordered.map { refNode($0, section: section, title: $0.displayName) }
+        guard ordering.groupsByDirectory else {
+            return refs.map { refNode($0, section: section, title: $0.displayName) }
         }
         return buildLevel(
-            entries: ordered.map { RefEntry(ref: $0, path: $0.displayName.split(separator: "/").map(String.init)) },
+            entries: refs.map { RefEntry(ref: $0, path: $0.displayName.split(separator: "/").map(String.init)) },
             section: section,
             path: [],
-            favorites: favorites,
-            currentName: currentName,
-            preservesOrder: preservesOrder
+            ordering: ordering
         )
     }
 
@@ -396,94 +362,137 @@ nonisolated enum BranchesPopupTreeBuilder {
         let path: [String]
     }
 
+    nonisolated private enum Slot {
+        case ref(RefEntry)
+        case group(String)
+    }
+
     private static func buildLevel(
         entries: [RefEntry],
         section: BranchesPopupSectionID,
         path: [String],
-        favorites: Set<String>,
-        currentName: String?,
-        preservesOrder: Bool
+        ordering: BranchesPopupRefOrdering
     ) -> [BranchesPopupNode] {
-        var direct: [RefEntry] = []
+        var slots: [Slot] = []
         var groups: [String: [RefEntry]] = [:]
         for entry in entries {
             guard let first = entry.path.first else { continue }
             if entry.path.count <= 1 {
-                direct.append(entry)
+                slots.append(.ref(entry))
             } else {
+                if groups[first] == nil { slots.append(.group(first)) }
                 groups[first, default: []].append(RefEntry(ref: entry.ref, path: Array(entry.path.dropFirst())))
             }
         }
 
-        if !preservesOrder {
-            direct.sort { refOrder(favorites: favorites, currentName: currentName)($0.ref, $1.ref) }
+        let isNested = !path.isEmpty
+        let nodes = slots.map { slot -> BranchesPopupNode in
+            switch slot {
+            case .ref(let entry):
+                return refNode(entry.ref, section: section, title: entry.path.first ?? entry.ref.displayName)
+            case .group(let name):
+                let groupPath = path + [name]
+                let children = buildLevel(
+                    entries: groups[name] ?? [],
+                    section: section,
+                    path: groupPath,
+                    ordering: ordering
+                )
+                return BranchesPopupNode(
+                    id: .group(section, groupPath.joined(separator: "/")),
+                    kind: .group,
+                    title: name,
+                    detail: nil,
+                    ref: nil,
+                    children: children
+                )
+            }
         }
-        var nodes: [BranchesPopupNode] = direct
-            .map { refNode($0.ref, section: section, title: $0.path.first ?? $0.ref.displayName) }
+        return isNested ? ordering.arrangedChildren(nodes) : nodes
+    }
+}
 
-        let groupNames = preservesOrder ? Array(groups.keys) : groups.keys.sorted()
-        for name in groupNames {
-            let children = buildLevel(
-                entries: groups[name] ?? [],
-                section: section,
-                path: path + [name],
-                favorites: favorites,
-                currentName: currentName,
-                preservesOrder: preservesOrder
-            )
-            let groupID = BranchesPopupItemID.group(section, (path + [name]).joined(separator: "/"))
-            nodes.append(BranchesPopupNode(
-                id: groupID,
-                kind: .group,
-                title: name,
-                detail: nil,
-                ref: nil,
-                children: children
-            ))
+nonisolated struct BranchesPopupPreferredRef: Equatable {
+    let section: BranchesPopupSectionID
+    let ref: BranchesPopupRef
+
+    var itemID: BranchesPopupItemID {
+        ref.itemID(in: section)
+    }
+}
+
+nonisolated enum BranchesPopupPreferredSelection {
+    static let searchOrder: [BranchesPopupSectionID] = [.recent, .local, .remote, .tags]
+
+    static func resolve(
+        sections: [BranchesPopupSection],
+        matcher: BranchesPopupMatcher?,
+        recentNames: [String]
+    ) -> BranchesPopupPreferredRef? {
+        guard let matcher else {
+            return previousOrCurrent(sections: sections, recentNames: recentNames)
         }
-        return nodes
+        for id in searchOrder {
+            guard let section = sections.first(where: { $0.id == id }),
+                  let ref = topMatch(in: section.refs, matcher: matcher) else { continue }
+            return BranchesPopupPreferredRef(section: id, ref: ref)
+        }
+        return nil
     }
 
-    private static func matches(_ query: String, ref: BranchesPopupRef) -> Bool {
-        BranchesPopupMatcher.matches(query: query, candidate: ref.shortName)
-    }
-
-    private static func refOrder(
-        favorites: Set<String>,
-        currentName: String?
-    ) -> (BranchesPopupRef, BranchesPopupRef) -> Bool {
-        { lhs, rhs in
-            if lhs.isCurrent != rhs.isCurrent { return lhs.isCurrent }
-            let lhsFavorite = favorites.contains(lhs.id)
-            let rhsFavorite = favorites.contains(rhs.id)
-            if lhsFavorite != rhsFavorite { return lhsFavorite }
-            return nameOrder(lhs, rhs)
+    static func topMatch(in refs: [BranchesPopupRef], matcher: BranchesPopupMatcher) -> BranchesPopupRef? {
+        var best: (ref: BranchesPopupRef, weight: Int)?
+        for ref in refs {
+            guard let weight = matcher.weight(ref.shortName) else { continue }
+            if let current = best, current.weight >= weight { continue }
+            best = (ref, weight)
         }
+        return best?.ref
     }
 
-    private static func nameOrder(_ lhs: BranchesPopupRef, _ rhs: BranchesPopupRef) -> Bool {
-        let lhsKey = lhs.displayName.lowercased()
-        let rhsKey = rhs.displayName.lowercased()
-        if lhsKey != rhsKey { return lhsKey < rhsKey }
-        return lhs.displayName < rhs.displayName
+    private static func previousOrCurrent(
+        sections: [BranchesPopupSection],
+        recentNames: [String]
+    ) -> BranchesPopupPreferredRef? {
+        let localCandidates: [BranchesPopupPreferredRef] = sections
+            .filter { $0.id == .recent || $0.id == .local }
+            .flatMap { section in section.refs.map { BranchesPopupPreferredRef(section: section.id, ref: $0) } }
+        for name in recentNames {
+            if let match = localCandidates.first(where: { $0.ref.name == name && !$0.ref.isCurrent }) {
+                return match
+            }
+        }
+        return localCandidates.first { $0.ref.isCurrent }
     }
 }
 
 nonisolated enum BranchesPopupReflogParser {
-    static func recentBranchNames(from output: String, limit: Int) -> [String] {
+    static let reflogEntryCount = 50
+    private static let checkoutPrefix = "checkout: moving from "
+    private static let toSeparator = " to "
+    private static let localBranchPrefix = "refs/heads/"
+
+    static func recentBranchNames(from output: String, existingBranches: Set<String>, limit: Int) -> [String] {
         var names: [String] = []
         var seenNames = Set<String>()
         for line in output.components(separatedBy: .newlines) {
+            guard names.count < limit else { break }
             let entry = line.trimmingCharacters(in: .whitespaces)
-            let prefix = "checkout: moving from "
-            guard entry.hasPrefix(prefix) else { continue }
-            let rest = entry.dropFirst(prefix.count)
-            guard let separatorRange = rest.range(of: " to ") else { continue }
-            let name = String(rest[separatorRange.upperBound...]).trimmingCharacters(in: .whitespaces)
-            guard !name.isEmpty, name != "HEAD", !name.hasPrefix("refs/"), !seenNames.contains(name) else { continue }
-            seenNames.insert(name)
+            guard entry.hasPrefix(checkoutPrefix),
+                  let separatorRange = entry.range(of: toSeparator, options: .backwards) else { continue }
+            let name = String(entry[separatorRange.upperBound...]).trimmingCharacters(in: .whitespaces)
+            guard existingBranches.contains(name), seenNames.insert(name).inserted else { continue }
             names.append(name)
-            if names.count >= limit { break }
+        }
+        return names
+    }
+
+    static func localBranchNames(fromRefs output: String) -> Set<String> {
+        var names = Set<String>()
+        for line in output.components(separatedBy: .newlines) {
+            let ref = line.trimmingCharacters(in: .whitespaces)
+            guard ref.hasPrefix(localBranchPrefix) else { continue }
+            names.insert(String(ref.dropFirst(localBranchPrefix.count)))
         }
         return names
     }

@@ -138,7 +138,7 @@ struct EditorBreadcrumbsBar: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(Islands.separator)
+                .fill(Islands.glassBorder)
                 .frame(height: 1)
         }
         .contentShape(Rectangle())

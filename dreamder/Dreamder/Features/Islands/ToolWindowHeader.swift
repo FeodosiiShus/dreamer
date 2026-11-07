@@ -138,34 +138,32 @@ struct IslandBackground: ViewModifier {
 struct GlassSurface: ViewModifier {
     let radius: CGFloat
     let tint: Color
+    let followsBackgroundImage: Bool
+
+    @AppStorage(Islands.BackgroundImageKey.path)
+    private var imagePath = ""
+    @AppStorage(Islands.BackgroundImageKey.opacity)
+    private var imageOpacity = Islands.BackgroundImageKey.defaultOpacity
 
     private var shape: RoundedRectangle {
         RoundedRectangle(cornerRadius: radius, style: .continuous)
     }
 
-    @ViewBuilder
+    private var tintOpacity: Double {
+        guard followsBackgroundImage, !imagePath.isEmpty else { return Islands.glassTintOpacity }
+        return 1 - imageOpacity
+    }
+
     func body(content: Content) -> some View {
-        if #available(macOS 26, *) {
-            content
-                .background(tint, in: shape)
-                .glassEffect(.regular, in: shape)
-                .overlay {
-                    shape
-                        .strokeBorder(Islands.glassBorder, lineWidth: 1)
-                        .allowsHitTesting(false)
-                }
-                .environment(\.colorScheme, .dark)
-        } else {
-            content
-                .background(.ultraThinMaterial, in: shape)
-                .background(tint, in: shape)
-                .overlay {
-                    shape
-                        .strokeBorder(Islands.glassBorder, lineWidth: 1)
-                        .allowsHitTesting(false)
-                }
-                .clipShape(shape)
-        }
+        content
+            .background(tint.opacity(tintOpacity), in: shape)
+            .glassEffect(.regular, in: shape)
+            .overlay {
+                shape
+                    .strokeBorder(Islands.glassBorder, lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+            .environment(\.colorScheme, .dark)
     }
 }
 
@@ -175,10 +173,10 @@ extension View {
     }
 
     func glassIsland() -> some View {
-        modifier(GlassSurface(radius: Islands.islandRadius, tint: Islands.glassIslandTint))
+        modifier(GlassSurface(radius: Islands.islandRadius, tint: Islands.island, followsBackgroundImage: true))
     }
 
     func glassPopup(radius: CGFloat = Islands.popupRadius) -> some View {
-        modifier(GlassSurface(radius: radius, tint: Islands.glassPopupTint))
+        modifier(GlassSurface(radius: radius, tint: Islands.popup, followsBackgroundImage: false))
     }
 }

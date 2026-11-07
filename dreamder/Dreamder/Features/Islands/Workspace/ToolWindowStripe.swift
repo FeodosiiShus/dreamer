@@ -17,16 +17,9 @@ struct ToolWindowStripe: View {
 
     var body: some View {
         VStack(spacing: 2) {
-            stripeButton(.project)
-            stripeButton(.commit)
-            stripeButton(.structure)
+            anchorGroup(.left)
             Spacer(minLength: 0)
-            stripeButton(.run)
-            stripeButton(.find)
-            stripeButton(.terminal)
-            stripeButton(.problems)
-            stripeButton(.git)
-            LanguageServicesStripeButton()
+            anchorGroup(.bottom)
         }
         .padding(.vertical, Islands.isCompact ? 2 : 6)
         .frame(width: Islands.stripeWidth)
@@ -34,12 +27,31 @@ struct ToolWindowStripe: View {
         .background(backgroundColor)
     }
 
+    private func anchorGroup(_ anchor: ToolWindowAnchor) -> some View {
+        let groups = toolWindowManager.placement.stripeGroups(on: anchor, ordered: ToolWindowID.allCases)
+        return VStack(spacing: 2) {
+            ForEach(groups.main) { id in
+                stripeButton(id)
+            }
+            if !groups.main.isEmpty, !groups.split.isEmpty {
+                Rectangle()
+                    .fill(Islands.separator)
+                    .frame(width: Islands.stripeIconSize, height: 1)
+                    .padding(.vertical, 2)
+            }
+            ForEach(groups.split) { id in
+                stripeButton(id)
+            }
+        }
+    }
+
+    @ViewBuilder
     private func stripeButton(_ id: ToolWindowID) -> some View {
-        ToolWindowStripeButton(
-            id: id,
-            isSelected: toolWindowManager.isVisible(id),
-            action: { toolWindowManager.toggle(id) }
-        )
+        if id == .languageServices {
+            LanguageServicesStripeButton()
+        } else {
+            ToolWindowStripeButton(id: id)
+        }
     }
 }
 
@@ -60,11 +72,7 @@ private struct LanguageServicesStripeButton: View {
 
     var body: some View {
         let isSelected = toolWindowManager.isVisible(.languageServices)
-        ToolWindowStripeButton(
-            id: .languageServices,
-            isSelected: isSelected,
-            action: { toolWindowManager.toggle(.languageServices) }
-        )
+        ToolWindowStripeButton(id: .languageServices)
         .overlay(alignment: .topTrailing) {
             if problemCount > 0, !isSelected {
                 Text("\(problemCount)")
@@ -81,10 +89,14 @@ private struct LanguageServicesStripeButton: View {
 
 struct ToolWindowStripeButton: View {
     let id: ToolWindowID
-    let isSelected: Bool
-    let action: () -> Void
+
+    @Environment(ToolWindowManager.self) private var toolWindowManager
 
     @State private var isHovering = false
+
+    private var isSelected: Bool {
+        toolWindowManager.isVisible(id)
+    }
 
     private var backgroundColor: Color {
         if isSelected {
@@ -94,7 +106,9 @@ struct ToolWindowStripeButton: View {
     }
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            toolWindowManager.toggle(id)
+        } label: {
             Image(id.icon)
                 .resizable()
                 .interpolation(.high)
@@ -109,5 +123,11 @@ struct ToolWindowStripeButton: View {
         .buttonStyle(.plain)
         .help("\(id.title) \(id.shortcutHint)")
         .onHover { isHovering = $0 }
+        .contextMenu {
+            let isSplit = toolWindowManager.isSplit(id)
+            Button(isSplit ? "Move to Main" : "Move to Split") {
+                toolWindowManager.setSplit(id, !isSplit)
+            }
+        }
     }
 }

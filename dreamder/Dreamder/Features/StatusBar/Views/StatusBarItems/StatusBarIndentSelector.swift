@@ -44,7 +44,7 @@ struct StatusBarIndentSelector: View {
                 .frame(height: 18)
                 .background {
                     RoundedRectangle(cornerRadius: Islands.rowRadius)
-                        .fill(isHovering ? Islands.actionHover : Color.clear)
+                        .fill(isHovering ? Islands.islandRaised.opacity(0.8) : Color.clear)
                 }
                 .contentShape(Rectangle())
         }

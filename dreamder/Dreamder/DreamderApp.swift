@@ -23,6 +23,7 @@ struct DreamderApp: App {
         )
 
         _ = DreamderDocumentController.shared
+        ExtensionDiscovery.shared.start()
         NSMenuItem.swizzle()
         NSSplitViewItem.swizzle()
     }

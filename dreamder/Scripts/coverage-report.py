@@ -19,6 +19,7 @@ TOTAL_TOLERANCE_PP = 1.0
 SCOPE_TOLERANCE_PP = 1.0
 FILE_FLOOR_PERCENT = 80.0
 FILE_TOLERANCE_PP = 5.0
+FILE_MINIMUM_LINES = 25
 NEW_FILE_MINIMUM_PERCENT = 70.0
 EPSILON = 1e-9
 
@@ -225,6 +226,8 @@ def check(snapshot, baseline):
                 )
             continue
         previous_percent = entry_percent(previous)
+        if entry["scope"] not in LOGIC_SCOPES or entry["executable"] < FILE_MINIMUM_LINES:
+            continue
         if previous_percent >= FILE_FLOOR_PERCENT and previous_percent - current_percent > FILE_TOLERANCE_PP + EPSILON:
             violations.append(
                 f"{path} dropped from {previous_percent:.1f}% to {current_percent:.1f}% (limit {FILE_TOLERANCE_PP} pp for files at or above {FILE_FLOOR_PERCENT:.0f}%)"

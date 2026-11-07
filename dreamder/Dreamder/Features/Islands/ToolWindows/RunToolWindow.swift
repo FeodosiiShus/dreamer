@@ -48,14 +48,13 @@ struct RunToolWindow: View {
                     RunTaskActions(activeTask: activeTask)
                 }
                 ToolWindowActionButton(icon: "general/hide", help: "Hide") {
-                    toolWindowManager.hide(.bottom)
+                    toolWindowManager.hide(.run)
                 }
             }
 
             outputContent
         }
         .background(Color.clear)
-        .environment(\.colorScheme, .dark)
         .onChange(of: Set(taskManager.activeTasks.keys), initial: true) {
             let newTasks = taskManager.activeTasks
             if let output = taskManager.taskShowingOutput, newTasks[output] != nil {

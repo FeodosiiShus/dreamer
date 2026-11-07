@@ -113,7 +113,10 @@ struct SearchEverywhereViewModelTests {
             let kinds = model.sections.map(\.kind)
             let fileIndex = try #require(kinds.firstIndex(of: .files))
             let classIndex = try #require(kinds.firstIndex(of: .classes))
-            #expect(fileIndex < classIndex)
+            #expect(classIndex < fileIndex)
+            #expect(Set(kinds).count == kinds.count)
+            let priorities = model.flatItems.map { $0.section.provider.priority }
+            #expect(priorities == priorities.sorted(by: >))
             #expect(model.sections.allSatisfy { $0.items.count <= 8 })
             if model.showsPreview {
                 try await eventually { model.preview != nil }
@@ -213,5 +216,35 @@ struct SearchEverywhereViewModelTests {
             model.moveSelection(by: 5)
             #expect(model.selection == 0)
         }
+    }
+
+    @Test
+    func menuActionsWithTheSameTitleAndSelectorShareAnEqualityKey() {
+        let appMenu = SearchEverywhereAction(
+            identity: "menu:Dreamder | About Dreamder",
+            path: "Dreamder | About Dreamder",
+            shortcut: "",
+            selector: "performAction:",
+            perform: {}
+        )
+        let windowMenu = SearchEverywhereAction(
+            identity: "menu:Window | About Dreamder",
+            path: "Window | About Dreamder",
+            shortcut: "",
+            selector: "performAction:",
+            perform: {}
+        )
+        let other = SearchEverywhereAction(
+            identity: "menu:Window | Zoom",
+            path: "Window | Zoom",
+            shortcut: "",
+            selector: "performAction:",
+            perform: {}
+        )
+        let command = SearchEverywhereAction(identity: "command:about", path: "Command | About Dreamder", shortcut: "", perform: {})
+
+        #expect(appMenu.equalityKey == windowMenu.equalityKey)
+        #expect(appMenu.equalityKey != other.equalityKey)
+        #expect(command.equalityKey == "action:command:about")
     }
 }

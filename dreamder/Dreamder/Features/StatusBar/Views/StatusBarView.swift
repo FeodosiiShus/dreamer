@@ -55,7 +55,9 @@ struct StatusBarView: View {
         .padding(.horizontal, 8)
         .frame(height: Self.height)
         .frame(maxWidth: .infinity)
-        .background(Color.clear)
+        .background(Islands.glassIslandTint)
+        .glassEffect(.regular, in: Rectangle())
+        .environment(\.colorScheme, .dark)
         .onAppear {
             registerUtilityAreaCommand()
             SearchEverywhereRecentFilesStore.shared.startTracking(for: workspace)

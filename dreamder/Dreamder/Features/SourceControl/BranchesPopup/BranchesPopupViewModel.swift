@@ -29,6 +29,7 @@ final class BranchesPopupViewModel {
     var query = "" {
         didSet {
             guard query != oldValue else { return }
+            queryMatcher = BranchesPopupMatcher(query: query)
             rebuild()
             selectBestMatch()
         }
@@ -80,6 +81,7 @@ final class BranchesPopupViewModel {
 
     private var tags: [GitTag] = []
     private var recentNames: [String] = []
+    private var queryMatcher: BranchesPopupMatcher?
     @ObservationIgnored private var treeObservation: Task<Void, Never>?
     private let defaults: UserDefaults
 
@@ -163,12 +165,9 @@ final class BranchesPopupViewModel {
     }
 
     var visibleActions: [BranchesPopupActionID] {
-        let queryText = trimmedQuery
-        guard !queryText.isEmpty else { return BranchesPopupActionID.allCases }
+        guard let queryMatcher else { return BranchesPopupActionID.allCases }
         guard showsActionsInSearch else { return [] }
-        return BranchesPopupActionID.allCases.filter {
-            BranchesPopupMatcher.matches(query: queryText, candidate: $0.title)
-        }
+        return BranchesPopupActionID.allCases.filter { queryMatcher.matches($0.title) }
     }
 
     var visibleOngoingActions: [BranchesPopupOngoingAction] {
@@ -244,7 +243,7 @@ final class BranchesPopupViewModel {
         await sourceControlManager.refreshCurrentBranch()
         let operationState = await sourceControlManager.branchOpsOperationState()
         tags = await sourceControlManager.branchOpsTags()
-        recentNames = await sourceControlManager.branchOpsRecentBranchNames(limit: 40)
+        recentNames = await sourceControlManager.branchOpsRecentBranchNames(limit: BranchesPopupTreeBuilder.maxRecentBranches)
         await MainActor.run {
             self.operationState = operationState
             isLoading = false
@@ -263,7 +262,9 @@ final class BranchesPopupViewModel {
                 await sourceControlManager.refreshBranches()
                 await sourceControlManager.refreshCurrentBranch()
                 tags = await sourceControlManager.branchOpsTags()
-                recentNames = await sourceControlManager.branchOpsRecentBranchNames(limit: 40)
+                recentNames = await sourceControlManager.branchOpsRecentBranchNames(
+                    limit: BranchesPopupTreeBuilder.maxRecentBranches
+                )
                 await MainActor.run {
                     isFetching = false
                     refreshTree()
@@ -795,40 +796,46 @@ final class BranchesPopupViewModel {
     private func bestRow() -> BranchesPopupRow? {
         let leaves = rows.filter(\.isSelectable)
         guard !leaves.isEmpty else { return nil }
-        guard !trimmedQuery.isEmpty else {
-            return leaves.first(where: { $0.ref?.isCurrent == true })
+        guard let matcher = queryMatcher else {
+            let preferred = BranchesPopupPreferredSelection.resolve(
+                sections: sections,
+                matcher: nil,
+                recentNames: recentNames
+            )
+            return preferred.flatMap { match in leaves.first { $0.id == match.itemID } }
+                ?? leaves.first(where: { $0.ref?.isCurrent == true })
                 ?? leaves.first(where: { $0.kind == .action })
                 ?? leaves.first
         }
-        var best: (row: BranchesPopupRow, score: Int, priority: Int)?
-        for row in leaves {
-            let candidate = row.ref?.shortName ?? row.title
-            guard let score = BranchesPopupMatcher.score(query: trimmedQuery, candidate: candidate) else { continue }
-            let priority = sectionPriority(row)
-            if let currentBest = best {
-                if currentBest.score < score { continue }
-                if currentBest.score == score, currentBest.priority <= priority { continue }
-            }
-            best = (row, score, priority)
-        }
-        return best?.row ?? leaves.first
+        return topRow(in: leaves.filter { $0.kind == .action }, matcher: matcher, name: \.title)
+            ?? preferredBranchRow(in: leaves, matcher: matcher)
+            ?? leaves.first
     }
 
-    private func sectionPriority(_ row: BranchesPopupRow) -> Int {
-        guard let ref = row.ref else { return 10 }
-        switch ref.kind {
-        case .local:
-            return sectionID(for: row) == .recent ? 0 : 1
-        case .remote:
-            return 2
-        case .tag:
-            return 3
+    private func preferredBranchRow(in leaves: [BranchesPopupRow], matcher: BranchesPopupMatcher) -> BranchesPopupRow? {
+        let preferred = BranchesPopupPreferredSelection.resolve(
+            sections: sections,
+            matcher: matcher,
+            recentNames: recentNames
+        )
+        if let preferred, let row = leaves.first(where: { $0.id == preferred.itemID }) {
+            return row
         }
+        return topRow(in: leaves.filter { $0.kind == .ref }, matcher: matcher) { $0.ref?.shortName ?? $0.title }
     }
 
-    private func sectionID(for row: BranchesPopupRow) -> BranchesPopupSectionID? {
-        if case .ref(let section, _) = row.id { return section }
-        return nil
+    private func topRow(
+        in rows: [BranchesPopupRow],
+        matcher: BranchesPopupMatcher,
+        name: (BranchesPopupRow) -> String
+    ) -> BranchesPopupRow? {
+        var best: (row: BranchesPopupRow, weight: Int)?
+        for row in rows {
+            guard let weight = matcher.weight(name(row)) else { continue }
+            if let current = best, current.weight >= weight { continue }
+            best = (row, weight)
+        }
+        return best?.row
     }
 
     private func appendNodes(_ nodes: [BranchesPopupNode], depth: Int, to rows: inout [BranchesPopupRow]) {
@@ -1076,7 +1083,7 @@ final class BranchesPopupViewModel {
 
     private func refreshMetadata() async {
         tags = await sourceControlManager.branchOpsTags()
-        recentNames = await sourceControlManager.branchOpsRecentBranchNames(limit: 40)
+        recentNames = await sourceControlManager.branchOpsRecentBranchNames(limit: BranchesPopupTreeBuilder.maxRecentBranches)
     }
 
     private func separatorRow(_ id: String) -> BranchesPopupRow {
@@ -1204,7 +1211,7 @@ final class BranchesPopupViewModel {
     }
 
     private func matchRanges(for title: String) -> [Range<Int>] {
-        guard !trimmedQuery.isEmpty else { return [] }
-        return BranchesPopupMatcher.ranges(query: trimmedQuery, candidate: title) ?? []
+        guard let queryMatcher else { return [] }
+        return queryMatcher.ranges(title) ?? []
     }
 }
