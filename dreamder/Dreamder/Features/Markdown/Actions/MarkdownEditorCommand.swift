@@ -16,7 +16,7 @@ nonisolated struct MarkdownEditorEnvironment: Sendable {
     var tableStyle: MarkdownTableStyle = .aligned
     var tabSize = 4
     var indentSize = 4
-    var clipboard: String?
+    var clipboard: @Sendable () -> String? = { nil }
     var relativePathExists: @Sendable (String) -> Bool = { _ in false }
 }
 
@@ -42,7 +42,7 @@ nonisolated enum MarkdownEditorCommandRunner {
             return MarkdownLinkCreation.wrapSelections(
                 text: text,
                 selections: selections,
-                clipboard: environment.clipboard,
+                clipboard: environment.clipboard(),
                 relativePathExists: environment.relativePathExists
             )
         case .headerLevel(let level):

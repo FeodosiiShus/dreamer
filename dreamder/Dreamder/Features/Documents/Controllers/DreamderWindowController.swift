@@ -27,6 +27,9 @@ final class DreamderWindowController: NSWindowController, NSToolbarDelegate, NSW
 
     @ObservationIgnored internal var cancellables = [AnyCancellable]()
     @ObservationIgnored internal var documentEditedObservation: Task<Void, Never>?
+    @ObservationIgnored var markdownClipboard: @Sendable () -> String? = {
+        MainActor.assumeIsolated { NSPasteboard.general.string(forType: .string) }
+    }
 
     var workspaceHostingController: WorkspaceHostingController? {
         contentViewController as? WorkspaceHostingController

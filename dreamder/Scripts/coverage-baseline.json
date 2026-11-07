@@ -86,7 +86,7 @@
    "scope": "pure"
   },
   "Dreamder/Features/CEWorkspace/Models/CEWorkspaceFileManager+DirectoryEvents.swift": {
-   "covered": 225,
+   "covered": 229,
    "executable": 303,
    "scope": "io"
   },
@@ -180,6 +180,11 @@
    "executable": 237,
    "scope": "viewModel"
   },
+  "Dreamder/Features/Documents/CodeFileDocument/CodeTextStorage.swift": {
+   "covered": 34,
+   "executable": 48,
+   "scope": "viewModel"
+  },
   "Dreamder/Features/Documents/CodeFileDocument/FileEncoding.swift": {
    "covered": 19,
    "executable": 22,
@@ -216,8 +221,8 @@
    "scope": "viewModel"
   },
   "Dreamder/Features/Documents/Controllers/DreamderWindowController.swift": {
-   "covered": 62,
-   "executable": 179,
+   "covered": 65,
+   "executable": 183,
    "scope": "viewModel"
   },
   "Dreamder/Features/Documents/Controllers/DreamderWindowControllerExtensions.swift": {
@@ -326,8 +331,8 @@
    "scope": "viewModel"
   },
   "Dreamder/Features/DreamderAutomation/DreamderHeadless.swift": {
-   "covered": 78,
-   "executable": 93,
+   "covered": 113,
+   "executable": 128,
    "scope": "viewModel"
   },
   "Dreamder/Features/DreamderUI/Styles/CapsuleButtonStyle.swift": {
@@ -1371,8 +1376,8 @@
    "scope": "pure"
   },
   "Dreamder/Features/Markdown/Actions/MarkdownEditorCommand.swift": {
-   "covered": 51,
-   "executable": 51,
+   "covered": 52,
+   "executable": 52,
    "scope": "pure"
   },
   "Dreamder/Features/Markdown/Actions/MarkdownEmphasisToggle.swift": {
@@ -1396,7 +1401,7 @@
    "scope": "pure"
   },
   "Dreamder/Features/Markdown/Actions/MarkdownLinkCreation.swift": {
-   "covered": 382,
+   "covered": 374,
    "executable": 417,
    "scope": "pure"
   },
@@ -1416,7 +1421,7 @@
    "scope": "pure"
   },
   "Dreamder/Features/Markdown/Actions/MarkdownTableOfContents.swift": {
-   "covered": 152,
+   "covered": 148,
    "executable": 163,
    "scope": "pure"
   },
@@ -1441,7 +1446,7 @@
    "scope": "view"
   },
   "Dreamder/Features/Markdown/Highlighting/MarkdownBlockLexer.swift": {
-   "covered": 868,
+   "covered": 867,
    "executable": 902,
    "scope": "pure"
   },
@@ -1521,7 +1526,7 @@
    "scope": "pure"
   },
   "Dreamder/Features/MarkdownPreview/MarkdownHTMLSanitizer.swift": {
-   "covered": 224,
+   "covered": 225,
    "executable": 246,
    "scope": "pure"
   },
@@ -1576,7 +1581,7 @@
    "scope": "view"
   },
   "Dreamder/Features/MarkdownPreview/MarkdownRenderContext.swift": {
-   "covered": 212,
+   "covered": 211,
    "executable": 221,
    "scope": "pure"
   },
@@ -1596,7 +1601,7 @@
    "scope": "pure"
   },
   "Dreamder/Features/Matching/MinusculeMatcherCore.swift": {
-   "covered": 595,
+   "covered": 597,
    "executable": 610,
    "scope": "pure"
   },
@@ -1926,7 +1931,7 @@
    "scope": "pure"
   },
   "Dreamder/Features/Search/Model/FindModel.swift": {
-   "covered": 178,
+   "covered": 180,
    "executable": 185,
    "scope": "pure"
   },
@@ -1996,7 +2001,7 @@
    "scope": "viewModel"
   },
   "Dreamder/Features/SearchEverywhere/SearchEverywhereShiftMonitor.swift": {
-   "covered": 30,
+   "covered": 11,
    "executable": 78,
    "scope": "viewModel"
   },
@@ -3056,7 +3061,7 @@
    "scope": "view"
   },
   "Dreamder/Features/SourceControl/GitToolWindow/GitLogPrintElements.swift": {
-   "covered": 326,
+   "covered": 325,
    "executable": 364,
    "scope": "pure"
   },
@@ -3311,7 +3316,7 @@
    "scope": "view"
   },
   "Dreamder/Features/StatusBar/Views/StatusBarItems/StatusBarCursorPositionLabel.swift": {
-   "covered": 57,
+   "covered": 58,
    "executable": 77,
    "scope": "view"
   },
@@ -4028,25 +4033,25 @@
  },
  "scopes": {
   "io": {
-   "covered": 4884,
+   "covered": 4888,
    "executable": 7631
   },
   "pure": {
-   "covered": 22744,
-   "executable": 27422
+   "covered": 22735,
+   "executable": 27423
   },
   "view": {
-   "covered": 10717,
+   "covered": 10718,
    "executable": 47010
   },
   "viewModel": {
-   "covered": 11761,
-   "executable": 19331
+   "covered": 11814,
+   "executable": 19418
   }
  },
  "toolchain": "swift-6.4",
  "total": {
-  "covered": 50106,
-  "executable": 101394
+  "covered": 50155,
+  "executable": 101482
  }
 }

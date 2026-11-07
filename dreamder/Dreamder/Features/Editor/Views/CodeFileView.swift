@@ -165,7 +165,7 @@ struct CodeFileView: View {
             requested: codeFile.languageServerObjects.completionDelegate?.completionTriggerCharacters() ?? []
         )
         return SourceEditor(
-            codeFile.content ?? NSTextStorage(),
+            codeFile.content ?? CodeTextStorage(),
             language: codeFile.getLanguage(),
             configuration: SourceEditorConfiguration(
                 appearance: .init(

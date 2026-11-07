@@ -54,7 +54,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: dreamder
+          sparse-checkout: |
+            dreamder
+            platform/vcs-log/graph/testData
+            platform/platform-tests/testData/diff
+            platform/lang-impl/testData/editor/findInEditor
+            plugins/git4idea/testData/widgetTree
+            plugins/markdown/test/data
       - name: Select Xcode
         run: sudo xcode-select -s "$XCODE_DEVELOPER_DIR"
       - uses: actions/cache@v6

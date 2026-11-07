@@ -88,7 +88,6 @@ struct MarkdownTypingCoordinatorTests {
         try await eventually { hosted.controller?.textView != nil && coordinator.isMonitoringKeyEvents }
         let controller = try #require(hosted.controller)
         let textView = try #require(controller.textView)
-        hosted.window.makeKeyAndOrderFront(nil)
         hosted.window.makeFirstResponder(textView)
         return Session(hosted: hosted, controller: controller, textView: textView, coordinator: coordinator)
     }
@@ -113,7 +112,7 @@ struct MarkdownTypingCoordinatorTests {
             defer { session.close() }
             session.reset("plain<caret>")
             let event = try session.returnKey()
-            NSApp.sendEvent(event)
+            session.hosted.window.sendEvent(event)
             #expect(session.text == "plain\n")
             #expect(session.selections == [NSRange(location: 6, length: 0)])
         }

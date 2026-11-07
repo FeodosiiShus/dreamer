@@ -16,6 +16,7 @@ enum DreamderHeadless {
         guard isEnabled, observer == nil else { return }
         NSApp.setActivationPolicy(.accessory)
         disableActivation()
+        hideBeforeOrdering()
         suppressModals()
         observer = NotificationCenter.default.addObserver(
             forName: NSApplication.didUpdateNotification,
@@ -27,16 +28,39 @@ enum DreamderHeadless {
         hideWindows()
     }
 
-    static func hideWindows() {
-        let visibleFrame = NSScreen.main?.visibleFrame ?? .zero
-        for window in NSApp.windows where window.isVisible && window.level != hiddenLevel {
+    static func hide(_ window: NSWindow) {
+        if window.level != hiddenLevel {
             window.level = hiddenLevel
-            window.isRestorable = false
-            window.collectionBehavior.insert(.transient)
-            window.collectionBehavior.insert(.ignoresCycle)
-            if window.parent == nil, !visibleFrame.isEmpty, !visibleFrame.contains(window.frame) {
-                window.setFrameOrigin(NSPoint(x: visibleFrame.minX, y: visibleFrame.maxY - window.frame.height))
+        }
+        window.isRestorable = false
+        window.collectionBehavior.insert(.transient)
+        window.collectionBehavior.insert(.ignoresCycle)
+        let visibleFrame = NSScreen.main?.visibleFrame ?? .zero
+        if window.parent == nil, !visibleFrame.isEmpty, !visibleFrame.contains(window.frame) {
+            window.setFrameOrigin(NSPoint(x: visibleFrame.minX, y: visibleFrame.maxY - window.frame.height))
+        }
+    }
+
+    private static func hideBeforeOrdering() {
+        let selector = NSSelectorFromString("orderWindow:relativeTo:")
+        guard let method = class_getInstanceMethod(NSWindow.self, selector) else { return }
+        let original = method_getImplementation(method)
+        typealias OrderFunction = @convention(c) (NSWindow, Selector, NSWindow.OrderingMode, Int) -> Void
+        let originalOrder = unsafeBitCast(original, to: OrderFunction.self)
+        let block: @convention(block) (NSWindow, NSWindow.OrderingMode, Int) -> Void = { window, mode, relative in
+            MainActor.assumeIsolated {
+                if mode != .out {
+                    hide(window)
+                }
             }
+            originalOrder(window, selector, mode, relative)
+        }
+        method_setImplementation(method, imp_implementationWithBlock(block))
+    }
+
+    static func hideWindows() {
+        for window in NSApp.windows where window.isVisible && window.level != hiddenLevel {
+            hide(window)
         }
     }
 

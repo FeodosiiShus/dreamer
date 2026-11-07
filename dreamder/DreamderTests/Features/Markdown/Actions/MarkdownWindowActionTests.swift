@@ -1,7 +1,20 @@
 import AppKit
 import CodeEditSourceEditor
+import Synchronization
 import Testing
 @testable import Dreamder
+
+nonisolated final class ClipboardReadCounter: Sendable {
+    private let storage = Mutex(0)
+
+    var count: Int {
+        storage.withLock { $0 }
+    }
+
+    func increment() {
+        storage.withLock { $0 += 1 }
+    }
+}
 
 @MainActor
 @Suite(.serialized)
@@ -178,13 +191,45 @@ struct MarkdownWindowActionTests {
         try withTempDir { directory in
             let harness = try makeHarness(in: directory, fileName: "Notes.md", content: "visit docs now\n")
             defer { harness.close() }
-            NSPasteboard.general.clearContents()
+            harness.controller.markdownClipboard = { nil }
             harness.select([NSRange(location: 6, length: 4)])
 
             harness.controller.markdownCreateLink(nil)
 
             #expect(harness.text == "visit [docs]() now\n")
             #expect(harness.selections == [NSRange(location: 13, length: 0)])
+        }
+    }
+
+    @Test
+    func createLinkActionFillsTheDestinationFromAUrlOnTheClipboard() throws {
+        try withTempDir { directory in
+            let harness = try makeHarness(in: directory, fileName: "Notes.md", content: "visit docs now\n")
+            defer { harness.close() }
+            harness.controller.markdownClipboard = { "https://example.com/docs" }
+            harness.select([NSRange(location: 6, length: 4)])
+
+            harness.controller.markdownCreateLink(nil)
+
+            #expect(harness.text == "visit [docs](https://example.com/docs) now\n")
+            #expect(harness.selections == [NSRange(location: 13, length: 24)])
+        }
+    }
+
+    @Test
+    func otherActionsNeverReadTheClipboard() throws {
+        try withTempDir { directory in
+            let harness = try makeHarness(in: directory, fileName: "Notes.md", content: "hello\n")
+            defer { harness.close() }
+            let reads = ClipboardReadCounter()
+            harness.controller.markdownClipboard = { reads.increment(); return nil }
+            harness.select([NSRange(location: 0, length: 5)])
+
+            harness.controller.markdownToggleBold(nil)
+            harness.controller.markdownHeaderTitle(nil)
+            harness.controller.markdownGenerateTableOfContents(nil)
+
+            #expect(reads.count == 0)
         }
     }
 

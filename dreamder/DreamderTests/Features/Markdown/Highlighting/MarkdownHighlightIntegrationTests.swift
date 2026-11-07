@@ -45,7 +45,7 @@ private final class MarkdownHostedSession {
         self.controllerReference = reference
         let hosting = NSHostingView(
             rootView: MarkdownHostedEditorView(
-                storage: NSTextStorage(string: text),
+                storage: CodeTextStorage(string: text),
                 theme: theme,
                 providers: [MarkdownHighlightProvider()],
                 coordinators: [reference]

@@ -188,7 +188,7 @@ extension DreamderWindowController {
         if indentOption.indentType == .spaces {
             environment.indentSize = max(indentOption.spaceCount, 1)
         }
-        environment.clipboard = NSPasteboard.general.string(forType: .string)
+        environment.clipboard = markdownClipboard
         let directory = target.editorInstance.file.url.deletingLastPathComponent()
         environment.relativePathExists = { path in
             FileManager.default.fileExists(atPath: directory.appending(path: path).path(percentEncoded: false))

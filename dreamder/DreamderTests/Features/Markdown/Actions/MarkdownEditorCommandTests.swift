@@ -45,7 +45,7 @@ struct MarkdownEditorCommandTests {
     @Test
     func createLinkWrapsSelectionAndFillsClipboardUrl() {
         var environment = MarkdownEditorEnvironment()
-        environment.clipboard = "https://example.com"
+        environment.clipboard = { "https://example.com" }
 
         let output = run(.createLink, "<selection>docs</selection>", environment: environment)
 
@@ -136,7 +136,7 @@ struct MarkdownEditorCommandTests {
     @Test
     func relativePathPredicateDecidesWhetherClipboardPathIsUsed() {
         var environment = MarkdownEditorEnvironment()
-        environment.clipboard = "docs/guide.md"
+        environment.clipboard = { "docs/guide.md" }
         environment.relativePathExists = { $0 == "docs/guide.md" }
 
         let output = run(.createLink, "<selection>guide</selection>", environment: environment)

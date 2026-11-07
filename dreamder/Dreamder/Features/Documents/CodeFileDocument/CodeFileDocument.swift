@@ -186,7 +186,7 @@ final class CodeFileDocument: NSDocument {
                 registerContentChangeUndo(fileURL: fileURL, nsString: nsString, content: content)
                 content.mutableString.setString(nsString as String)
             } else {
-                self.content = NSTextStorage(string: nsString as String)
+                self.content = CodeTextStorage(string: nsString as String)
             }
             NotificationCenter.default.post(name: Self.didOpenNotification, object: self)
         }
