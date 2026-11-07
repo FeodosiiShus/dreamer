@@ -29,6 +29,7 @@ struct SearchEverywhereToolbarWidget: View {
         .onHover { isHovering = $0 }
         .help("Search everywhere")
         .accessibilityLabel("Search everywhere")
+        .fixedSize()
     }
 
     private func openSearchEverywhere() {

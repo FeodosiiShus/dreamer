@@ -7,48 +7,57 @@
 
 import SwiftUI
 
-struct SplitViewControllerLayoutValueKey: _ViewTraitKey {
-    static var defaultValue: () -> SplitViewController? = { nil }
+extension ContainerValues {
+    @Entry var splitPaneCollapsed: Bool = false
+    @Entry var splitPaneCanCollapse: Bool = false
+    @Entry var splitPaneHoldingPriority: Float = SplitLayoutPane.defaultHoldingPriority
+    @Entry var splitPaneMinLength: CGFloat = 0
+    @Entry var splitPaneMaxLength: CGFloat = .infinity
 }
 
-struct SplitViewItemCollapsedViewTraitKey: _ViewTraitKey {
-    static var defaultValue: Binding<Bool> = .constant(false)
+nonisolated enum SplitLayoutRole: Sendable {
+    case pane
+    case divider
 }
 
-struct SplitViewItemCanCollapseViewTraitKey: _ViewTraitKey {
-    static var defaultValue: Bool = false
+nonisolated struct SplitLayoutRoleKey: LayoutValueKey {
+    static let defaultValue = SplitLayoutRole.pane
 }
 
-struct SplitViewHoldingPriorityTraitKey: _ViewTraitKey {
-    static var defaultValue: NSLayoutConstraint.Priority = .defaultLow
+nonisolated struct SplitLayoutCollapsedKey: LayoutValueKey {
+    static let defaultValue = false
 }
 
-struct SplitViewItemCanAnimateViewTraitKey: _ViewTraitKey {
-    static var defaultValue: Bool { true }
+nonisolated struct SplitLayoutHoldingPriorityKey: LayoutValueKey {
+    static let defaultValue = SplitLayoutPane.defaultHoldingPriority
+}
+
+nonisolated struct SplitLayoutMinLengthKey: LayoutValueKey {
+    static let defaultValue: CGFloat = 0
+}
+
+nonisolated struct SplitLayoutMaxLengthKey: LayoutValueKey {
+    static let defaultValue: CGFloat = .infinity
 }
 
 extension View {
     func collapsed(_ value: Binding<Bool>) -> some View {
-        self
-        // Use get/set instead of binding directly, so a view update will be triggered if the binding changes.
-            ._trait(SplitViewItemCollapsedViewTraitKey.self, .init {
-                value.wrappedValue
-            } set: {
-                value.wrappedValue = $0
-            })
+        containerValue(\.splitPaneCollapsed, value.wrappedValue)
     }
 
     func collapsable() -> some View {
-        self
-            ._trait(SplitViewItemCanCollapseViewTraitKey.self, true)
+        containerValue(\.splitPaneCanCollapse, true)
     }
 
     func holdingPriority(_ priority: NSLayoutConstraint.Priority) -> some View {
-        self
-            ._trait(SplitViewHoldingPriorityTraitKey.self, priority)
+        containerValue(\.splitPaneHoldingPriority, priority.rawValue)
     }
 
-    func splitViewCanAnimate(_ enabled: Binding<Bool>) -> some View {
-        self._trait(SplitViewItemCanAnimateViewTraitKey.self, enabled.wrappedValue)
+    func splitPaneMinLength(_ points: CGFloat) -> some View {
+        containerValue(\.splitPaneMinLength, points)
+    }
+
+    func splitPaneMaxLength(_ points: CGFloat) -> some View {
+        containerValue(\.splitPaneMaxLength, points)
     }
 }

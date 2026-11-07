@@ -431,4 +431,361 @@ struct EditorLayoutTests {
         #expect(tabPaths(restoredB) == ["/fake/b.swift", "/fake/c.swift"])
         #expect(restoredB.selectedTab?.file.url == URL(filePath: "/fake/c.swift"))
     }
+
+    private func expectWeights(_ actual: [CGFloat], _ expected: [CGFloat]) {
+        #expect(actual.count == expected.count)
+        for (value, target) in zip(actual, expected) {
+            #expect(abs(value - target) < 1e-9)
+        }
+    }
+
+    private func expectWeightInvariant(_ layout: EditorLayout) {
+        guard let data = layout.splitData else { return }
+        #expect(data.weights.count == data.editorLayouts.count)
+        #expect(data.weights.allSatisfy { $0 > 0 })
+        if !data.editorLayouts.isEmpty {
+            #expect(abs(data.weights.reduce(0, +) - 1) < 1e-9)
+        }
+        data.editorLayouts.forEach(expectWeightInvariant)
+    }
+
+    private func leafJSON(_ id: UUID) -> String {
+        #"{"type":"one","tabs":{"tabs":[],"selectedTab":null,"id":"\#(id.uuidString)"}}"#
+    }
+
+    private func splitJSON(axis: String, children: [UUID], weightsJSON: String?) -> String {
+        let weights = weightsJSON.map { #","weights":\#($0)"# } ?? ""
+        let layouts = children.map(leafJSON).joined(separator: ",")
+        return #"{"type":"\#(axis)","tabs":{"axis":"\#(axis)","editorLayouts":[\#(layouts)]\#(weights)}}"#
+    }
+
+    @Test
+    func newSplitDataHasEqualWeightsPerChild() {
+        let data = SplitViewData(
+            .horizontal,
+            editorLayouts: [.one(makeEditor()), .one(makeEditor()), .one(makeEditor())]
+        )
+
+        expectWeights(data.weights, [1.0 / 3, 1.0 / 3, 1.0 / 3])
+        #expect(SplitViewData(.vertical).weights.isEmpty)
+    }
+
+    @Test
+    func initNormalizesGivenWeightsAndFallsBackToEqualOnInvalidInput() {
+        let layouts: [EditorLayout] = [.one(makeEditor()), .one(makeEditor())]
+
+        expectWeights(SplitViewData(.horizontal, editorLayouts: layouts, weights: [3, 1]).weights, [0.75, 0.25])
+        expectWeights(SplitViewData(.horizontal, editorLayouts: layouts, weights: [1]).weights, [0.5, 0.5])
+        expectWeights(SplitViewData(.horizontal, editorLayouts: layouts, weights: [1, 0]).weights, [0.5, 0.5])
+        expectWeights(SplitViewData(.horizontal, editorLayouts: layouts, weights: [1, -2]).weights, [0.5, 0.5])
+        expectWeights(SplitViewData(.horizontal, editorLayouts: layouts, weights: [1, .nan]).weights, [0.5, 0.5])
+        expectWeights(SplitViewData(.horizontal, editorLayouts: layouts, weights: [1, .infinity]).weights, [0.5, 0.5])
+    }
+
+    @Test
+    func mutatingEditorLayoutsDirectlyResetsMismatchedWeightsToEqual() {
+        let data = SplitViewData(
+            .horizontal,
+            editorLayouts: [.one(makeEditor()), .one(makeEditor())],
+            weights: [0.9, 0.1]
+        )
+
+        data.editorLayouts.append(.one(makeEditor()))
+
+        expectWeights(data.weights, [1.0 / 3, 1.0 / 3, 1.0 / 3])
+    }
+
+    @Test
+    func splitAlongTheContainerAxisInsertsAfterAndGivesTheNewPaneHalfOfTheSplitPanesWeight() {
+        for (axis, edge) in [(Axis.horizontal, Edge.trailing), (.vertical, .bottom)] {
+            let a = makeEditor()
+            let b = makeEditor()
+            let new = makeEditor()
+            let data = SplitViewData(axis, editorLayouts: [.one(a), .one(b)], weights: [0.6, 0.4])
+
+            data.split(edge, at: 0, new: new)
+
+            #expect(data.editorLayouts == [.one(a), .one(new), .one(b)])
+            expectWeights(data.weights, [0.3, 0.3, 0.4])
+            #expect(new.parent === data)
+            expectWeightInvariant(EditorLayout.container(for: data))
+        }
+    }
+
+    @Test
+    func splitAgainstTheContainerAxisInsertsBeforeAndGivesTheNewPaneHalfOfTheSplitPanesWeight() {
+        for (axis, edge) in [(Axis.horizontal, Edge.leading), (.vertical, .top)] {
+            let a = makeEditor()
+            let b = makeEditor()
+            let new = makeEditor()
+            let data = SplitViewData(axis, editorLayouts: [.one(a), .one(b)], weights: [0.6, 0.4])
+
+            data.split(edge, at: 1, new: new)
+
+            #expect(data.editorLayouts == [.one(a), .one(new), .one(b)])
+            expectWeights(data.weights, [0.6, 0.2, 0.2])
+            #expect(new.parent === data)
+            expectWeightInvariant(EditorLayout.container(for: data))
+        }
+    }
+
+    @Test
+    func horizontalSplitTopAndBottomWrapThePaneInANestedVerticalSplitKeepingItsWeight() {
+        let a = makeEditor()
+        let b = makeEditor()
+        let top = makeEditor()
+        let bottom = makeEditor()
+        let data = SplitViewData(.horizontal, editorLayouts: [.one(a), .one(b)], weights: [0.6, 0.4])
+
+        data.split(.top, at: 0, new: top)
+        data.split(.bottom, at: 1, new: bottom)
+
+        expectWeights(data.weights, [0.6, 0.4])
+        guard case .vertical(let first) = data.editorLayouts[0],
+              case .vertical(let second) = data.editorLayouts[1] else {
+            Issue.record("expected nested vertical layouts, got \(data.editorLayouts)")
+            return
+        }
+        #expect(first.axis == .vertical)
+        #expect(first.editorLayouts == [.one(top), .one(a)])
+        expectWeights(first.weights, [0.5, 0.5])
+        #expect(second.editorLayouts == [.one(b), .one(bottom)])
+        expectWeights(second.weights, [0.5, 0.5])
+        #expect(top.parent === first)
+        #expect(a.parent === first)
+        #expect(b.parent === second)
+        #expect(bottom.parent === second)
+        expectWeightInvariant(EditorLayout.container(for: data))
+    }
+
+    @Test
+    func verticalSplitLeadingAndTrailingWrapThePaneInANestedHorizontalSplitKeepingItsWeight() {
+        let a = makeEditor()
+        let b = makeEditor()
+        let leading = makeEditor()
+        let trailing = makeEditor()
+        let data = SplitViewData(.vertical, editorLayouts: [.one(a), .one(b)], weights: [0.6, 0.4])
+
+        data.split(.leading, at: 0, new: leading)
+        data.split(.trailing, at: 1, new: trailing)
+
+        expectWeights(data.weights, [0.6, 0.4])
+        guard case .horizontal(let first) = data.editorLayouts[0],
+              case .horizontal(let second) = data.editorLayouts[1] else {
+            Issue.record("expected nested horizontal layouts, got \(data.editorLayouts)")
+            return
+        }
+        #expect(first.axis == .horizontal)
+        #expect(first.editorLayouts == [.one(leading), .one(a)])
+        expectWeights(first.weights, [0.5, 0.5])
+        #expect(second.editorLayouts == [.one(b), .one(trailing)])
+        expectWeights(second.weights, [0.5, 0.5])
+        #expect(leading.parent === first)
+        #expect(trailing.parent === second)
+        expectWeightInvariant(EditorLayout.container(for: data))
+    }
+
+    @Test
+    func splitAtAnInvalidIndexChangesNothing() {
+        let a = makeEditor()
+        let new = makeEditor()
+        let data = SplitViewData(.horizontal, editorLayouts: [.one(a)])
+
+        data.split(.trailing, at: 1, new: new)
+        data.split(.top, at: -1, new: new)
+
+        #expect(data.editorLayouts == [.one(a)])
+        expectWeights(data.weights, [1])
+        #expect(new.parent == nil)
+    }
+
+    @Test
+    func repeatedSplitsKeepTheWeightInvariant() {
+        let root = SplitViewData(.horizontal, editorLayouts: [.one(makeEditor())])
+        let edges: [Edge] = [.trailing, .bottom, .leading, .top, .trailing, .trailing, .bottom]
+
+        for edge in edges {
+            let leaves = EditorLayout.horizontal(root).getFlattened(parent: root)
+            guard let target = leaves.last, let parent = target.parent, let index = parent.indexOfEditor(target) else {
+                Issue.record("missing split target")
+                return
+            }
+            parent.split(edge, at: index, new: makeEditor())
+            expectWeightInvariant(.horizontal(root))
+        }
+    }
+
+    @Test
+    func closingAnEditorReturnsItsWeightToThePreviousNeighbour() {
+        let a = makeEditor()
+        let b = makeEditor()
+        let c = makeEditor()
+        let data = SplitViewData(.horizontal, editorLayouts: [.one(a), .one(b), .one(c)], weights: [0.2, 0.3, 0.5])
+
+        data.closeEditor(with: b.id)
+
+        #expect(data.editorLayouts == [.one(a), .one(c)])
+        expectWeights(data.weights, [0.5, 0.5])
+    }
+
+    @Test
+    func closingTheFirstEditorReturnsItsWeightToTheNextNeighbour() {
+        let a = makeEditor()
+        let b = makeEditor()
+        let c = makeEditor()
+        let data = SplitViewData(.horizontal, editorLayouts: [.one(a), .one(b), .one(c)], weights: [0.2, 0.3, 0.5])
+
+        data.closeEditor(with: a.id)
+
+        #expect(data.editorLayouts == [.one(b), .one(c)])
+        expectWeights(data.weights, [0.5, 0.5])
+    }
+
+    @Test
+    func closingTheLastEditorReturnsItsWeightToThePreviousNeighbour() {
+        let a = makeEditor()
+        let b = makeEditor()
+        let c = makeEditor()
+        let data = SplitViewData(.horizontal, editorLayouts: [.one(a), .one(b), .one(c)], weights: [0.2, 0.3, 0.5])
+
+        data.closeEditor(with: c.id)
+
+        #expect(data.editorLayouts == [.one(a), .one(b)])
+        expectWeights(data.weights, [0.2, 0.8])
+    }
+
+    @Test
+    func closingTheOnlyEditorEmptiesLayoutsAndWeightsAndUnknownIdsAreIgnored() {
+        let a = makeEditor()
+        let data = SplitViewData(.horizontal, editorLayouts: [.one(a)])
+
+        data.closeEditor(with: UUID())
+        expectWeights(data.weights, [1])
+
+        data.closeEditor(with: a.id)
+        #expect(data.editorLayouts.isEmpty)
+        #expect(data.weights.isEmpty)
+    }
+
+    @Test
+    func flattenKeepsWeightsConsistentWhenCollapsingSingleChildSplits() {
+        let root = SplitViewData(.horizontal)
+        let a = makeEditor()
+        let b = makeEditor()
+        let wrapper = SplitViewData(.vertical, editorLayouts: [.one(a)])
+        let outer = SplitViewData(.horizontal, editorLayouts: [.vertical(wrapper), .one(b)], weights: [0.7, 0.3])
+        var layout = EditorLayout.horizontal(outer)
+
+        layout.flatten(parent: root)
+
+        #expect(outer.editorLayouts == [.one(a), .one(b)])
+        expectWeights(outer.weights, [0.7, 0.3])
+        expectWeightInvariant(layout)
+    }
+
+    @Test
+    func getFlattenedDescendsThroughASingleChildSplitHoldingASplit() {
+        let root = SplitViewData(.horizontal)
+        let a = makeEditor()
+        let b = makeEditor()
+        let layout = EditorLayout.vertical(SplitViewData(.vertical, editorLayouts: [
+            .horizontal(SplitViewData(.horizontal, editorLayouts: [.one(a), .one(b)]))
+        ]))
+
+        #expect(layout.getFlattened(parent: root).map(\.id) == [a.id, b.id])
+    }
+
+    @Test
+    func containerForDataFollowsTheDataAxis() {
+        let horizontal = SplitViewData(.horizontal)
+        let vertical = SplitViewData(.vertical)
+
+        #expect(EditorLayout.container(for: horizontal) == .horizontal(horizontal))
+        #expect(EditorLayout.container(for: vertical) == .vertical(vertical))
+        #expect(EditorLayout.one(makeEditor()).splitData == nil)
+    }
+
+    @Test
+    func replaceChildFindsNestedSplitsAndReparentsLeaves() {
+        let a = makeEditor()
+        let b = makeEditor()
+        let c = makeEditor()
+        let inner = SplitViewData(.vertical, editorLayouts: [.one(b), .one(c)])
+        let root = SplitViewData(.horizontal, editorLayouts: [.one(a), .vertical(inner)], weights: [0.3, 0.7])
+
+        #expect(root.replaceChild(inner, with: .one(b)))
+
+        #expect(root.editorLayouts == [.one(a), .one(b)])
+        #expect(b.parent === root)
+        expectWeights(root.weights, [0.3, 0.7])
+        #expect(root.replaceChild(SplitViewData(.vertical), with: .one(a)) == false)
+    }
+
+    @Test
+    func codableRoundTripPreservesWeights() throws {
+        let first = makeEditor(["a.swift"])
+        let second = makeEditor()
+        let third = makeEditor()
+        let inner = SplitViewData(.vertical, editorLayouts: [.one(second), .one(third)], weights: [0.25, 0.75])
+        let original = EditorLayout.horizontal(
+            SplitViewData(.horizontal, editorLayouts: [.one(first), .vertical(inner)], weights: [0.7, 0.3])
+        )
+
+        let decoded = try roundTrip(original)
+
+        let outer = try #require(splitData(decoded))
+        expectWeights(outer.weights, [0.7, 0.3])
+        let decodedInner = try #require(outer.editorLayouts[1].splitData)
+        expectWeights(decodedInner.weights, [0.25, 0.75])
+        expectWeightInvariant(decoded)
+    }
+
+    @Test
+    func encodedSplitContainsOneWeightPerChild() throws {
+        let layout = EditorLayout.horizontal(
+            SplitViewData(.horizontal, editorLayouts: [.one(makeEditor()), .one(makeEditor())], weights: [3, 1])
+        )
+
+        let data = try JSONEncoder().encode(layout)
+        let root = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let tabs = try #require(root["tabs"] as? [String: Any])
+        let weights = try #require(tabs["weights"] as? [Double])
+
+        #expect(weights.count == 2)
+        #expect(abs(weights[0] - 0.75) < 1e-9)
+        #expect(abs(weights[1] - 0.25) < 1e-9)
+    }
+
+    @Test
+    func decodingLegacyStateWithoutWeightsRestoresEqualWeights() throws {
+        let two = splitJSON(axis: "horizontal", children: [UUID(), UUID()], weightsJSON: nil)
+        let three = splitJSON(axis: "vertical", children: [UUID(), UUID(), UUID()], weightsJSON: nil)
+
+        let decodedTwo = try JSONDecoder().decode(EditorLayout.self, from: Data(two.utf8))
+        let decodedThree = try JSONDecoder().decode(EditorLayout.self, from: Data(three.utf8))
+
+        expectWeights(try #require(decodedTwo.splitData).weights, [0.5, 0.5])
+        expectWeights(try #require(decodedThree.splitData).weights, [1.0 / 3, 1.0 / 3, 1.0 / 3])
+    }
+
+    @Test
+    func decodingMismatchedOrInvalidWeightsFallsBackToEqualWeights() throws {
+        let ids = [UUID(), UUID()]
+        for weights in ["[0.9]", "[0.2,0.3,0.5]", "[0.5,-0.5]", "[0,1]", "\"oops\""] {
+            let json = splitJSON(axis: "horizontal", children: ids, weightsJSON: weights)
+
+            let decoded = try JSONDecoder().decode(EditorLayout.self, from: Data(json.utf8))
+
+            expectWeights(try #require(decoded.splitData).weights, [0.5, 0.5])
+        }
+    }
+
+    @Test
+    func decodingNormalizesStoredWeightsToSumOne() throws {
+        let json = splitJSON(axis: "horizontal", children: [UUID(), UUID()], weightsJSON: "[3,1]")
+
+        let decoded = try JSONDecoder().decode(EditorLayout.self, from: Data(json.utf8))
+
+        expectWeights(try #require(decoded.splitData).weights, [0.75, 0.25])
+    }
 }

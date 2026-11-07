@@ -8,6 +8,7 @@ final class GitGutterCoordinator: TextViewCoordinator {
     private weak var controller: TextViewController?
     private weak var workspace: WorkspaceDocument?
     private weak var markerView: GitGutterMarkerView?
+    private var gutterFrameObserver: NSObjectProtocol?
 
     private var repositoryObservation: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
@@ -65,6 +66,10 @@ final class GitGutterCoordinator: TextViewCoordinator {
         debounceWorkItem = nil
         repositoryObservation?.cancel()
         repositoryObservation = nil
+        if let gutterFrameObserver {
+            NotificationCenter.default.removeObserver(gutterFrameObserver)
+        }
+        gutterFrameObserver = nil
         markerView?.removeFromSuperview()
         markerView = nil
         controller = nil
@@ -82,20 +87,37 @@ final class GitGutterCoordinator: TextViewCoordinator {
             return
         }
         let view = GitGutterMarkerView()
+        view.translatesAutoresizingMaskIntoConstraints = false
         view.textView = textView
-        view.frame = NSRect(
-            x: gutter.bounds.width - GitGutterMarkerView.stripWidth,
-            y: 0,
-            width: GitGutterMarkerView.stripWidth,
-            height: gutter.bounds.height
-        )
-        view.autoresizingMask = [.minXMargin, .height]
+        view.frame = Self.markerFrame(in: gutter)
         view.previousContent = { [weak self] change in self?.previousContent(for: change) }
         view.rollback = { [weak self] change in self?.rollback(change) }
         view.showDiff = { [weak self] change in self?.showDiff(for: change) }
         gutter.addSubview(view)
         markerView = view
         view.changes = changes
+        gutterFrameObserver = NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification,
+            object: gutter,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let markerView = self.markerView, let gutter = markerView.superview else { return }
+                let frame = Self.markerFrame(in: gutter)
+                if markerView.frame != frame {
+                    markerView.frame = frame
+                }
+            }
+        }
+    }
+
+    private static func markerFrame(in gutter: NSView) -> NSRect {
+        NSRect(
+            x: gutter.bounds.width - GitGutterMarkerView.stripWidth,
+            y: 0,
+            width: GitGutterMarkerView.stripWidth,
+            height: gutter.bounds.height
+        )
     }
 
     private static func gutterView(in view: NSView?) -> GutterView? {

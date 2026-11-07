@@ -123,6 +123,7 @@ final class SearchEverywherePanelHost {
         let size = NSSize(width: model.panelWidth, height: model.panelHeight)
         let panel = SearchEverywherePanel(size: size)
         let hostingView = NSHostingView(rootView: SearchEverywhereView(model: model))
+        hostingView.sizingOptions = []
         hostingView.frame = NSRect(origin: .zero, size: size)
         panel.contentView = hostingView
 

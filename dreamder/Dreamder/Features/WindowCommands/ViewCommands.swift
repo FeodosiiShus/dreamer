@@ -23,6 +23,39 @@ struct ViewCommands: Commands {
         CommandGroup(after: .toolbar) {
             ToolWindowMenu()
 
+            Menu("Editor Splits") {
+                Button("Split Right") {
+                    NSApp.sendAction(#selector(DreamderWindowController.splitEditorRight(_:)), to: nil, from: nil)
+                }
+                Button("Split Down") {
+                    NSApp.sendAction(#selector(DreamderWindowController.splitEditorDown(_:)), to: nil, from: nil)
+                }
+                Divider()
+                Button("Unsplit") {
+                    NSApp.sendAction(#selector(DreamderWindowController.unsplitEditor(_:)), to: nil, from: nil)
+                }
+                Button("Unsplit All") {
+                    NSApp.sendAction(#selector(DreamderWindowController.unsplitAllEditors(_:)), to: nil, from: nil)
+                }
+                Button("Change Splitter Orientation") {
+                    NSApp.sendAction(
+                        #selector(DreamderWindowController.changeEditorSplitterOrientation(_:)),
+                        to: nil,
+                        from: nil
+                    )
+                }
+                Divider()
+                Button("Go to Next Splitter") {
+                    NSApp.sendAction(#selector(DreamderWindowController.gotoNextSplitter(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut(.tab, modifiers: [.option])
+                Button("Go to Previous Splitter") {
+                    NSApp.sendAction(#selector(DreamderWindowController.gotoPreviousSplitter(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut(.tab, modifiers: [.option, .shift])
+            }
+            .disabled(windowController == nil)
+
             Divider()
 
             Button("Show Command Palette") {

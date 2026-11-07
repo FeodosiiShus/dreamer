@@ -86,6 +86,8 @@ struct UtilityAreaTabView<Content: View, LeadingSidebar: View, TrailingSidebar: 
                 leadingSidebar(model)
                     .collapsable()
                     .collapsed($model.leadingSidebarIsCollapsed)
+                    .splitPaneMinLength(200)
+                    .splitPaneMaxLength(400)
                     .frame(minWidth: 200, idealWidth: 240, maxWidth: 400)
                     .environment(\.paneArea, .leading)
             }
@@ -100,6 +102,8 @@ struct UtilityAreaTabView<Content: View, LeadingSidebar: View, TrailingSidebar: 
                 trailingSidebar(model)
                     .collapsable()
                     .collapsed($model.trailingSidebarIsCollapsed)
+                    .splitPaneMinLength(200)
+                    .splitPaneMaxLength(400)
                     .frame(minWidth: 200, idealWidth: 240, maxWidth: 400)
                     .environment(\.paneArea, .trailing)
             }

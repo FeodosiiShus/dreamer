@@ -95,15 +95,25 @@ enum EditorLayout: Equatable {
         case .one(let editor):
             return [editor]
         case .horizontal(let data), .vertical(let data):
-            if data.editorLayouts.count == 1 {
-                let one = data.editorLayouts[0]
-                if case .one(let editor) = one {
-                    return [editor]
-                }
-                return []
-            } else {
-                return data.getFlattened()
-            }
+            return data.getFlattened()
+        }
+    }
+
+    var splitData: SplitViewData? {
+        switch self {
+        case .one:
+            return nil
+        case .vertical(let data), .horizontal(let data):
+            return data
+        }
+    }
+
+    static func container(for data: SplitViewData) -> EditorLayout {
+        switch data.axis {
+        case .horizontal:
+            return .horizontal(data)
+        case .vertical:
+            return .vertical(data)
         }
     }
 

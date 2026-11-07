@@ -7,6 +7,15 @@ final class GitBlameInlineView: NSView {
 
     private var content: NSAttributedString?
 
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        translatesAutoresizingMaskIntoConstraints = false
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
     override var isFlipped: Bool {
         true
     }
@@ -72,6 +81,12 @@ final class GitBlameAnnotationView: NSView, NSViewToolTipOwner {
     init(textView: TextView) {
         self.textView = textView
         super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+    }
+
+    func matchSuperviewBounds() {
+        guard let superview, frame != superview.bounds else { return }
+        frame = superview.bounds
     }
 
     required init?(coder: NSCoder) {

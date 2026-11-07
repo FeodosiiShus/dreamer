@@ -28,8 +28,8 @@ final class DreamderWindowController: NSWindowController, NSToolbarDelegate, NSW
     @ObservationIgnored internal var cancellables = [AnyCancellable]()
     @ObservationIgnored internal var documentEditedObservation: Task<Void, Never>?
 
-    var splitViewController: DreamderSplitViewController? {
-        contentViewController as? DreamderSplitViewController
+    var workspaceHostingController: WorkspaceHostingController? {
+        contentViewController as? WorkspaceHostingController
     }
 
     init(
@@ -44,11 +44,11 @@ final class DreamderWindowController: NSWindowController, NSToolbarDelegate, NSW
         window?.title = workspace.workspaceFileManager?.folderUrl.lastPathComponent ?? "Empty"
         self.toolbarCollapsed = workspace.getFromWorkspaceState(.toolbarCollapsed) as? Bool ?? false
         self.listenToDocumentEdited(workspace: workspace)
-        guard let splitViewController = setupSplitView(with: workspace) else {
+        guard let hostingController = makeWorkspaceHostingController(with: workspace) else {
             return
         }
 
-        contentViewController = splitViewController
+        installContentViewController(hostingController)
 
         setupToolbar()
         updateToolbarVisibility()
@@ -72,12 +72,19 @@ final class DreamderWindowController: NSWindowController, NSToolbarDelegate, NSW
         window?.tabbingIdentifier = NSWindow.TabbingIdentifier("dreamder.workspace")
     }
 
-    private func setupSplitView(with workspace: WorkspaceDocument) -> DreamderSplitViewController? {
+    private func makeWorkspaceHostingController(with workspace: WorkspaceDocument) -> WorkspaceHostingController? {
         guard let window else {
             return nil
         }
 
-        return DreamderSplitViewController(workspace: workspace, windowRef: window)
+        return WorkspaceHostingController(workspace: workspace, windowRef: window)
+    }
+
+    private func installContentViewController(_ hostingController: WorkspaceHostingController) {
+        if let contentSize = window?.contentView?.frame.size, contentSize.width > 0, contentSize.height > 0 {
+            hostingController.view.frame = NSRect(origin: .zero, size: contentSize)
+        }
+        contentViewController = hostingController
     }
 
     private func getSelectedCodeFile() -> CodeFileDocument? {
@@ -111,7 +118,9 @@ final class DreamderWindowController: NSWindowController, NSToolbarDelegate, NSW
                     panel.close()
                     self.panelOpen = false
                 }
-                panel.contentView = NSHostingView(rootView: SettingsInjector { contentView })
+                let hostingView = NSHostingView(rootView: SettingsInjector { contentView })
+                hostingView.sizingOptions = [.minSize, .intrinsicContentSize, .maxSize]
+                panel.contentView = hostingView
                 window?.addChildWindow(panel, ordered: .above)
                 panel.makeKeyAndOrderFront(self)
                 self.panelOpen = true
@@ -153,7 +162,9 @@ final class DreamderWindowController: NSWindowController, NSToolbarDelegate, NSW
                     workspace.editorManager?.openTab(item: file)
                 }.environment(workspace)
 
-                panel.contentView = NSHostingView(rootView: SettingsInjector { contentView })
+                let hostingView = NSHostingView(rootView: SettingsInjector { contentView })
+                hostingView.sizingOptions = [.minSize, .intrinsicContentSize, .maxSize]
+                panel.contentView = hostingView
                 window?.addChildWindow(panel, ordered: .above)
                 panel.makeKeyAndOrderFront(self)
                 self.panelOpen = true

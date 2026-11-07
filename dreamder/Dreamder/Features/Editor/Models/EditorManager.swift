@@ -9,6 +9,8 @@ import Combine
 import Foundation
 import Observation
 import DequeModule
+import OrderedCollections
+import SwiftUI
 import os
 
 @Observable
@@ -88,6 +90,117 @@ class EditorManager {
     func openTab(item: CEWorkspaceFile, in editor: Editor? = nil, asTemporary: Bool = false) {
         let editor = editor ?? activeEditor
         editor.openTab(file: item, asTemporary: asTemporary)
+    }
+
+    @discardableResult
+    func splitActiveEditor(_ edge: Edge, workspace: WorkspaceDocument?) -> Editor? {
+        split(activeEditor, edge, workspace: workspace)
+    }
+
+    @discardableResult
+    func split(_ source: Editor, _ edge: Edge, workspace: WorkspaceDocument?) -> Editor? {
+        guard let parent = source.parent, let index = parent.indexOfEditor(source) else {
+            return nil
+        }
+        let newEditor: Editor
+        if let tab = source.selectedTab {
+            newEditor = Editor(files: [tab], temporaryTab: tab, workspace: workspace)
+        } else {
+            newEditor = Editor(files: OrderedSet<Editor.Tab>(), workspace: workspace)
+        }
+        parent.split(edge, at: index, new: newEditor)
+        activeEditor = newEditor
+        return newEditor
+    }
+
+    @discardableResult
+    func moveTabToNewSplit(
+        _ file: CEWorkspaceFile,
+        from source: Editor,
+        edge: Edge,
+        workspace: WorkspaceDocument?
+    ) -> Editor? {
+        guard let parent = source.parent, let index = parent.indexOfEditor(source) else {
+            return nil
+        }
+        let newEditor = Editor(files: [file], workspace: workspace)
+        parent.split(edge, at: index, new: newEditor)
+        source.closeTab(file: file)
+        activeEditor = newEditor
+        return newEditor
+    }
+
+    // MARK: - Splitter Navigation
+
+    private var rootSplitData: SplitViewData? {
+        editorLayout.splitData
+    }
+
+    func isInSplitter(_ editor: Editor) -> Bool {
+        guard let parent = editor.parent else { return false }
+        return parent.editorLayouts.count > 1
+    }
+
+    func nextSplitEditor(after editor: Editor) -> Editor? {
+        let editors = flattenedEditors
+        guard let index = editors.firstIndex(where: { $0 === editor }) else { return nil }
+        return editors[(index + 1) % editors.count]
+    }
+
+    func previousSplitEditor(before editor: Editor) -> Editor? {
+        let editors = flattenedEditors
+        guard let index = editors.firstIndex(where: { $0 === editor }) else { return nil }
+        return editors[(index + editors.count - 1) % editors.count]
+    }
+
+    @discardableResult
+    func unsplit(_ editor: Editor) -> Bool {
+        guard isInSplitter(editor), let parent = editor.parent, let root = rootSplitData else { return false }
+        let siblings = parent.getFlattened().filter { $0 !== editor }
+        let replaced: Bool
+        if root === parent {
+            parent.weights = [1]
+            parent.editorLayouts = [.one(editor)]
+            editor.parent = parent
+            replaced = true
+        } else {
+            replaced = root.replaceChild(parent, with: .one(editor))
+        }
+        guard replaced else { return false }
+
+        let selectedFile = editor.selectedTab?.file
+        var mergedFiles: [CEWorkspaceFile] = []
+        for sibling in siblings {
+            for tab in sibling.tabs where !editor.tabs.contains(tab) {
+                editor.tabs.append(tab)
+                mergedFiles.append(tab.file)
+            }
+            sibling.parent = nil
+        }
+        if let kept = selectedFile ?? mergedFiles.first {
+            editor.setSelectedTab(kept)
+        }
+        if activeEditor !== editor {
+            activeEditor = editor
+        }
+        return true
+    }
+
+    func unsplitAll() {
+        while isInSplitter(activeEditor), unsplit(activeEditor) {}
+    }
+
+    @discardableResult
+    func changeSplitterOrientation(of editor: Editor) -> Bool {
+        guard isInSplitter(editor), let parent = editor.parent, let root = rootSplitData else { return false }
+        parent.axis = parent.axis == .horizontal ? .vertical : .horizontal
+        let layout = EditorLayout.container(for: parent)
+        if root === parent {
+            editorLayout = layout
+        } else {
+            root.replaceChild(parent, with: layout)
+        }
+        return true
     }
 
     private func observeActiveSelection() {

@@ -125,10 +125,19 @@ struct CodeFileView: View {
     private var editorState: SourceEditorState {
         SourceEditorState(
             cursorPositions: editorInstance.cursorPositions,
-            scrollPosition: editorInstance.scrollPosition,
+            scrollPosition: editorInstance.requestedScrollPosition,
             findText: editorInstance.findText,
             replaceText: editorInstance.replaceText
         )
+    }
+
+    private func consumeScrollRequest(_ request: CGPoint?) {
+        guard request != nil else { return }
+        Task { @MainActor in
+            if editorInstance.requestedScrollPosition == request {
+                editorInstance.requestedScrollPosition = nil
+            }
+        }
     }
 
     private func sourceEditor(theme: Theme, session: CodeFileViewSession) -> some View {
@@ -203,6 +212,9 @@ struct CodeFileView: View {
         .colorScheme(theme.appearance == .dark ? .dark : .light)
         // minHeight zero fixes a bug where the app would freeze if the contents of the file are empty.
         .frame(minHeight: .zero, maxHeight: .infinity)
+        .onChange(of: editorInstance.requestedScrollPosition, initial: true) { _, request in
+            consumeScrollRequest(request)
+        }
         .onChange(of: settingsFont) { _, newFontSetting in
             font = newFontSetting.current
         }

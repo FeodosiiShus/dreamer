@@ -166,8 +166,11 @@ struct BranchesPopupViewModelTests {
             await harness.model.reload()
 
             let recent = try #require(harness.model.sections.first { $0.id == .recent })
-            #expect(recent.refs.map(\.shortName) == ["main", "b7", "b5", "b4", "b3"])
-            #expect(harness.model.sections.flatMap(\.refs).filter { $0.shortName == "main" }.count == 1)
+            let recentNames: [String] = recent.refs.map(\.shortName)
+            #expect(recentNames == ["main", "b7", "b5", "b4", "b3"])
+            let allRefs: [BranchesPopupRef] = harness.model.sections.flatMap(\.refs)
+            let mainCount = allRefs.filter { $0.shortName == "main" }.count
+            #expect(mainCount == 1)
         }
     }
 

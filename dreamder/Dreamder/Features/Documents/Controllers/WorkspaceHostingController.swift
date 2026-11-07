@@ -1,43 +1,19 @@
 import Cocoa
 import SwiftUI
 
-final class DreamderSplitViewController: NSSplitViewController {
+final class WorkspaceHostingController: NSHostingController<AnyView> {
     private weak var workspace: WorkspaceDocument?
-    private weak var windowRef: NSWindow?
-    private var hasInstalledContent = false
 
-    init(workspace: WorkspaceDocument, windowRef: NSWindow) {
-        self.workspace = workspace
-        self.windowRef = windowRef
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        nil
-    }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-
-        splitView.dividerStyle = .thin
-        splitView.translatesAutoresizingMaskIntoConstraints = false
-
-        guard !hasInstalledContent else { return }
-        hasInstalledContent = true
-
-        guard let windowRef,
-              let workspace,
-              let editorManager = workspace.editorManager,
+    init?(workspace: WorkspaceDocument, windowRef: NSWindow) {
+        guard let editorManager = workspace.editorManager,
               let statusBarViewModel = workspace.statusBarViewModel,
               let utilityAreaModel = workspace.utilityAreaModel,
               let taskManager = workspace.taskManager else {
-            hasInstalledContent = false
-            return
+            return nil
         }
 
-        let content = NSHostingController(
-            rootView: SettingsInjector {
+        let rootView = AnyView(
+            SettingsInjector {
                 WindowObserver(window: WindowBox(value: windowRef)) {
                     IslandsWorkspaceView()
                         .environment(workspace)
@@ -52,10 +28,14 @@ final class DreamderSplitViewController: NSSplitViewController {
             }
         )
 
-        let item = NSSplitViewItem(viewController: content)
-        item.canCollapse = false
-        item.minimumThickness = 200
-        addSplitViewItem(item)
+        super.init(rootView: rootView)
+        self.workspace = workspace
+        sizingOptions = []
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
     }
 
     override func viewWillAppear() {

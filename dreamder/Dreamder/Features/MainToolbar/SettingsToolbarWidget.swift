@@ -15,5 +15,6 @@ struct SettingsToolbarWidget: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Settings")
             .accessibilityAddTraits(.isButton)
+            .fixedSize()
     }
 }

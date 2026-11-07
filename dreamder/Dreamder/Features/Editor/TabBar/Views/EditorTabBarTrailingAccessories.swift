@@ -9,9 +9,6 @@ import Foundation
 import SwiftUI
 
 struct EditorTabBarTrailingAccessories: View {
-    @Environment(\.splitEditor)
-    private var splitEditor
-
     @Environment(\.controlActiveState)
     private var activeState
 
@@ -43,10 +40,23 @@ struct EditorTabBarTrailingAccessories: View {
                 markdownLayoutMenu(for: markdownFileURL)
             }
             Button("Split Right") {
-                split(edge: .trailing)
+                editorManager.split(editor, .trailing, workspace: workspace)
             }
             Button("Split Down") {
-                split(edge: .bottom)
+                editorManager.split(editor, .bottom, workspace: workspace)
+            }
+            if editorManager.isInSplitter(editor) {
+                Button("Unsplit") {
+                    editorManager.unsplit(editor)
+                }
+                if editorManager.flattenedEditors.count > 2 {
+                    Button("Unsplit All") {
+                        editorManager.unsplitAll()
+                    }
+                }
+                Button("Change Splitter Orientation") {
+                    editorManager.changeSplitterOrientation(of: editor)
+                }
             }
             Divider()
             Button("Close All") {
@@ -105,16 +115,5 @@ struct EditorTabBarTrailingAccessories: View {
         withAnimation {
             editor.tabs.map(\.file).filter { $0 != selected }.forEach { editor.closeTab(file: $0) }
         }
-    }
-
-    private func split(edge: Edge) {
-        let newEditor: Editor
-        if let tab = editor.selectedTab {
-            newEditor = .init(files: [tab], temporaryTab: tab, workspace: workspace)
-        } else {
-            newEditor = .init()
-        }
-        splitEditor(edge, newEditor)
-        editorManager.activeEditor = newEditor
     }
 }

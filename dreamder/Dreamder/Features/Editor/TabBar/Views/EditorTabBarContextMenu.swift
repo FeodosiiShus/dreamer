@@ -27,8 +27,7 @@ struct EditorTabBarContextMenu: ViewModifier {
 
     @Environment(Editor.self) private var tabs
 
-    @Environment(\.splitEditor)
-    var splitEditor
+    @Environment(EditorManager.self) private var editorManager
 
     private var item: CEWorkspaceFile
     private var isTemporary: Bool
@@ -124,6 +123,22 @@ struct EditorTabBarContextMenu: ViewModifier {
             Button("Split Right") {
                 moveToNewSplit(.trailing)
             }
+
+            if editorManager.isInSplitter(tabs) {
+                Divider()
+
+                Button("Unsplit") {
+                    editorManager.unsplit(tabs)
+                }
+                if editorManager.flattenedEditors.count > 2 {
+                    Button("Unsplit All") {
+                        editorManager.unsplitAll()
+                    }
+                }
+                Button("Change Splitter Orientation") {
+                    editorManager.changeSplitterOrientation(of: tabs)
+                }
+            }
         })
     }
 
@@ -137,10 +152,7 @@ struct EditorTabBarContextMenu: ViewModifier {
     }
 
     func moveToNewSplit(_ edge: Edge) {
-        let newEditor = Editor(files: [item], workspace: workspace)
-        splitEditor(edge, newEditor)
-        tabs.closeTab(file: item)
-        workspace.editorManager?.activeEditor = newEditor
+        editorManager.moveTabToNewSplit(item, from: tabs, edge: edge, workspace: workspace)
     }
 
     /// Copies the relative path from the workspace folder to the given file item to the pasteboard.

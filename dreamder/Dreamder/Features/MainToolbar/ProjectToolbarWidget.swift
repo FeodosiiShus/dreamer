@@ -41,6 +41,7 @@ struct ProjectToolbarWidget: View {
         .accessibilityLabel("Project")
         .accessibilityValue(projectName)
         .accessibilityAddTraits(.isButton)
+        .fixedSize()
     }
 }
 

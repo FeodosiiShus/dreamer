@@ -13,7 +13,7 @@ XCODEBUILD := xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration $(
 	CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
 	ENABLE_HARDENED_RUNTIME=NO
 
-.PHONY: build release run headless test coverage coverage-baseline check ui-test screenshot action open toolwindow contextmenu annotate menuitem merge clean
+.PHONY: build release run headless test coverage coverage-baseline check ui-test screenshot action open toolwindow contextmenu annotate menuitem merge smoke clean
 
 check:
 	@python3 Scripts/crash-guard.py
@@ -84,6 +84,9 @@ menuitem:
 
 merge:
 	@sh Scripts/merge.sh "$(CMD)"
+
+smoke:
+	@bash Scripts/smoke.sh
 
 clean:
 	rm -rf $(DERIVED)

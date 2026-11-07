@@ -28,7 +28,7 @@ struct EditorLayoutView: View {
         @FocusState.Binding var focus: Editor?
 
         var body: some View {
-            SplitView(axis: data.axis, dividerStyle: .editorDivider) {
+            SplitView(axis: data.axis, dividerStyle: .editorDivider, weights: Bindable(data).weights) {
                 splitView
             }
             .edgesIgnoringSafeArea([.top, .bottom])

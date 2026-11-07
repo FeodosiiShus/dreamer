@@ -146,10 +146,20 @@ final class GitBlameCoordinator: TextViewCoordinator {
             view.onSelectCommit = { [weak self] in
                 self?.showGitToolWindow()
             }
-            view.autoresizingMask = [.width, .height]
             view.frame = NSRect(origin: .zero, size: scrollView.bounds.size)
             scrollView.addSubview(view)
             annotationView = view
+            observers.append(
+                NotificationCenter.default.addObserver(
+                    forName: NSView.frameDidChangeNotification,
+                    object: scrollView,
+                    queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        self?.annotationView?.matchSuperviewBounds()
+                    }
+                }
+            )
         }
 
         annotationView?.update(lines: blameLines)

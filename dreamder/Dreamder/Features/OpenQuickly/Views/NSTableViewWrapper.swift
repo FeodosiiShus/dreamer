@@ -92,6 +92,7 @@ struct NSTableViewWrapper<Content: View, Item: Identifiable & Hashable>: NSViewR
 
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
             let view = NSHostingView(rootView: parent.itemView(parent.data[row]))
+            view.sizingOptions = [.intrinsicContentSize]
             view.translatesAutoresizingMaskIntoConstraints = false
 
             let cell = NSTableCellView()

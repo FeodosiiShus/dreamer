@@ -99,6 +99,7 @@ final class QuickDocumentationPanelHost {
         let size = model.size
         let panel = QuickDocumentationPanel(size: size)
         let hostingView = NSHostingView(rootView: QuickDocumentationView(model: model))
+        hostingView.sizingOptions = []
         hostingView.frame = NSRect(origin: .zero, size: size)
         panel.contentView = hostingView
 

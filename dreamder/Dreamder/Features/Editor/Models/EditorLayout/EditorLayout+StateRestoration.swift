@@ -201,19 +201,22 @@ extension SplitViewData: Codable {
     enum CodingKeys: String, CodingKey {
         case editorLayouts
         case axis
+        case weights
     }
 
     convenience init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let axis = try container.decode(SplitViewAxis.self, forKey: .axis).swiftUI
         let editorLayouts = try container.decode([EditorLayout].self, forKey: .editorLayouts)
-        self.init(axis, editorLayouts: editorLayouts)
+        let weights = try? container.decodeIfPresent([CGFloat].self, forKey: .weights)
+        self.init(axis, editorLayouts: editorLayouts, weights: weights)
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(editorLayouts, forKey: .editorLayouts)
         try container.encode(SplitViewAxis(axis), forKey: .axis)
+        try container.encode(currentWeights, forKey: .weights)
     }
 }
 

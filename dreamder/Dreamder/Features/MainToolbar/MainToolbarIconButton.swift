@@ -62,5 +62,6 @@ struct MainToolbarIconButton: View {
         .disabled(!isEnabled)
         .onHover { isHovering = $0 }
         .help(help)
+        .fixedSize()
     }
 }

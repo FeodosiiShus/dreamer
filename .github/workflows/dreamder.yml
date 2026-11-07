@@ -66,6 +66,15 @@ jobs:
         run: make build
       - name: Unit tests with coverage
         run: make coverage
+      - name: Headless smoke
+        run: make smoke
+      - name: Upload smoke result
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-${{ matrix.runner }}
+          path: dreamder/.build/smoke
+          if-no-files-found: ignore
       - name: Coverage gate against the previous successful run
         env:
           GH_TOKEN: ${{ github.token }}

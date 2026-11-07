@@ -6,37 +6,47 @@
 //
 
 import AppKit
+import SwiftUI
 
-/// The style of divider used by ``SplitView``.
-///
-/// To add a new style, add another case to this enum and fill in the ``customColor`` and ``customThickness``
-/// variables. When passed to ``SplitView``, the custom styles will be used instead of the default styles. Leave
-/// values as `nil` to use default styles.
 enum DreamderDividerStyle: Equatable {
-    case system(NSSplitView.DividerStyle)
+    enum Thickness: Equatable {
+        case thin
+        case thick
+        case paneSplitter
+
+        var points: CGFloat {
+            switch self {
+            case .thin: 1
+            case .thick: 6
+            case .paneSplitter: 10
+            }
+        }
+    }
+
+    case system(Thickness)
     case editorDivider
 
-    var customColor: NSColor? {
+    var thickness: CGFloat {
+        switch self {
+        case .system(let thickness):
+            return thickness.points
+        case .editorDivider:
+            return 3.0
+        }
+    }
+
+    var color: Color {
         switch self {
         case .system:
-            return nil
+            return Color(nsColor: .separatorColor)
         case .editorDivider:
-            return NSColor(name: nil) { appearance in
+            return Color(nsColor: NSColor(name: nil) { appearance in
                 if appearance.name == .darkAqua {
                     NSColor.black
                 } else {
                     NSColor(white: 203.0 / 255.0, alpha: 1.0)
                 }
-            }
-        }
-    }
-
-    var customThickness: CGFloat? {
-        switch self {
-        case .system:
-            return nil
-        case .editorDivider:
-            return 3.0
+            })
         }
     }
 }

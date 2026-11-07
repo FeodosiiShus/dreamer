@@ -20,6 +20,7 @@ class EditorInstance: Hashable {
 
     var cursorPositions: [CursorPosition]
     var scrollPosition: CGPoint?
+    var requestedScrollPosition: CGPoint?
 
     var findText: String?
     var replaceText: String?
@@ -42,6 +43,7 @@ class EditorInstance: Hashable {
             cursorPositions ?? editorState?.editorCursorPositions ?? [CursorPosition(line: 1, column: 1)]
         )
         self.scrollPosition = editorState?.scrollPosition
+        self.requestedScrollPosition = editorState?.scrollPosition
 
         observationTasks.append(persistRestorationState(for: url))
         if let searchState = workspace?.searchState {

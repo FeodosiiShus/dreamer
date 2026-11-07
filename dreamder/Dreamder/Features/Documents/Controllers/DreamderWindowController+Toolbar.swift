@@ -95,7 +95,7 @@ extension DreamderWindowController {
         return toolbarItem(
             identifier: .projectWidget,
             label: "Project",
-            view: NSHostingView(rootView: ProjectToolbarWidget(workspace: workspace))
+            view: Self.makeToolbarHostingView(ProjectToolbarWidget(workspace: workspace))
         )
     }
 
@@ -104,9 +104,10 @@ extension DreamderWindowController {
         return toolbarItem(
             identifier: .vcsBranchWidget,
             label: "Git Branch",
-            view: NSHostingView(
-                rootView: ToolbarBranchPicker(sourceControlManager: sourceControlManager)
+            view: Self.makeToolbarHostingView(
+                ToolbarBranchPicker(sourceControlManager: sourceControlManager)
                     .environment(workspace)
+                    .fixedSize()
             )
         )
     }
@@ -115,7 +116,7 @@ extension DreamderWindowController {
         toolbarItem(
             identifier: .searchEverywhereWidget,
             label: "Search Everywhere",
-            view: NSHostingView(rootView: SearchEverywhereToolbarWidget())
+            view: Self.makeToolbarHostingView(SearchEverywhereToolbarWidget())
         )
     }
 
@@ -124,8 +125,8 @@ extension DreamderWindowController {
         return toolbarItem(
             identifier: .runWidget,
             label: "Run",
-            view: NSHostingView(
-                rootView: RunToolbarWidget(taskManager: taskManager)
+            view: Self.makeToolbarHostingView(
+                RunToolbarWidget(taskManager: taskManager)
                     .environment(workspace)
             )
         )
@@ -135,8 +136,14 @@ extension DreamderWindowController {
         toolbarItem(
             identifier: .settingsWidget,
             label: "Settings",
-            view: NSHostingView(rootView: SettingsToolbarWidget())
+            view: Self.makeToolbarHostingView(SettingsToolbarWidget())
         )
+    }
+
+    static func makeToolbarHostingView<Content: View>(_ rootView: Content) -> NSHostingView<Content> {
+        let hostingView = NSHostingView(rootView: rootView)
+        hostingView.sizingOptions = .standardBounds
+        return hostingView
     }
 
     private func toolbarItem(

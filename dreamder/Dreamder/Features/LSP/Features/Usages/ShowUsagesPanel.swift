@@ -122,6 +122,7 @@ final class ShowUsagesPanelHost {
         let size = NSSize(width: model.panelWidth, height: model.preferredHeight)
         let panel = ShowUsagesPanel(size: size)
         let hostingView = NSHostingView(rootView: ShowUsagesView(model: model))
+        hostingView.sizingOptions = []
         hostingView.frame = NSRect(origin: .zero, size: size)
         panel.contentView = hostingView
 

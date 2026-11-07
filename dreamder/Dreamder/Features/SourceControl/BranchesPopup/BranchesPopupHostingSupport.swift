@@ -161,6 +161,7 @@ final class BranchesPopupPanelHost {
             }
         )
         let hostingView = NSHostingView(rootView: content)
+        hostingView.sizingOptions = []
         hostingView.frame = NSRect(origin: .zero, size: panel.frame.size)
         panel.contentView = hostingView
         panel.onClose = { [weak self, weak panel] in

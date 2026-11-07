@@ -40,6 +40,7 @@ struct RunToolbarWidget: View {
                 )
             }
         }
+        .fixedSize()
     }
 
     private var taskSelector: some View {

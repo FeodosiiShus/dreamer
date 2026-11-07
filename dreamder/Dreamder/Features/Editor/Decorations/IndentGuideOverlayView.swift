@@ -16,13 +16,19 @@ final class IndentGuideOverlayView: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    override func viewDidMoveToSuperview() {
-        super.viewDidMoveToSuperview()
-        guard let superview else { return }
-        autoresizingMask = [.width, .height]
-        if frame != superview.bounds {
-            frame = superview.bounds
-        }
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        translatesAutoresizingMaskIntoConstraints = false
+        autoresizingMask = []
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    func matchSuperviewBounds() {
+        guard let superview, frame != superview.bounds else { return }
+        frame = superview.bounds
     }
 
     override func setFrameSize(_ newSize: NSSize) {

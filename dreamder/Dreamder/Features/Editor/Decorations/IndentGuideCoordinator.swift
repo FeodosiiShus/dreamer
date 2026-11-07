@@ -5,6 +5,7 @@ import CodeEditTextView
 final class IndentGuideCoordinator: TextViewCoordinator {
     private weak var controller: TextViewController?
     private weak var overlay: IndentGuideOverlayView?
+    private var frameObserver: NSObjectProtocol?
 
     func prepareCoordinator(controller: TextViewController) {
         self.controller = controller
@@ -16,8 +17,7 @@ final class IndentGuideCoordinator: TextViewCoordinator {
     }
 
     func controllerDidDisappear(controller: TextViewController) {
-        overlay?.removeFromSuperview()
-        overlay = nil
+        removeOverlay()
     }
 
     func textViewDidChangeText(controller: TextViewController) {
@@ -29,28 +29,41 @@ final class IndentGuideCoordinator: TextViewCoordinator {
     }
 
     func destroy() {
+        removeOverlay()
+        controller = nil
+    }
+
+    private func removeOverlay() {
+        if let frameObserver {
+            NotificationCenter.default.removeObserver(frameObserver)
+        }
+        frameObserver = nil
         overlay?.removeFromSuperview()
         overlay = nil
-        controller = nil
     }
 
     private func installIfNeeded(controller: TextViewController) {
         guard overlay == nil, let textView = controller.textView else { return }
-        let view = IndentGuideOverlayView()
+        let view = IndentGuideOverlayView(frame: textView.bounds)
         view.textView = textView
         view.tabWidth = controller.tabWidth
-        view.frame = textView.bounds
-        view.autoresizingMask = [.width, .height]
         textView.addSubview(view, positioned: .below, relativeTo: nil)
         overlay = view
+        frameObserver = NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification,
+            object: textView,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.overlay?.matchSuperviewBounds()
+            }
+        }
     }
 
     private func invalidate() {
-        guard let controller, let overlay, let textView = controller.textView else { return }
+        guard let controller, let overlay else { return }
         overlay.tabWidth = controller.tabWidth
-        if overlay.frame.size != textView.bounds.size {
-            overlay.frame = textView.bounds
-        }
+        overlay.matchSuperviewBounds()
         overlay.needsDisplay = true
     }
 }
