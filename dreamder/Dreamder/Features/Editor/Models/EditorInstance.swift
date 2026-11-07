@@ -7,29 +7,26 @@
 
 import Foundation
 import AppKit
-import Combine
+import Observation
 import CodeEditTextView
 import CodeEditSourceEditor
 
-/// A single instance of an editor in a group with a published ``EditorInstance/cursorPositions`` variable to publish
-/// the user's current location in a file.
-class EditorInstance: ObservableObject, Hashable {
+/// A single instance of an editor in a group with an observable ``EditorInstance/cursorPositions`` variable
+/// tracking the user's current location in a file.
+@Observable
+class EditorInstance: Hashable {
     /// The file presented in this editor instance.
     let file: CEWorkspaceFile
 
-    /// A publisher for the user's current location in a file.
-    @Published var cursorPositions: [CursorPosition]
-    @Published var scrollPosition: CGPoint?
+    var cursorPositions: [CursorPosition]
+    var scrollPosition: CGPoint?
 
-    @Published var findText: String?
-    var findTextSubject: PassthroughSubject<String?, Never>
+    var findText: String?
+    var replaceText: String?
 
-    @Published var replaceText: String?
-    var replaceTextSubject: PassthroughSubject<String?, Never>
+    @ObservationIgnored var rangeTranslator: RangeTranslator = RangeTranslator()
 
-    var rangeTranslator: RangeTranslator = RangeTranslator()
-
-    private var cancellables: Set<AnyCancellable> = []
+    @ObservationIgnored private var observationTasks: [Task<Void, Never>] = []
 
     // MARK: - Init
 
@@ -39,75 +36,105 @@ class EditorInstance: ObservableObject, Hashable {
         let editorState = EditorStateRestoration.shared?.restorationState(for: url)
 
         findText = workspace?.searchState?.searchQuery
-        findTextSubject = PassthroughSubject()
         replaceText = workspace?.searchState?.replaceText
-        replaceTextSubject = PassthroughSubject()
 
         self.cursorPositions = (
             cursorPositions ?? editorState?.editorCursorPositions ?? [CursorPosition(line: 1, column: 1)]
         )
         self.scrollPosition = editorState?.scrollPosition
 
-        // Setup listeners
-
-        Publishers.CombineLatest(
-            $cursorPositions.removeDuplicates(),
-            $scrollPosition
-                .debounce(for: .seconds(0.1), scheduler: RunLoop.main) // This can trigger *very* often
-                .removeDuplicates()
-        )
-        .sink { (cursorPositions, scrollPosition) in
-            EditorStateRestoration.shared?.updateRestorationState(
-                for: url,
-                data: .init(cursorPositions: cursorPositions, scrollPosition: scrollPosition ?? .zero)
-            )
+        observationTasks.append(persistRestorationState(for: url))
+        if let searchState = workspace?.searchState {
+            observationTasks.append(contentsOf: syncFindText(with: searchState))
+            observationTasks.append(contentsOf: syncReplaceText(with: searchState))
         }
-        .store(in: &cancellables)
-
-        listenToFindText(workspace: workspace)
-        listenToReplaceText(workspace: workspace)
     }
 
-    // MARK: - Find/Replace Listeners
-
-    func listenToFindText(workspace: WorkspaceDocument?) {
-        workspace?.searchState?.$searchQuery
-            .receive(on: RunLoop.main)
-            .sink { [weak self] newQuery in
-                if self?.findText != newQuery {
-                    self?.findText = newQuery
-                }
-            }
-            .store(in: &cancellables)
-        findTextSubject
-            .receive(on: RunLoop.main)
-            .sink { [weak workspace, weak self] newFindText in
-                if let newFindText, workspace?.searchState?.searchQuery != newFindText {
-                    workspace?.searchState?.searchQuery = newFindText
-                }
-                self?.findText = workspace?.searchState?.searchQuery
-            }
-            .store(in: &cancellables)
+    isolated deinit {
+        observationTasks.forEach { $0.cancel() }
     }
 
-    func listenToReplaceText(workspace: WorkspaceDocument?) {
-        workspace?.searchState?.$replaceText
-            .receive(on: RunLoop.main)
-            .sink { [weak self] newText in
-                if self?.replaceText != newText {
-                    self?.replaceText = newText
+    private static let restorationDebounce: Duration = .milliseconds(100)
+
+    private func persistRestorationState(for url: URL) -> Task<Void, Never> {
+        Task { [weak self] in
+            var pendingSave: Task<Void, Never>?
+            var lastPersisted: (cursorPositions: [CursorPosition], scrollPosition: CGPoint?)?
+            let changes = Observations { [weak self] in
+                (cursorPositions: self?.cursorPositions ?? [], scrollPosition: self?.scrollPosition)
+            }
+            for await change in changes {
+                if let lastPersisted,
+                   lastPersisted.cursorPositions == change.cursorPositions,
+                   lastPersisted.scrollPosition == change.scrollPosition {
+                    continue
+                }
+                lastPersisted = change
+                pendingSave?.cancel()
+                pendingSave = Task {
+                    try? await Task.sleep(for: Self.restorationDebounce)
+                    guard !Task.isCancelled else { return }
+                    EditorStateRestoration.shared?.updateRestorationState(
+                        for: url,
+                        data: .init(
+                            cursorPositions: change.cursorPositions,
+                            scrollPosition: change.scrollPosition ?? .zero
+                        )
+                    )
                 }
             }
-            .store(in: &cancellables)
-        replaceTextSubject
-            .receive(on: RunLoop.main)
-            .sink { [weak workspace, weak self] newReplaceText in
-                if let newReplaceText, workspace?.searchState?.replaceText != newReplaceText {
-                    workspace?.searchState?.replaceText = newReplaceText
-                }
-                self?.replaceText = workspace?.searchState?.replaceText
+            pendingSave?.cancel()
+        }
+    }
+
+    // MARK: - Find/Replace Sync
+
+    private func syncFindText(with searchState: WorkspaceDocument.SearchState) -> [Task<Void, Never>] {
+        let fromSearch = Task { [weak self, weak searchState] in
+            let queries = Observations { [weak searchState] in searchState?.searchQuery }
+            for await query in queries {
+                guard let self, let query, findText != query else { continue }
+                findText = query
             }
-            .store(in: &cancellables)
+        }
+        let toSearch = Task { [weak self, weak searchState] in
+            let texts = Observations { [weak self] in self?.findText }
+            for await text in texts {
+                guard let self, let searchState else { continue }
+                if let text {
+                    if searchState.searchQuery != text {
+                        searchState.searchQuery = text
+                    }
+                } else if findText != searchState.searchQuery {
+                    findText = searchState.searchQuery
+                }
+            }
+        }
+        return [fromSearch, toSearch]
+    }
+
+    private func syncReplaceText(with searchState: WorkspaceDocument.SearchState) -> [Task<Void, Never>] {
+        let fromSearch = Task { [weak self, weak searchState] in
+            let replacements = Observations { [weak searchState] in searchState?.replaceText }
+            for await replacement in replacements {
+                guard let self, let replacement, replaceText != replacement else { continue }
+                replaceText = replacement
+            }
+        }
+        let toSearch = Task { [weak self, weak searchState] in
+            let texts = Observations { [weak self] in self?.replaceText }
+            for await text in texts {
+                guard let self, let searchState else { continue }
+                if let text {
+                    if searchState.replaceText != text {
+                        searchState.replaceText = text
+                    }
+                } else if replaceText != searchState.replaceText {
+                    replaceText = searchState.replaceText
+                }
+            }
+        }
+        return [fromSearch, toSearch]
     }
 
     // MARK: - Hashable, Equatable

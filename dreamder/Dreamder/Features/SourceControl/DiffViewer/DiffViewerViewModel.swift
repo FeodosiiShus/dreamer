@@ -1,5 +1,4 @@
 import AppKit
-import Combine
 import Foundation
 
 struct DiffScrollRequest: Equatable {
@@ -8,18 +7,19 @@ struct DiffScrollRequest: Equatable {
 }
 
 @MainActor
-final class DiffViewerViewModel: ObservableObject {
+@Observable
+final class DiffViewerViewModel {
     static let maximumDisplayedRows = 20_000
 
-    @Published private(set) var files: [DiffFileRequest]
-    @Published private(set) var selectedID: String?
-    @Published private(set) var diff: TextDiff?
-    @Published private(set) var metrics = DiffLayoutMetrics.empty
-    @Published private(set) var isLoading = false
-    @Published private(set) var message: String?
-    @Published private(set) var currentHunkIndex: Int?
-    @Published private(set) var scrollRequest: DiffScrollRequest?
-    @Published private(set) var title: String
+    private(set) var files: [DiffFileRequest]
+    private(set) var selectedID: String?
+    private(set) var diff: TextDiff?
+    private(set) var metrics = DiffLayoutMetrics.empty
+    private(set) var isLoading = false
+    private(set) var message: String?
+    private(set) var currentHunkIndex: Int?
+    private(set) var scrollRequest: DiffScrollRequest?
+    private(set) var title: String
 
     private let repository: DiffRepository
     private let mode: DiffViewerMode

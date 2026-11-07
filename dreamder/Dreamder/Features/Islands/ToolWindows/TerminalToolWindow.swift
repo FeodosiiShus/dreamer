@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct TerminalToolWindow: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
-    @EnvironmentObject private var utilityAreaViewModel: UtilityAreaViewModel
-    @EnvironmentObject private var toolWindowManager: ToolWindowManager
+    @Environment(WorkspaceDocument.self) private var workspace
+    @Environment(UtilityAreaViewModel.self) private var utilityAreaViewModel
+    @Environment(ToolWindowManager.self) private var toolWindowManager
 
     init() {}
 

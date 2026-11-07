@@ -9,7 +9,7 @@ import SwiftUI
 
 struct SettingsInjector<Content: View>: View {
 
-    @ObservedObject var settings = Settings.shared
+    private let settings = Settings.shared
 
     @ViewBuilder var content: Content
 

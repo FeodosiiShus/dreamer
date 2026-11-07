@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct ProblemsToolWindow: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
+    @Environment(WorkspaceDocument.self) private var workspace
 
     @Service private var lspService: LSPService
 
@@ -14,15 +14,14 @@ struct ProblemsToolWindow: View {
 }
 
 struct ProblemsToolWindowContent: View {
-    @ObservedObject var store: DiagnosticsStore
-    @ObservedObject var lspService: LSPService
+    let store: DiagnosticsStore
+    let lspService: LSPService
 
-    @EnvironmentObject private var workspace: WorkspaceDocument
-    @EnvironmentObject private var editorManager: EditorManager
-    @EnvironmentObject private var toolWindowManager: ToolWindowManager
+    @Environment(WorkspaceDocument.self) private var workspace
+    @Environment(EditorManager.self) private var editorManager
+    @Environment(ToolWindowManager.self) private var toolWindowManager
 
     @State private var tab: ProblemsTab = .file
-    @State private var activeFileURL: URL?
     @State private var collapsedFiles: Set<URL> = []
     @State private var selection: ProblemsSelection?
     @FocusState private var isFocused: Bool
@@ -30,6 +29,10 @@ struct ProblemsToolWindowContent: View {
     private enum ProblemsSelection: Hashable {
         case file(URL)
         case diagnostic(WorkspaceDiagnostic)
+    }
+
+    private var activeFileURL: URL? {
+        editorManager.activeEditor.selectedTab?.file.url.standardizedFileURL
     }
 
     private var root: URL? {
@@ -89,12 +92,6 @@ struct ProblemsToolWindowContent: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear)
-        .onAppear {
-            activeFileURL = editorManager.activeEditor.selectedTab?.file.url.standardizedFileURL
-        }
-        .onReceive(editorManager.tabBarTabIdSubject) { selectedTab in
-            activeFileURL = selectedTab?.file.url.standardizedFileURL
-        }
     }
 
     private var tree: some View {

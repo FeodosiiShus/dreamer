@@ -9,11 +9,11 @@ struct IslandsWorkspaceView: View {
     @Environment(\.colorScheme)
     private var colorScheme
 
-    @EnvironmentObject private var workspace: WorkspaceDocument
-    @EnvironmentObject private var editorManager: EditorManager
-    @EnvironmentObject private var utilityAreaViewModel: UtilityAreaViewModel
-    @EnvironmentObject private var taskManager: TaskManager
-    @EnvironmentObject private var toolWindowManager: ToolWindowManager
+    @Environment(WorkspaceDocument.self) private var workspace
+    @Environment(EditorManager.self) private var editorManager
+    @Environment(UtilityAreaViewModel.self) private var utilityAreaViewModel
+    @Environment(TaskManager.self) private var taskManager
+    @Environment(ToolWindowManager.self) private var toolWindowManager
 
     @AppSettings(\.theme.matchAppearance)
     private var matchAppearance
@@ -30,7 +30,7 @@ struct IslandsWorkspaceView: View {
     @AppStorage(Islands.densityKey)
     private var density = Islands.Density.compact.rawValue
 
-    @StateObject private var themeModel: ThemeModel = .shared
+    @State private var themeModel: ThemeModel = .shared
 
     @State private var backgroundImage: NSImage? = nil
 
@@ -247,7 +247,7 @@ struct IslandsWorkspaceView: View {
         .background {
             if let sourceControlManager = workspace.sourceControlManager {
                 WorkspaceSheets()
-                    .environmentObject(sourceControlManager)
+                    .environment(sourceControlManager)
             }
         }
         .island()

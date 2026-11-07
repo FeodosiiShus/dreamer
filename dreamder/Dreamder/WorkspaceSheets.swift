@@ -8,9 +8,10 @@
 import SwiftUI
 
 struct WorkspaceSheets: View {
-    @EnvironmentObject var sourceControlManager: SourceControlManager
+    @Environment(SourceControlManager.self) private var sourceControlManager
 
     var body: some View {
+        @Bindable var sourceControlManager = sourceControlManager
         EmptyView()
             .sheet(isPresented: Binding<Bool>(
                 get: { sourceControlManager.pushSheetIsPresented &&

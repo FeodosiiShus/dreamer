@@ -6,10 +6,12 @@
 //
 
 import SwiftUI
+import Observation
 
-final class AcknowledgementsViewModel: ObservableObject {
+@Observable
+final class AcknowledgementsViewModel {
 
-    @Published private(set) var acknowledgements: [AcknowledgementDependency]
+    private(set) var acknowledgements: [AcknowledgementDependency]
 
     var indexedAcknowledgements: [(index: Int, acknowledgement: AcknowledgementDependency)] {
       return Array(zip(acknowledgements.indices, acknowledgements))

@@ -1,12 +1,12 @@
-import Combine
 import Foundation
 
-final class CommitToolWindowViewModel: ObservableObject {
-    @Published var message = ""
-    @Published var amend = false
-    @Published var excludedIDs: Set<String> = []
-    @Published var includedUnversionedIDs: Set<String> = []
-    @Published private(set) var isCommitting = false
+@Observable
+final class CommitToolWindowViewModel {
+    var message = ""
+    var amend = false
+    var excludedIDs: Set<String> = []
+    var includedUnversionedIDs: Set<String> = []
+    private(set) var isCommitting = false
 
     static func isUnversioned(_ file: GitChangedFile) -> Bool {
         file.status == .untracked && file.stagedStatus == GitStatus.none

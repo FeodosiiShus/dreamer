@@ -10,14 +10,13 @@ import SwiftUI
 import CodeEditSourceEditor
 import CodeEditTextView
 import CodeEditLanguages
-import Combine
 
 /// CodeFileView is just a wrapper of the `CodeEditor` dependency
 struct CodeFileView: View {
-    @ObservedObject private var editorInstance: EditorInstance
+    private let editorInstance: EditorInstance
     private let codeFile: CodeFileDocument
 
-    @StateObject private var sessionStore = CodeFileViewSessionStore()
+    @State private var sessionStore = CodeFileViewSessionStore()
 
     /// Any coordinators passed to the view.
     private var textViewCoordinators: [TextViewCoordinator]
@@ -59,9 +58,9 @@ struct CodeFileView: View {
     @AppSettings(\.textEditing.warningCharacters)
     var warningCharacters
 
-    @EnvironmentObject var undoRegistration: UndoManagerRegistration
+    @Environment(UndoManagerRegistration.self) private var undoRegistration
 
-    @ObservedObject private var themeModel: ThemeModel = .shared
+    private let themeModel: ThemeModel = .shared
 
     private let isEditable: Bool
 
@@ -71,7 +70,7 @@ struct CodeFileView: View {
         textViewCoordinators: [TextViewCoordinator] = [],
         isEditable: Bool = true
     ) {
-        self._editorInstance = .init(wrappedValue: editorInstance)
+        self.editorInstance = editorInstance
         self.codeFile = codeFile
 
         self.textViewCoordinators = textViewCoordinators
@@ -123,7 +122,17 @@ struct CodeFileView: View {
         return coordinators
     }
 
+    private var editorState: SourceEditorState {
+        SourceEditorState(
+            cursorPositions: editorInstance.cursorPositions,
+            scrollPosition: editorInstance.scrollPosition,
+            findText: editorInstance.findText,
+            replaceText: editorInstance.replaceText
+        )
+    }
+
     private func sourceEditor(theme: Theme, session: CodeFileViewSession) -> some View {
+        _ = editorState
         let triggerCharacters = session.completionTriggerCharacters(
             requested: codeFile.languageServerObjects.completionDelegate?.completionTriggerCharacters() ?? []
         )
@@ -163,14 +172,7 @@ struct CodeFileView: View {
                 )
             ),
             state: Binding(
-                get: {
-                    SourceEditorState(
-                        cursorPositions: editorInstance.cursorPositions,
-                        scrollPosition: editorInstance.scrollPosition,
-                        findText: editorInstance.findText,
-                        replaceText: editorInstance.replaceText
-                    )
-                },
+                get: { editorState },
                 set: { newState in
                     let cursorPositions = newState.cursorPositions ?? []
                     if editorInstance.cursorPositions != cursorPositions {
@@ -181,11 +183,9 @@ struct CodeFileView: View {
                     }
                     if editorInstance.findText != newState.findText {
                         editorInstance.findText = newState.findText
-                        editorInstance.findTextSubject.send(newState.findText)
                     }
                     if editorInstance.replaceText != newState.replaceText {
                         editorInstance.replaceText = newState.replaceText
-                        editorInstance.replaceTextSubject.send(newState.replaceText)
                     }
                 }
             ),

@@ -13,7 +13,7 @@ import SwiftUI
 /// `ActiveTaskView` represents a single active task and observes its state.
 /// - Parameter activeTask: The active task to be displayed and observed.
 struct ActiveTaskView: View {
-    @ObservedObject var activeTask: CEActiveTask
+    let activeTask: CEActiveTask
 
     var body: some View {
         TaskView(task: activeTask.task, status: activeTask.status)

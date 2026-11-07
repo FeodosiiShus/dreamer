@@ -24,7 +24,7 @@ struct EditorLayoutView: View {
     }
 
     struct SubEditorLayoutView: View {
-        @ObservedObject var data: SplitViewData
+        let data: SplitViewData
         @FocusState.Binding var focus: Editor?
 
         var body: some View {

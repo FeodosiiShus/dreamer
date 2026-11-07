@@ -8,14 +8,15 @@
 import SwiftUI
 
 struct OpenQuicklyView: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
+    @Environment(WorkspaceDocument.self) private var workspace
 
     private let onClose: () -> Void
     private let openFile: (CEWorkspaceFile) -> Void
 
-    @ObservedObject private var openQuicklyViewModel: OpenQuicklyViewModel
+    @Bindable private var openQuicklyViewModel: OpenQuicklyViewModel
 
     @State private var selectedItem: CEWorkspaceFile?
+    @State private var fetchDebounce: Task<Void, Never>?
 
     init(
         state: OpenQuicklyViewModel,
@@ -54,8 +55,16 @@ struct OpenQuicklyView: View {
         } onClose: {
             onClose()
         }
-        .onReceive(openQuicklyViewModel.$query.debounce(for: 0.2, scheduler: DispatchQueue.main)) { _ in
-            openQuicklyViewModel.fetchResults()
+        .onChange(of: openQuicklyViewModel.query, initial: true) {
+            fetchDebounce?.cancel()
+            fetchDebounce = Task {
+                try? await Task.sleep(for: .milliseconds(200))
+                guard !Task.isCancelled else { return }
+                openQuicklyViewModel.fetchResults()
+            }
+        }
+        .onDisappear {
+            fetchDebounce?.cancel()
         }
     }
 }

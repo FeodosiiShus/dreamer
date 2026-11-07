@@ -7,12 +7,13 @@
 
 import SwiftUI
 
-class UtilityAreaTabViewModel: ObservableObject {
-    @Published var leadingSidebarIsCollapsed: Bool = false
+@Observable
+class UtilityAreaTabViewModel {
+    var leadingSidebarIsCollapsed: Bool = false
 
-    @Published var trailingSidebarIsCollapsed: Bool = false
+    var trailingSidebarIsCollapsed: Bool = false
 
-    @Published var hasLeadingSidebar: Bool = false
+    var hasLeadingSidebar: Bool = false
 
-    @Published var hasTrailingSidebar: Bool = false
+    var hasTrailingSidebar: Bool = false
 }

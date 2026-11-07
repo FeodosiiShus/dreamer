@@ -11,17 +11,18 @@ struct SourceControlPushView: View {
     @Environment(\.dismiss)
     private var dismiss
 
-    @EnvironmentObject var sourceControlManager: SourceControlManager
+    @Environment(SourceControlManager.self) private var sourceControlManager
 
     @State var loading: Bool = false
 
     var body: some View {
+        @Bindable var manager = sourceControlManager
         VStack(spacing: 0) {
             Form {
                 Section {
                     RemoteBranchPicker(
-                        branch: $sourceControlManager.operationBranch,
-                        remote: $sourceControlManager.operationRemote,
+                        branch: $manager.operationBranch,
+                        remote: $manager.operationRemote,
                         onSubmit: submit,
                         canCreateBranch: true
                     )
@@ -29,8 +30,8 @@ struct SourceControlPushView: View {
                     Text("Push local changes to")
                 }
                 Section {
-                    Toggle("Force", isOn: $sourceControlManager.operationForce)
-                    Toggle("Include Tags", isOn: $sourceControlManager.operationIncludeTags)
+                    Toggle("Force", isOn: $manager.operationForce)
+                    Toggle("Include Tags", isOn: $manager.operationIncludeTags)
                 }
             }
             .formStyle(.grouped)

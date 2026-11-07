@@ -27,16 +27,17 @@ nonisolated struct BranchesCompareCommit: Identifiable, Hashable {
     }
 }
 
+@Observable
 @MainActor
-final class BranchesCompareViewModel: ObservableObject {
+final class BranchesCompareViewModel {
     let branch: String
     let current: String
     private let manager: SourceControlManager
 
-    @Published var branchOnly: [BranchesCompareCommit] = []
-    @Published var currentOnly: [BranchesCompareCommit] = []
-    @Published var isLoading = true
-    @Published var errorMessage: String?
+    var branchOnly: [BranchesCompareCommit] = []
+    var currentOnly: [BranchesCompareCommit] = []
+    var isLoading = true
+    var errorMessage: String?
 
     init(manager: SourceControlManager, branch: String, current: String) {
         self.manager = manager
@@ -64,7 +65,7 @@ final class BranchesCompareViewModel: ObservableObject {
 }
 
 struct BranchesCompareView: View {
-    @ObservedObject var model: BranchesCompareViewModel
+    let model: BranchesCompareViewModel
 
     var body: some View {
         Group {

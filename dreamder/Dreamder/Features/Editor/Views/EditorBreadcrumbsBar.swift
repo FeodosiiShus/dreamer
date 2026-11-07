@@ -1,36 +1,46 @@
 import AppKit
 import CodeEditSourceEditor
 import Combine
+import Observation
 import SwiftUI
 
+@Observable
 @MainActor
-final class EditorBreadcrumbsModel: ObservableObject {
-    @Published private(set) var crumbs: [StructureNode] = []
+final class EditorBreadcrumbsModel {
+    private(set) var crumbs: [StructureNode] = []
 
-    private var nodes: [StructureNode] = []
-    private var line = 1
-    private weak var document: CodeFileDocument?
-    private var url: URL?
-    private var lspService: LSPService?
-    private var cancellables = Set<AnyCancellable>()
-    private var reloadTask: Task<Void, Never>?
+    @ObservationIgnored private var nodes: [StructureNode] = []
+    @ObservationIgnored private var line = 1
+    @ObservationIgnored private weak var document: CodeFileDocument?
+    @ObservationIgnored private var url: URL?
+    @ObservationIgnored private var lspService: LSPService?
+    @ObservationIgnored private var cancellables = Set<AnyCancellable>()
+    @ObservationIgnored private var cursorObservation: Task<Void, Never>?
+    @ObservationIgnored private var reloadTask: Task<Void, Never>?
+
+    isolated deinit {
+        cursorObservation?.cancel()
+        reloadTask?.cancel()
+    }
 
     func bind(instance: EditorInstance, document: CodeFileDocument, lspService: LSPService) {
         guard document !== self.document else { return }
         cancellables.removeAll()
+        cursorObservation?.cancel()
         reloadTask?.cancel()
         self.document = document
         self.url = instance.file.url.standardizedFileURL
         self.lspService = lspService
         nodes = []
         crumbs = []
-        instance.$cursorPositions
-            .sink { [weak self] positions in
-                guard let self, let position = positions.first else { return }
+        cursorObservation = Task { [weak self, weak instance] in
+            let changes = Observations { [weak instance] in instance?.cursorPositions ?? [] }
+            for await positions in changes {
+                guard let self, let position = positions.first else { continue }
                 self.line = self.line(for: position)
                 self.updateCrumbs()
             }
-            .store(in: &cancellables)
+        }
         document.contentCoordinator.textUpdatePublisher
             .sink { [weak self] _ in
                 Task { @MainActor in self?.scheduleReload(delay: .milliseconds(400)) }
@@ -99,9 +109,9 @@ final class EditorBreadcrumbsModel: ObservableObject {
 struct EditorBreadcrumbsBar: View {
     @Service private var lspService: LSPService
 
-    @EnvironmentObject private var toolWindowManager: ToolWindowManager
+    @Environment(ToolWindowManager.self) private var toolWindowManager
 
-    @StateObject private var model = EditorBreadcrumbsModel()
+    @State private var model = EditorBreadcrumbsModel()
 
     let editorInstance: EditorInstance
     let codeFile: CodeFileDocument

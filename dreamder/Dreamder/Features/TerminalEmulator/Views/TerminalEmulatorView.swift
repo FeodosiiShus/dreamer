@@ -28,7 +28,7 @@ struct TerminalEmulatorView: NSViewRepresentable {
     @AppSettings(\.textEditing.font)
     var fontSettings
 
-    @StateObject private var themeModel: ThemeModel = .shared
+    private let themeModel: ThemeModel = .shared
 
     private var font: NSFont {
         if terminalSettings.useTextEditorFont {

@@ -10,13 +10,14 @@ import SwiftUI
 struct CEWorkspaceSettingsView: View {
     var dismiss: () -> Void
 
-    @EnvironmentObject var workspaceSettingsManager: CEWorkspaceSettings
-    @EnvironmentObject var workspace: WorkspaceDocument
+    @Environment(CEWorkspaceSettings.self) private var workspaceSettingsManager
+    @Environment(WorkspaceDocument.self) private var workspace
 
     @State var selectedTaskID: UUID?
     @State var showAddTaskSheet: Bool = false
 
     var body: some View {
+        @Bindable var workspaceSettingsManager = workspaceSettingsManager
         VStack(spacing: 0) {
             Form {
                 Section {

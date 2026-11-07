@@ -8,13 +8,8 @@
 import SwiftUI
 
 /// The Search Settings View Model. Accessible via the singleton "``SearchSettings/shared``".
-///
-/// **Usage:**
-/// ```swift
-/// @StateObject
-/// private var searchSettigs: SearchSettingsModel = .shared
-/// ```
-final class SearchSettingsModel: ObservableObject {
+@Observable
+final class SearchSettingsModel {
     /// Reads settings file for Search Settings and updates the values in this model
     /// correspondingly
     private init() {
@@ -48,11 +43,11 @@ final class SearchSettingsModel: ObservableObject {
     }
 
     /// Selected patterns
-    @Published var selection: Set<UUID> = []
+    var selection: Set<UUID> = []
 
     /// Stores the new values from the Search Settings Model into the settings.json whenever
     /// `ignoreGlobPatterns` is updated
-    @Published var ignoreGlobPatterns: [GlobPattern] {
+    var ignoreGlobPatterns: [GlobPattern] {
         didSet {
             DispatchQueue.main.async {
                 Settings[\.search].ignoreGlobPatterns = self.ignoreGlobPatterns

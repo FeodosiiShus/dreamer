@@ -6,11 +6,10 @@
 //
 
 import SwiftUI
-import Combine
 
 struct FindNavigatorResultList: NSViewControllerRepresentable {
 
-    @EnvironmentObject var workspace: WorkspaceDocument
+    @Environment(WorkspaceDocument.self) private var workspace
 
     typealias NSViewControllerType = FindNavigatorListViewController
 
@@ -40,20 +39,21 @@ struct FindNavigatorResultList: NSViewControllerRepresentable {
         init(state: WorkspaceDocument.SearchState?, controller: FindNavigatorListViewController?) {
             self.controller = controller
             super.init()
-            self.listener = state?
-                .$searchResult
-                .sink(receiveValue: { [weak self] searchResults in
+            guard let state else { return }
+            observation = Task { [weak self] in
+                for await searchResults in Observations({ state.searchResult }) {
                     self?.controller?.updateNewSearchResults(searchResults)
-                })
+                }
+            }
         }
 
-        var listener: AnyCancellable?
+        var observation: Task<Void, Never>?
         var controller: FindNavigatorListViewController?
 
         isolated deinit {
             controller = nil
-            listener?.cancel()
-            listener = nil
+            observation?.cancel()
+            observation = nil
         }
     }
 }

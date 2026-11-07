@@ -15,13 +15,13 @@ struct EditorTabBarTrailingAccessories: View {
     @Environment(\.controlActiveState)
     private var activeState
 
-    @EnvironmentObject var workspace: WorkspaceDocument
+    @Environment(WorkspaceDocument.self) private var workspace
 
-    @EnvironmentObject private var editorManager: EditorManager
+    @Environment(EditorManager.self) private var editorManager
 
-    @EnvironmentObject private var editor: Editor
+    @Environment(Editor.self) private var editor
 
-    @ObservedObject private var markdownLayouts = MarkdownPreviewLayoutStore.shared
+    private let markdownLayouts = MarkdownPreviewLayoutStore.shared
 
     @State private var isHovering = false
 
@@ -113,7 +113,6 @@ struct EditorTabBarTrailingAccessories: View {
             newEditor = .init()
         }
         splitEditor(edge, newEditor)
-        editorManager.updateCachedFlattenedEditors = true
         editorManager.activeEditor = newEditor
     }
 }

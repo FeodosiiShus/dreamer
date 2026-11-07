@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct SourceControlNavigatorChangesCommitView: View {
-    @EnvironmentObject var sourceControlManager: SourceControlManager
+    @Environment(SourceControlManager.self) private var sourceControlManager
     @State private var message: String = ""
     @State private var details: String = ""
     @State private var ammend: Bool = false

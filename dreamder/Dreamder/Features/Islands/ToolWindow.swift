@@ -69,11 +69,13 @@ enum ToolWindowID: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-final class ToolWindowManager: ObservableObject {
-    @Published private(set) var visible: [ToolWindowAnchor: ToolWindowID] = [.left: .project, .bottom: .terminal]
-    @Published var leftWidth: CGFloat = 280
-    @Published var bottomHeight: CGFloat = 300
-    @Published var bottomMaximized = false
+@Observable
+@MainActor
+final class ToolWindowManager {
+    private(set) var visible: [ToolWindowAnchor: ToolWindowID] = [.left: .project, .bottom: .terminal]
+    var leftWidth: CGFloat = 280
+    var bottomHeight: CGFloat = 300
+    var bottomMaximized = false
 
     func active(_ anchor: ToolWindowAnchor) -> ToolWindowID? {
         visible[anchor]

@@ -1,11 +1,13 @@
 import AppKit
-import Combine
+import Observation
 
 @MainActor
-final class QuickDocumentationViewModel: ObservableObject {
+@Observable
+final class QuickDocumentationViewModel {
     let blocks: [QuickDocumentationBlock]
     let size: NSSize
 
+    @ObservationIgnored
     var dismiss: (() -> Void)?
 
     init(content: QuickDocumentationContent) {

@@ -11,8 +11,8 @@ struct NotificationBannerView: View {
     @Environment(\.colorScheme)
     private var colorScheme
 
-    @EnvironmentObject private var workspace: WorkspaceDocument
-    @ObservedObject private var notificationManager = NotificationManager.shared
+    @Environment(WorkspaceDocument.self) private var workspace
+    private let notificationManager = NotificationManager.shared
 
     let notification: CENotification
     let onDismiss: () -> Void

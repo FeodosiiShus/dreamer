@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct GitLogBranchesPane: View {
-    @EnvironmentObject private var sourceControlManager: SourceControlManager
+    @Environment(SourceControlManager.self) private var sourceControlManager
     let viewModel: GitLogViewModel
 
     private var localBranches: [GitBranch] {

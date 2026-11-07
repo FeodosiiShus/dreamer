@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct DiffViewerView: View {
-    @ObservedObject var model: DiffViewerViewModel
+    let model: DiffViewerViewModel
 
     private let enabledOpacity: Double = 1
     private let disabledOpacity: Double = 0.4
@@ -89,7 +89,7 @@ struct DiffViewerView: View {
 }
 
 private struct DiffCodeView: View {
-    @ObservedObject var model: DiffViewerViewModel
+    let model: DiffViewerViewModel
     let diff: TextDiff
 
     var body: some View {
@@ -185,7 +185,7 @@ private struct DiffCodeView: View {
 }
 
 private struct DiffFileListView: View {
-    @ObservedObject var model: DiffViewerViewModel
+    let model: DiffViewerViewModel
 
     var body: some View {
         ScrollView {

@@ -2,34 +2,40 @@ import Combine
 import Foundation
 import LanguageServerProtocol
 
+@Observable
 @MainActor
-final class StructureViewModel: ObservableObject {
-    @Published private(set) var nodes: [StructureNode] = []
-    @Published private(set) var fileURL: URL?
-    @Published private(set) var isLoading = false
-    @Published private(set) var usesLanguageServer = false
+final class StructureViewModel {
+    private(set) var nodes: [StructureNode] = []
+    private(set) var fileURL: URL?
+    private(set) var isLoading = false
+    private(set) var usesLanguageServer = false
 
-    private weak var workspace: WorkspaceDocument?
-    private weak var observedDocument: CodeFileDocument?
-    private var lspService: LSPService?
-    private var cancellables = Set<AnyCancellable>()
-    private var documentCancellable: AnyCancellable?
-    private var documentLoadCancellable: AnyCancellable?
-    private var requestTask: Task<Void, Never>?
-    private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private weak var workspace: WorkspaceDocument?
+    @ObservationIgnored private weak var observedDocument: CodeFileDocument?
+    @ObservationIgnored private var lspService: LSPService?
+    @ObservationIgnored private var selectionObservation: Task<Void, Never>?
+    @ObservationIgnored private var documentCancellable: AnyCancellable?
+    @ObservationIgnored private var documentLoadCancellable: AnyCancellable?
+    @ObservationIgnored private var requestTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
+
+    isolated deinit {
+        selectionObservation?.cancel()
+        requestTask?.cancel()
+        refreshTask?.cancel()
+    }
 
     func start(workspace: WorkspaceDocument, lspService: LSPService) {
         guard self.workspace == nil else { return }
         self.workspace = workspace
         self.lspService = lspService
         guard let editorManager = workspace.editorManager else { return }
-        editorManager.$activeEditor
-            .sink { [weak self] _ in self?.scheduleRefresh() }
-            .store(in: &cancellables)
-        editorManager.tabBarTabIdSubject
-            .sink { [weak self] _ in self?.scheduleRefresh() }
-            .store(in: &cancellables)
-        scheduleRefresh()
+        selectionObservation = Task { [weak self] in
+            for await _ in Observations({ editorManager.activeEditor.selectedTab }) {
+                guard !Task.isCancelled, let self else { return }
+                self.scheduleRefresh()
+            }
+        }
     }
 
     func scheduleRefresh(delay: Duration = .milliseconds(120)) {

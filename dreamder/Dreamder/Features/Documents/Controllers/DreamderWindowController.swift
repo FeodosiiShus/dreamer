@@ -9,22 +9,24 @@ import Cocoa
 import SwiftUI
 @preconcurrency import Combine
 
-final class DreamderWindowController: NSWindowController, NSToolbarDelegate, ObservableObject, NSWindowDelegate {
-    @Published var toolbarCollapsed: Bool = false
+@Observable
+final class DreamderWindowController: NSWindowController, NSToolbarDelegate, NSWindowDelegate {
+    var toolbarCollapsed: Bool = false
 
     // These variables store the state of the windows when using "Hide interface"
-    @Published var prevLeftToolWindowHidden: Bool?
-    @Published var prevBottomToolWindowHidden: Bool?
-    @Published var prevToolbarCollapsed: Bool?
+    var prevLeftToolWindowHidden: Bool?
+    var prevBottomToolWindowHidden: Bool?
+    var prevToolbarCollapsed: Bool?
 
-    private var panelOpen = false
+    @ObservationIgnored private var panelOpen = false
 
     var workspace: WorkspaceDocument?
-    var workspaceSettingsWindow: NSWindow?
-    var quickOpenPanel: SearchPanel?
-    var commandPalettePanel: SearchPanel?
+    @ObservationIgnored var workspaceSettingsWindow: NSWindow?
+    @ObservationIgnored var quickOpenPanel: SearchPanel?
+    @ObservationIgnored var commandPalettePanel: SearchPanel?
 
-    internal var cancellables = [AnyCancellable]()
+    @ObservationIgnored internal var cancellables = [AnyCancellable]()
+    @ObservationIgnored internal var documentEditedObservation: Task<Void, Never>?
 
     var splitViewController: DreamderSplitViewController? {
         contentViewController as? DreamderSplitViewController
@@ -54,6 +56,7 @@ final class DreamderWindowController: NSWindowController, NSToolbarDelegate, Obs
     }
 
     isolated deinit {
+        documentEditedObservation?.cancel()
         cancellables.forEach({ $0.cancel() })
         cancellables.removeAll()
     }
@@ -148,7 +151,7 @@ final class DreamderWindowController: NSWindowController, NSToolbarDelegate, Obs
                     self.panelOpen = false
                 } openFile: { file in
                     workspace.editorManager?.openTab(item: file)
-                }.environmentObject(workspace)
+                }.environment(workspace)
 
                 panel.contentView = NSHostingView(rootView: SettingsInjector { contentView })
                 window?.addChildWindow(panel, ordered: .above)
@@ -178,6 +181,8 @@ final class DreamderWindowController: NSWindowController, NSToolbarDelegate, Obs
     }
 
     func windowWillClose(_ notification: Notification) {
+        documentEditedObservation?.cancel()
+        documentEditedObservation = nil
         cancellables.forEach({ $0.cancel() })
         cancellables.removeAll()
 

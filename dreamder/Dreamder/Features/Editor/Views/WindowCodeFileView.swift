@@ -10,12 +10,12 @@ import SwiftUI
 
 /// # Should **not** be used other than in a single file window.
 struct WindowCodeFileView: View {
-    @StateObject var editorInstance: EditorInstance
-    @StateObject var undoRegistration: UndoManagerRegistration = UndoManagerRegistration()
+    @State private var editorInstance: EditorInstance
+    @State private var undoRegistration = UndoManagerRegistration()
     var codeFile: CodeFileDocument
 
     init(codeFile: CodeFileDocument) {
-        self._editorInstance = .init(
+        self._editorInstance = State(
             wrappedValue: EditorInstance(
                 workspace: nil,
                 file: CEWorkspaceFile(url: codeFile.fileURL ?? URL(fileURLWithPath: ""))
@@ -27,7 +27,7 @@ struct WindowCodeFileView: View {
     var body: some View {
         if let utType = codeFile.utType, utType.conforms(to: .text) {
             CodeFileView(editorInstance: editorInstance, codeFile: codeFile)
-                .environmentObject(undoRegistration)
+                .environment(undoRegistration)
         } else {
             NonTextFileView(fileDocument: codeFile)
         }

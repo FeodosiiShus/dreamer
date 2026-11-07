@@ -29,7 +29,7 @@ struct LanguageServerRowView: View, Equatable {
 
     @State private var showMore: Bool = false
 
-    @EnvironmentObject var registryManager: RegistryManager
+    @Environment(RegistryManager.self) private var registryManager
 
     init(
         package: RegistryItem,

@@ -15,8 +15,9 @@ import CodeEditTextView
 /// - `CEWorkspaceFile` can be refreshed and reloaded at any point.
 /// - `CodeFileDocument` is released once there are no editors viewing it.
 /// Undo stacks need to be retained for the duration of a workspace session, enduring editor closes..
-final class UndoManagerRegistration: ObservableObject {
-    private var managerMap: [String: CEUndoManager] = [:]
+@Observable
+final class UndoManagerRegistration {
+    @ObservationIgnored private var managerMap: [String: CEUndoManager] = [:]
 
     init() { }
 

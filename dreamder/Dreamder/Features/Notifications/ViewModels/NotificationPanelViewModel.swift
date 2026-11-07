@@ -7,34 +7,39 @@
 
 import SwiftUI
 
-final class NotificationPanelViewModel: ObservableObject {
+@Observable
+final class NotificationPanelViewModel {
     /// Currently displayed notifications in the panel
-    @Published private(set) var activeNotifications: [CENotification] = []
+    private(set) var activeNotifications: [CENotification] = []
 
     /// Whether notifications panel was manually shown via toolbar
-    @Published private(set) var isPresented: Bool = false
+    private(set) var isPresented: Bool = false
 
     /// Set of hidden notification IDs
-    @Published private(set) var hiddenNotificationIds: Set<UUID> = []
+    private(set) var hiddenNotificationIds: Set<UUID> = []
 
     /// Timers for notifications
+    @ObservationIgnored
     private var timers: [UUID: Timer] = [:]
 
     /// Display duration for notifications
     private let displayDuration: TimeInterval = 5.0
 
     /// Whether notifications are paused
+    @ObservationIgnored
     private var isPaused: Bool = false
 
+    @ObservationIgnored
     private var notificationManager = NotificationManager.shared
 
-    @Published var scrolledToTop: Bool = true
+    var scrolledToTop: Bool = true
 
     /// A filtered list of active notifications.
     var visibleNotifications: [CENotification] {
         activeNotifications.filter { !hiddenNotificationIds.contains($0.id) }
     }
 
+    @ObservationIgnored
     weak var workspace: WorkspaceDocument?
 
     /// Whether a notification should be visible in the panel
@@ -76,7 +81,6 @@ final class NotificationPanelViewModel: ObservableObject {
                     self.activeNotifications
                         .filter { !$0.isSticky }
                         .forEach { self.hiddenNotificationIds.insert($0.id) }
-                    self.objectWillChange.send()
 
                     // After notifications are hidden, reset scroll position
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -91,7 +95,6 @@ final class NotificationPanelViewModel: ObservableObject {
             withAnimation(.easeInOut(duration: 0.3)) {
                 isPresented = true
                 hiddenNotificationIds.removeAll()
-                objectWillChange.send()
             }
         }
     }
@@ -102,7 +105,6 @@ final class NotificationPanelViewModel: ObservableObject {
             self.activeNotifications
                 .filter { !$0.isSticky }
                 .forEach { self.hiddenNotificationIds.insert($0.id) }
-            self.objectWillChange.send()
         }
     }
 

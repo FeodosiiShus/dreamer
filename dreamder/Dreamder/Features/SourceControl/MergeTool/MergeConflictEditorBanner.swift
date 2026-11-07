@@ -2,8 +2,8 @@ import AppKit
 import SwiftUI
 
 struct MergeConflictEditorBanner: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
-    @ObservedObject private var center = MergeConflictsCenter.shared
+    @Environment(WorkspaceDocument.self) private var workspace
+    private let center = MergeConflictsCenter.shared
 
     let fileURL: URL
 

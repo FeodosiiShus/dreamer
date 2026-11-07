@@ -1,5 +1,5 @@
 import AppKit
-import Combine
+import CodeEditSourceEditor
 import SwiftUI
 
 final class QuickDocumentationPanel: NSPanel, NSWindowDelegate {
@@ -69,7 +69,7 @@ final class QuickDocumentationPanelHost {
     private struct Entry {
         weak var panel: QuickDocumentationPanel?
         var escapeMonitor: Any?
-        var cursorCancellable: AnyCancellable?
+        var cursorObservation: Task<Void, Never>?
     }
 
     private var entries: [ObjectIdentifier: Entry] = [:]
@@ -106,7 +106,7 @@ final class QuickDocumentationPanelHost {
             panel?.close()
         }
 
-        var entry = Entry(panel: panel, escapeMonitor: nil, cursorCancellable: nil)
+        var entry = Entry(panel: panel, escapeMonitor: nil, cursorObservation: nil)
         entry.escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) {
             [weak self, weak panel, weak controller] event in
             guard event.keyCode == 53 else { return event }
@@ -119,13 +119,16 @@ final class QuickDocumentationPanelHost {
             return nil
         }
         if let tab {
-            entry.cursorCancellable = tab.$cursorPositions
-                .dropFirst()
-                .removeDuplicates()
-                .sink { [weak self, weak panel, weak controller] _ in
+            entry.cursorObservation = Task { [weak self, weak panel, weak controller] in
+                var previous: [CursorPosition]?
+                for await positions in Observations({ tab.cursorPositions }) {
+                    let changed = previous.map { $0 != positions } ?? false
+                    previous = positions
+                    guard changed else { continue }
                     guard let panel, panel.isVisible, let controller else { return }
                     self?.close(in: controller)
                 }
+            }
         }
         panel.onClose = { [weak self] in
             self?.removeEntry(for: key)
@@ -142,6 +145,6 @@ final class QuickDocumentationPanelHost {
         if let monitor = entry.escapeMonitor {
             NSEvent.removeMonitor(monitor)
         }
-        entry.cursorCancellable?.cancel()
+        entry.cursorObservation?.cancel()
     }
 }

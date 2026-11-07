@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct MergeConflictsView: View {
-    @ObservedObject var model: MergeConflictsViewModel
+    let model: MergeConflictsViewModel
 
     private let sideColumnWidth: CGFloat = 190
 

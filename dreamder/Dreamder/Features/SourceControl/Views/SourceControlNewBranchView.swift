@@ -11,7 +11,7 @@ struct SourceControlNewBranchView: View {
     @Environment(\.dismiss)
     var dismiss
 
-    @EnvironmentObject var sourceControlManager: SourceControlManager
+    @Environment(SourceControlManager.self) private var sourceControlManager
 
     @State var name: String = ""
     @Binding var fromBranch: GitBranch?

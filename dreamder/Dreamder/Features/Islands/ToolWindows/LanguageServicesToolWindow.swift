@@ -86,12 +86,11 @@ struct LanguageServerRowModel: Identifiable, Equatable {
 }
 
 struct LanguageServicesToolWindow: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
-    @EnvironmentObject private var toolWindowManager: ToolWindowManager
+    @Environment(WorkspaceDocument.self) private var workspace
+    @Environment(ToolWindowManager.self) private var toolWindowManager
 
     @Service private var lspService: LSPService
 
-    @State private var rows: [LanguageServerRowModel] = []
     @State private var expandedLogs: Set<String> = []
     @State private var expandedMessages: Set<String> = []
     @State private var memory: [pid_t: UInt64] = [:]
@@ -147,14 +146,7 @@ struct LanguageServicesToolWindow: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
-            refreshRows()
             refreshMemory()
-        }
-        .onReceive(lspService.$languageClients) { _ in
-            Task { @MainActor in refreshRows() }
-        }
-        .onReceive(lspService.$serverStates) { _ in
-            Task { @MainActor in refreshRows() }
         }
         .onReceive(memoryTimer) { _ in
             refreshMemory()
@@ -173,8 +165,8 @@ struct LanguageServicesToolWindow: View {
         }
     }
 
-    private func refreshRows() {
-        rows = LanguageServerRowModel.rows(
+    private var rows: [LanguageServerRowModel] {
+        LanguageServerRowModel.rows(
             states: lspService.serverStates,
             clients: lspService.languageClients,
             workspacePath: workspacePath

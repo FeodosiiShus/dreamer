@@ -8,13 +8,14 @@
 import Foundation
 import AppKit
 
-class GitCloneViewModel: ObservableObject {
-    @Published var repoUrlStr = ""
-    @Published var isCloning: Bool = false
-    @Published var cloningProgress: GitClient.CloneProgress = .init(progress: 0, state: .initialState)
+@Observable
+class GitCloneViewModel {
+    var repoUrlStr = ""
+    var isCloning: Bool = false
+    var cloningProgress: GitClient.CloneProgress = .init(progress: 0, state: .initialState)
 
-    var gitClient: GitClient?
-    var cloningTask: Task<Void, Error>?
+    @ObservationIgnored var gitClient: GitClient?
+    @ObservationIgnored var cloningTask: Task<Void, Error>?
 
     /// Check if url is valid
     /// - Parameter url: Url to check

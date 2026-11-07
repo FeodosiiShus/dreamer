@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct ExtensionsListView: View {
-    @EnvironmentObject var manager: ExtensionManager
+    @Environment(ExtensionManager.self) private var manager
     @Binding var selection: Set<ExtensionInfo>
     @State var showActivatorView = false
 

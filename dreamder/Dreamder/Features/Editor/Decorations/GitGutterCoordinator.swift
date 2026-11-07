@@ -1,5 +1,5 @@
 import AppKit
-import Combine
+import Observation
 import CodeEditSourceEditor
 import CodeEditTextView
 
@@ -9,7 +9,7 @@ final class GitGutterCoordinator: TextViewCoordinator {
     private weak var workspace: WorkspaceDocument?
     private weak var markerView: GitGutterMarkerView?
 
-    private var cancellables: Set<AnyCancellable> = []
+    private var repositoryObservation: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
     private var headTask: Task<Void, Never>?
     private var debounceWorkItem: DispatchWorkItem?
@@ -38,16 +38,17 @@ final class GitGutterCoordinator: TextViewCoordinator {
         }
         self.workspace = workspace
         guard let manager = workspace.sourceControlManager else { return }
-        manager.$isGitRepository
-            .receive(on: RunLoop.main)
-            .sink { [weak self] isRepository in
+        repositoryObservation = Task { [weak self, weak manager] in
+            let states = Observations { [weak manager] in manager?.isGitRepository ?? false }
+            for await isRepository in states {
+                guard let self else { return }
                 if isRepository {
-                    self?.refreshFromGit()
+                    refreshFromGit()
                 } else {
-                    self?.stopTracking()
+                    stopTracking()
                 }
             }
-            .store(in: &cancellables)
+        }
     }
 
     func textViewDidChangeText(controller: TextViewController) {
@@ -62,7 +63,8 @@ final class GitGutterCoordinator: TextViewCoordinator {
         headTask = nil
         debounceWorkItem?.cancel()
         debounceWorkItem = nil
-        cancellables.removeAll()
+        repositoryObservation?.cancel()
+        repositoryObservation = nil
         markerView?.removeFromSuperview()
         markerView = nil
         controller = nil

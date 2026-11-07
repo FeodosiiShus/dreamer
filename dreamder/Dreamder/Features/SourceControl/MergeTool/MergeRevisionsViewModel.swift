@@ -1,28 +1,28 @@
 import AppKit
-import Combine
 import Foundation
 
 @MainActor
-final class MergeRevisionsViewModel: ObservableObject {
+@Observable
+final class MergeRevisionsViewModel {
     let path: String
 
-    @Published private(set) var merge: ThreeWayMerge?
-    @Published private(set) var context: MergeConflictContext?
-    @Published private(set) var leftPane = MergePaneContent.empty
-    @Published private(set) var rightPane = MergePaneContent.empty
-    @Published private(set) var resultPane = MergePaneContent.empty
-    @Published private(set) var contentRevision = 0
-    @Published private(set) var isLoading = true
-    @Published private(set) var isSaving = false
-    @Published private(set) var isConflictValid = true
-    @Published private(set) var errorMessage: String?
-    @Published private(set) var isResultEdited = false
-    @Published var resultText = ""
+    private(set) var merge: ThreeWayMerge?
+    private(set) var context: MergeConflictContext?
+    private(set) var leftPane = MergePaneContent.empty
+    private(set) var rightPane = MergePaneContent.empty
+    private(set) var resultPane = MergePaneContent.empty
+    private(set) var contentRevision = 0
+    private(set) var isLoading = true
+    private(set) var isSaving = false
+    private(set) var isConflictValid = true
+    private(set) var errorMessage: String?
+    private(set) var isResultEdited = false
+    var resultText = ""
 
     private let manager: SourceControlManager
     private let repository: MergeConflictRepository
-    private var entry: MergeConflictEntry?
-    private var revisionSet: MergeConflictRepository.RevisionSet?
+    @ObservationIgnored private var entry: MergeConflictEntry?
+    @ObservationIgnored private var revisionSet: MergeConflictRepository.RevisionSet?
 
     init?(workspace: WorkspaceDocument, path: String, autoLoad: Bool = true) {
         guard let manager = workspace.sourceControlManager,

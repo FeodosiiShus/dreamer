@@ -7,7 +7,6 @@
 
 import AppKit
 import SwiftUI
-import Combine
 
 extension DreamderWindowController {
     internal func setupToolbar() {
@@ -107,7 +106,7 @@ extension DreamderWindowController {
             label: "Git Branch",
             view: NSHostingView(
                 rootView: ToolbarBranchPicker(sourceControlManager: sourceControlManager)
-                    .environmentObject(workspace)
+                    .environment(workspace)
             )
         )
     }
@@ -127,7 +126,7 @@ extension DreamderWindowController {
             label: "Run",
             view: NSHostingView(
                 rootView: RunToolbarWidget(taskManager: taskManager)
-                    .environmentObject(workspace)
+                    .environment(workspace)
             )
         )
     }

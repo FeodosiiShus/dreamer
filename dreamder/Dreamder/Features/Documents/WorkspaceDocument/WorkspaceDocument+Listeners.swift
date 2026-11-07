@@ -6,11 +6,12 @@
 //
 
 import Foundation
-import Combine
+import Observation
 
-class WorkspaceNotificationModel: ObservableObject {
+@Observable
+class WorkspaceNotificationModel {
 
-    @Published var highlightedFileItem: CEWorkspaceFile?
+    var highlightedFileItem: CEWorkspaceFile?
 
     init() {
         highlightedFileItem = nil

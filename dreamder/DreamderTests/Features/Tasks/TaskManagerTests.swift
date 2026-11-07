@@ -27,6 +27,18 @@ class TaskManagerTests {
     }
 
     @Test
+    func selectedTaskFallsBackToFirstWithoutWritingSelectedTaskID() {
+        let task = CETask(name: "First", command: "true")
+        mockWorkspaceSettings.tasks.append(task)
+
+        #expect(taskManager.selectedTask?.id == task.id)
+        #expect(taskManager.selectedTaskID == nil)
+
+        taskManager.updateSelectedTaskID()
+        #expect(taskManager.selectedTaskID == task.id)
+    }
+
+    @Test
     func executeTaskInZsh() async throws {
         Settings.shared.preferences.terminal.shell = .zsh
 

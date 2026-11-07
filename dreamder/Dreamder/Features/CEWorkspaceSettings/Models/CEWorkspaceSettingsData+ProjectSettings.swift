@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-class ProjectSettings: ObservableObject, Codable {
+class ProjectSettings: Codable {
     var projectName: String = ""
 
     init() {}

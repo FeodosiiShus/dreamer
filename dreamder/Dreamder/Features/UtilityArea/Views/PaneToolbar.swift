@@ -9,7 +9,7 @@ import SwiftUI
 
 struct PaneToolbar<Content: View>: View {
     @ViewBuilder var content: Content
-    @EnvironmentObject var model: UtilityAreaTabViewModel
+    @Environment(UtilityAreaTabViewModel.self) private var model
     @Environment(\.paneArea)
     var paneArea: PaneArea?
 

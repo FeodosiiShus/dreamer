@@ -71,7 +71,7 @@ nonisolated enum NavigatorTab: WorkspacePanelTab {
         case .sourceControl:
             if let sourceControlManager = workspace.sourceControlManager {
                 SourceControlNavigatorToolbarBottom()
-                    .environmentObject(sourceControlManager)
+                    .environment(sourceControlManager)
             }
         case .search:
             FindNavigatorToolbarBottom()

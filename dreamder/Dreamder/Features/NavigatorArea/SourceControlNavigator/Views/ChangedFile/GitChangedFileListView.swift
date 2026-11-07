@@ -11,8 +11,8 @@ import SwiftUI
 struct GitChangedFileListView: View {
     @AppSettings(\.general.fileIconStyle)
     private var fileIconStyle
-    @EnvironmentObject private var workspace: WorkspaceDocument
-    @EnvironmentObject private var sourceControlManager: SourceControlManager
+    @Environment(WorkspaceDocument.self) private var workspace
+    @Environment(SourceControlManager.self) private var sourceControlManager
     @Binding private var changedFile: GitChangedFile
 
     @State private var staged: Bool

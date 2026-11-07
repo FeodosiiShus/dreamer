@@ -7,21 +7,19 @@
 
 import Foundation
 import SwiftUI
-import Combine
+import Observation
 
 /// The Preferences View Model. Accessible via the singleton "``SettingsModel/shared``".
-///
-/// **Usage:**
-/// ```swift
-/// @StateObject
-/// private var prefs: SettingsModel = .shared
-/// ```
-final class Settings: ObservableObject {
+@Observable
+@MainActor
+final class Settings {
 
     /// The publicly available singleton instance of ``SettingsModel``
     static let shared: Settings = .init()
 
-    private var storeTask: AnyCancellable?
+    @ObservationIgnored private var storeTask: Task<Void, Never>?
+
+    @ObservationIgnored private var pendingSave: Task<Void, Never>?
 
     private convenience init() {
         self.init(baseURL: Self.defaultBaseURL)
@@ -32,8 +30,25 @@ final class Settings: ObservableObject {
         self.preferences = .init()
         self.preferences = loadSettings()
 
-        self.storeTask = self.$preferences.throttle(for: 2, scheduler: RunLoop.main, latest: true).sink {
-            try? self.savePreferences($0)
+        self.storeTask = Task { [weak self] in
+            for await data in Observations({ [weak self] in self?.preferences }) {
+                guard !Task.isCancelled, let self, let data else { return }
+                self.scheduleSave(of: data)
+            }
+        }
+    }
+
+    isolated deinit {
+        storeTask?.cancel()
+        pendingSave?.cancel()
+    }
+
+    private func scheduleSave(of data: SettingsData) {
+        pendingSave?.cancel()
+        pendingSave = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            try? self?.savePreferences(data)
         }
     }
 
@@ -49,7 +64,7 @@ final class Settings: ObservableObject {
     /// Published instance of the ``Settings`` model.
     ///
     /// Changes are saved automatically.
-    @Published var preferences: SettingsData
+    var preferences: SettingsData
 
     /// Load and construct ``Settings`` model from
     /// `~/Library/Application Support/Dreamder/settings.json`

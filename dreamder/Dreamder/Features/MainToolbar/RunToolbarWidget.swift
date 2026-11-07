@@ -1,14 +1,16 @@
-import Combine
 import SwiftUI
 
 struct RunToolbarWidget: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
-    @ObservedObject var taskManager: TaskManager
+    @Environment(WorkspaceDocument.self) private var workspace
+    let taskManager: TaskManager
 
     @State private var isHoveringSelector = false
     @State private var menuAnchor = MainToolbarMenuAnchor()
-    @State private var isRunning = false
-    @State private var statusListener: AnyCancellable?
+
+    private var isRunning: Bool {
+        guard let id = taskManager.selectedTaskID else { return false }
+        return taskManager.activeTasks[id]?.status == .running
+    }
 
     private var selectedTask: CETask? {
         guard let id = taskManager.selectedTaskID else { return taskManager.availableTasks.first }
@@ -36,10 +38,6 @@ struct RunToolbarWidget: View {
                 action: { taskManager.terminateActiveTask() }
             )
         }
-        .onAppear(perform: updateRunningState)
-        .onChange(of: taskManager.selectedTaskID) { _, _ in updateRunningState() }
-        .onChange(of: taskManager.activeTasks) { _, _ in updateRunningState() }
-        .onDisappear { statusListener?.cancel() }
     }
 
     private var taskSelector: some View {
@@ -86,20 +84,5 @@ struct RunToolbarWidget: View {
         workspace.utilityAreaModel?.selectedTab = .debugConsole
         workspace.toolWindowManager.show(.run)
         taskManager.taskShowingOutput = taskManager.selectedTaskID
-    }
-
-    private func updateRunningState() {
-        statusListener?.cancel()
-        statusListener = nil
-        guard let id = taskManager.selectedTaskID, let activeTask = taskManager.activeTasks[id] else {
-            isRunning = false
-            return
-        }
-        isRunning = activeTask.status == .running
-        statusListener = activeTask.$status
-            .receive(on: RunLoop.main)
-            .sink { status in
-                isRunning = status == .running
-            }
     }
 }

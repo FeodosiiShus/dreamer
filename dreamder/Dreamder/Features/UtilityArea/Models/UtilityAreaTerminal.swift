@@ -6,14 +6,16 @@
 //
 
 import Foundation
+import Observation
 
-final class UtilityAreaTerminal: ObservableObject, Identifiable, Equatable {
+@Observable
+final class UtilityAreaTerminal: Identifiable, Equatable {
     let id: UUID
-    @Published var url: URL
-    @Published var title: String
-    @Published var terminalTitle: String
-    @Published var shell: Shell?
-    @Published var customTitle: Bool
+    var url: URL
+    var title: String
+    var terminalTitle: String
+    var shell: Shell?
+    var customTitle: Bool
 
     init(id: UUID, url: URL, title: String, shell: Shell?) {
         self.id = id

@@ -1,13 +1,14 @@
-import Combine
 import Foundation
+import Observation
 
+@Observable
 @MainActor
-final class SearchEverywhereSymbolIndex: ObservableObject {
-    @Published private(set) var symbols: [SearchEverywhereSymbol] = []
-    @Published private(set) var isBuilding = false
+final class SearchEverywhereSymbolIndex {
+    private(set) var symbols: [SearchEverywhereSymbol] = []
+    private(set) var isBuilding = false
 
-    private var indexedRoot: URL?
-    private var buildTask: Task<Void, Never>?
+    @ObservationIgnored private var indexedRoot: URL?
+    @ObservationIgnored private var buildTask: Task<Void, Never>?
 
     func ensureIndexed(root: URL) {
         if indexedRoot == root {

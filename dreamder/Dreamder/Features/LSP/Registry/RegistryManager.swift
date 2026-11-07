@@ -8,10 +8,10 @@
 import OSLog
 import Foundation
 import ZIPFoundation
-import Combine
 
 @MainActor
-final class RegistryManager: ObservableObject {
+@Observable
+final class RegistryManager {
     static let shared = RegistryManager()
 
     let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "RegistryManager")
@@ -26,11 +26,12 @@ final class RegistryManager: ObservableObject {
         string: "https://github.com/mason-org/mason-registry/releases/latest/download/checksums.txt"
     )
 
-    @Published var isDownloadingRegistry: Bool = false
+    var isDownloadingRegistry: Bool = false
     /// Holds an errors found while downloading the registry file. Needs a UI to dismiss, is logged.
-    @Published var downloadError: Error?
+    var downloadError: Error?
     /// Any currently running installation operation.
-    @Published var runningInstall: PackageManagerInstallOperation?
+    var runningInstall: PackageManagerInstallOperation?
+    @ObservationIgnored
     private var installTask: Task<Void, Never>?
 
     /// Indicates if the manager is currently installing a package.
@@ -39,12 +40,15 @@ final class RegistryManager: ObservableObject {
     }
 
     /// Reference to cached registry data. Will be removed from memory after a certain amount of time.
+    @ObservationIgnored
     private var cachedRegistry: CachedRegistry?
     /// Timer to clear expired cache
+    @ObservationIgnored
     private var cleanupTimer: Timer?
     /// Public access to registry items with cache management
-    @Published public private(set) var registryItems: [RegistryItem] = []
+    public private(set) var registryItems: [RegistryItem] = []
 
+    @ObservationIgnored
     @AppSettings(\.languageServers.installedLanguageServers)
     var installedLanguageServers: [String: SettingsData.InstalledLanguageServer]
 

@@ -6,16 +6,13 @@
 //
 
 import SwiftUI
-import Combine
 
-class SplitViewItem: ObservableObject {
+class SplitViewItem {
 
     var id: AnyHashable
     var item: NSSplitViewItem
 
     var collapsed: Binding<Bool>
-
-    var cancellables: [AnyCancellable] = []
 
     var observers: [NSKeyValueObservation] = []
 

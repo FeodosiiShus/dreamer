@@ -1,4 +1,3 @@
-import Combine
 import Foundation
 import Testing
 @testable import Dreamder
@@ -108,14 +107,12 @@ struct CodeFileViewSessionTests {
     func adoptingTriggerCharactersDoesNotInvalidateTheView() {
         let store = CodeFileViewSessionStore()
         let session = store.session(editorInstance: makeEditor(), codeFile: CodeFileDocument())
-        var invalidations = 0
-        let subscription = store.objectWillChange.sink { invalidations += 1 }
+        let generationBefore = store.generation
 
         _ = session.completionTriggerCharacters(requested: [".", "("])
         _ = session.completionTriggerCharacters(requested: [".", "("])
 
-        #expect(invalidations == 0)
-        subscription.cancel()
+        #expect(store.generation == generationBefore)
     }
 
     @Test

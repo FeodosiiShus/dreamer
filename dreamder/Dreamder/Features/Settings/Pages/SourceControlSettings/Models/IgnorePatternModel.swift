@@ -6,15 +6,17 @@
 //
 
 import Foundation
+import Observation
 
 /// A model to manage Git ignore patterns for a file, including loading, saving, and monitoring changes.
+@Observable
 @MainActor
-class IgnorePatternModel: ObservableObject {
+final class IgnorePatternModel {
     /// Indicates whether patterns are currently being loaded from the Git ignore file.
-    @Published var loadingPatterns: Bool = false
+    var loadingPatterns: Bool = false
 
     /// A collection of Git ignore patterns being managed by this model.
-    @Published var patterns: [GlobPattern] = [] {
+    var patterns: [GlobPattern] = [] {
         didSet {
             if !loadingPatterns {
                 savePatterns()
@@ -25,28 +27,24 @@ class IgnorePatternModel: ObservableObject {
     }
 
     /// Tracks the selected patterns by their unique identifiers (UUIDs).
-    @Published var selection: Set<UUID> = []
+    var selection: Set<UUID> = []
 
     /// A client for interacting with the Git configuration.
     private let gitConfig = GitConfigClient(shellClient: currentWorld.shellClient)
 
     /// A file system monitor for detecting changes to the Git ignore file.
-    private var fileMonitor: DispatchSourceFileSystemObject?
+    @ObservationIgnored private var fileMonitor: DispatchSourceFileSystemObject?
 
     /// Task tracking the current save operation
-    private var savingTask: Task<Void, Never>?
+    @ObservationIgnored private var savingTask: Task<Void, Never>?
 
-    init() {
-        Task {
-            try? await startFileMonitor()
-            await loadPatterns()
-        }
+    func start() async {
+        try? await startFileMonitor()
+        await loadPatterns()
     }
 
-    deinit {
-        Task { @MainActor [weak self] in
-            self?.stopFileMonitor()
-        }
+    isolated deinit {
+        stopFileMonitor()
     }
 
     /// Resolves the URL for the Git ignore file.
@@ -82,8 +80,8 @@ class IgnorePatternModel: ObservableObject {
             queue: DispatchQueue.main
         )
 
-        source.setEventHandler {
-            Task { await self.loadPatterns() }
+        source.setEventHandler { [weak self] in
+            Task { await self?.loadPatterns() }
         }
 
         source.setCancelHandler {

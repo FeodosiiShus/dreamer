@@ -15,7 +15,7 @@ struct FileCommands: Commands {
 
     @UpdatingWindowController var windowController
 
-    @FocusedObject var utilityAreaViewModel: UtilityAreaViewModel?
+    @FocusedValue(UtilityAreaViewModel.self) var utilityAreaViewModel: UtilityAreaViewModel?
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {

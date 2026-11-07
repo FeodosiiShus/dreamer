@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ShowUsagesView: View {
-    @ObservedObject var model: ShowUsagesViewModel
+    let model: ShowUsagesViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

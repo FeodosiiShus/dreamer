@@ -10,18 +10,16 @@ import SwiftUI
 struct UtilityAreaOutputSourcePicker: View {
     typealias Sources = UtilityAreaOutputView.Sources
 
-    @EnvironmentObject private var workspace: WorkspaceDocument
+    @Environment(WorkspaceDocument.self) private var workspace
 
     @AppSettings(\.developerSettings.showInternalDevelopmentInspector)
     var showInternalDevelopmentInspector
 
     @Binding var selectedSource: Sources?
 
-    @ObservedObject var extensionManager = ExtensionManager.shared
+    private let extensionManager = ExtensionManager.shared
 
     @Service var lspService: LSPService
-    @State private var updater: UUID = UUID()
-    @State private var languageServerClients: [LSPService.LanguageServerType] = []
 
     var body: some View {
         Picker("Output Source", selection: $selectedSource) {
@@ -58,23 +56,17 @@ struct UtilityAreaOutputSourcePicker: View {
                     .tag(Sources.devOutput)
             }
         }
-        .id(updater)
+        .id(pickerIdentity)
         .buttonStyle(.borderless)
         .labelsHidden()
         .controlSize(.small)
-        .onAppear {
-            updateLanguageServers(lspService.languageClients)
-        }
-        .onReceive(lspService.$languageClients) { clients in
-            updateLanguageServers(clients)
-        }
-        .onReceive(extensionManager.$extensions) { _ in
-            updater = UUID()
+        .onChange(of: clientContainerIdentities, initial: true) {
+            selectFirstSourceIfNeeded()
         }
     }
 
-    func updateLanguageServers(_ clients: [LSPService.ClientKey: LSPService.LanguageServerType]) {
-        languageServerClients = clients
+    private var languageServerClients: [LSPService.LanguageServerType] {
+        lspService.languageClients
             .compactMap { (key, value) in
                 if key.workspacePath == workspace.fileURL?.absolutePath {
                     return value
@@ -82,9 +74,20 @@ struct UtilityAreaOutputSourcePicker: View {
                 return nil
             }
             .sorted(by: { $0.languageId.rawValue < $1.languageId.rawValue })
+    }
+
+    private var clientContainerIdentities: [ObjectIdentifier] {
+        languageServerClients.map { ObjectIdentifier($0.logContainer) }
+    }
+
+    private var pickerIdentity: [AnyHashable] {
+        clientContainerIdentities.map { AnyHashable($0) }
+        + extensionManager.extensions.map { AnyHashable($0.id) }
+    }
+
+    private func selectFirstSourceIfNeeded() {
         if selectedSource == nil, let client = languageServerClients.first {
             selectedSource = Sources.languageServer(client.logContainer)
         }
-        updater = UUID()
     }
 }

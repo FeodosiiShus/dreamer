@@ -15,10 +15,10 @@ enum ProjectToolWindowViewMode: String, CaseIterable, Identifiable {
 }
 
 struct ProjectToolWindow: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
-    @EnvironmentObject private var toolWindowManager: ToolWindowManager
+    @Environment(WorkspaceDocument.self) private var workspace
+    @Environment(ToolWindowManager.self) private var toolWindowManager
 
-    @StateObject private var controllerReference = ProjectNavigatorControllerReference()
+    @State private var controllerReference = ProjectNavigatorControllerReference()
     @State private var viewMode: ProjectToolWindowViewMode = .project
     @FocusState private var filterFocused: Bool
     @State private var clearedInitialFocus = false
@@ -26,6 +26,7 @@ struct ProjectToolWindow: View {
     init() {}
 
     var body: some View {
+        @Bindable var workspace = workspace
         VStack(spacing: 0) {
             ToolWindowHeader(title: viewMode.title) {
                 Menu {

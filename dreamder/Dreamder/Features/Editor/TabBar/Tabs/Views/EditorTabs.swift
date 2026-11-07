@@ -10,8 +10,8 @@ import SwiftUI
 struct EditorTabs: View {
     typealias TabID = CEWorkspaceFile.ID
 
-    @EnvironmentObject private var editor: Editor
-    @EnvironmentObject private var editorManager: EditorManager
+    @Environment(Editor.self) private var editor
+    @Environment(EditorManager.self) private var editorManager
 
     @State private var draggingTabId: TabID?
 

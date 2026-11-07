@@ -12,7 +12,7 @@ import AboutWindow
 @main
 struct DreamderApp: App {
     @NSApplicationDelegateAdaptor var appdelegate: AppDelegate
-    @ObservedObject var settings = Settings.shared
+    let settings = Settings.shared
 
     init() {
         ShellEnvironment.shared.prepare()

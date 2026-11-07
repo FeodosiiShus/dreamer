@@ -1,9 +1,9 @@
 import AppKit
-import Combine
 import Foundation
 
+@Observable
 @MainActor
-final class MergeConflictsCenter: ObservableObject {
+final class MergeConflictsCenter {
     static let shared = MergeConflictsCenter()
 
     struct WorkspaceState: Equatable {
@@ -11,16 +11,16 @@ final class MergeConflictsCenter: ObservableObject {
         var context: MergeConflictContext?
     }
 
-    @Published private(set) var states: [String: WorkspaceState] = [:]
+    private(set) var states: [String: WorkspaceState] = [:]
 
     private final class Monitor {
-        var cancellable: AnyCancellable?
+        var observation: Task<Void, Never>?
         var task: Task<Void, Never>?
         var hasLoaded = false
         var lastHadConflicts = false
     }
 
-    private var monitors: [String: Monitor] = [:]
+    @ObservationIgnored private var monitors: [String: Monitor] = [:]
 
     private init() {}
 
@@ -29,14 +29,12 @@ final class MergeConflictsCenter: ObservableObject {
         guard monitors[key] == nil else { return }
 
         let monitor = Monitor()
-        monitor.cancellable = manager.$changedFiles
-            .receive(on: RunLoop.main)
-            .sink { [weak self, weak manager] _ in
-                MainActor.assumeIsolated {
-                    guard let self, let manager else { return }
-                    self.scheduleRefresh(manager: manager, allowAutoOpen: true)
-                }
+        monitor.observation = Task { [weak self, weak manager] in
+            for await _ in Observations({ [weak manager] in _ = manager?.changedFiles }) {
+                guard let self, let manager else { return }
+                scheduleRefresh(manager: manager, allowAutoOpen: true)
             }
+        }
         monitors[key] = monitor
         scheduleRefresh(manager: manager, allowAutoOpen: false)
     }

@@ -41,16 +41,17 @@ enum MarkdownPreviewLayout: String, CaseIterable, Identifiable {
     }
 }
 
-final class MarkdownPreviewLayoutStore: ObservableObject {
+@Observable
+final class MarkdownPreviewLayoutStore {
     static let shared = MarkdownPreviewLayoutStore()
 
     static let defaultLayout: MarkdownPreviewLayout = .editorAndPreview
     static let keyPrefix = "markdownPreviewLayout."
     static let markdownExtensions: Set<String> = ["md", "markdown"]
 
-    @Published private(set) var layouts: [String: MarkdownPreviewLayout] = [:]
+    private(set) var layouts: [String: MarkdownPreviewLayout] = [:]
 
-    private let defaults: UserDefaults
+    @ObservationIgnored private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults

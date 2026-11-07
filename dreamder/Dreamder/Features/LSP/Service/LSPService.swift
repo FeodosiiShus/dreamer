@@ -99,7 +99,8 @@ import CodeEditLanguages
 /// }
 /// ```
 @MainActor
-final class LSPService: ObservableObject {
+@Observable
+final class LSPService {
     typealias LanguageServerType = LanguageServer<CodeFileDocument>
 
     let logger: Logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "LSPService")
@@ -122,16 +123,19 @@ final class LSPService: ObservableObject {
     }
 
     /// Holds the active language clients
-    @Published var languageClients: [ClientKey: LanguageServerType] = [:]
-    @Published private(set) var serverStates: [ClientKey: ServerState] = [:]
+    var languageClients: [ClientKey: LanguageServerType] = [:]
+    private(set) var serverStates: [ClientKey: ServerState] = [:]
     /// Holds the language server configurations for all the installed language servers
     var languageConfigs: [LanguageIdentifier: LanguageServerBinary] = [:]
     /// Holds all the event listeners for each active language client
+    @ObservationIgnored
     var eventListeningTasks: [ClientKey: Task<Void, Never>] = [:]
 
+    @ObservationIgnored
     @AppSettings(\.developerSettings.lspBinaries)
     var lspBinaries
 
+    @ObservationIgnored
     @Environment(\.openWindow)
     private var openWindow
 

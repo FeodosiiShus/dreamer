@@ -15,11 +15,11 @@ struct EditorTabView: View {
     @Environment(\.isActiveEditor)
     private var isActiveEditor
 
-    @EnvironmentObject var workspace: WorkspaceDocument
-    @EnvironmentObject private var editorManager: EditorManager
-    @EnvironmentObject private var editor: Editor
+    @Environment(WorkspaceDocument.self) private var workspace
+    @Environment(EditorManager.self) private var editorManager
+    @Environment(Editor.self) private var editor
 
-    @StateObject private var fileObserver: EditorTabFileObserver
+    @State private var fileObserver: EditorTabFileObserver
 
     static var tabHeight: CGFloat {
         Islands.tabPillHeight
@@ -121,7 +121,7 @@ struct EditorTabView: View {
         self.index = index
         self.draggingTabId = draggingTabId
         self._closeButtonGestureActive = closeButtonGestureActive
-        self._fileObserver = StateObject(wrappedValue: EditorTabFileObserver(file: file))
+        self._fileObserver = State(wrappedValue: EditorTabFileObserver(file: file))
     }
 
     @ViewBuilder private var trailingSlot: some View {

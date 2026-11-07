@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct TaskOutputView: View {
-    @ObservedObject var activeTask: CEActiveTask
+    let activeTask: CEActiveTask
 
     var body: some View {
         if activeTask.output != nil, let workspaceURL = activeTask.workspaceURL {

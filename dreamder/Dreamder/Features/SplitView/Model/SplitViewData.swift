@@ -6,9 +6,11 @@
 //
 
 import SwiftUI
+import Observation
 
-final class SplitViewData: ObservableObject {
-    @Published var editorLayouts: [EditorLayout]
+@Observable
+final class SplitViewData {
+    var editorLayouts: [EditorLayout]
 
     var axis: Axis
 

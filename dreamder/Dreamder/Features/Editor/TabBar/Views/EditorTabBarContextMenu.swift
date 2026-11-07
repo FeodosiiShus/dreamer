@@ -23,9 +23,9 @@ struct EditorTabBarContextMenu: ViewModifier {
         self.isTemporary = isTemporary
     }
 
-    @EnvironmentObject var workspace: WorkspaceDocument
+    @Environment(WorkspaceDocument.self) private var workspace
 
-    @EnvironmentObject var tabs: Editor
+    @Environment(Editor.self) private var tabs
 
     @Environment(\.splitEditor)
     var splitEditor

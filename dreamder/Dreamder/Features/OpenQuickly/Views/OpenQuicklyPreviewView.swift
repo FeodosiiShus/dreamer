@@ -12,10 +12,10 @@ struct OpenQuicklyPreviewView: View {
     private let queue = DispatchQueue(label: "dev.dreamder.Dreamder.quickOpen.preview")
     private let item: CEWorkspaceFile
 
-    @StateObject var editorInstance: EditorInstance
-    @State var document: CodeFileDocument
+    @State private var editorInstance: EditorInstance
+    @State private var document: CodeFileDocument
 
-    @StateObject var undoRegistration: UndoManagerRegistration = UndoManagerRegistration()
+    @State private var undoRegistration = UndoManagerRegistration()
 
     init(item: CEWorkspaceFile) {
         self.item = item
@@ -24,14 +24,14 @@ struct OpenQuicklyPreviewView: View {
             withContentsOf: item.url,
             ofType: item.contentType?.identifier ?? "public.source-code"
         )
-        self._editorInstance = .init(wrappedValue: EditorInstance(workspace: nil, file: item))
+        self._editorInstance = State(wrappedValue: EditorInstance(workspace: nil, file: item))
         self._document = State(wrappedValue: doc ?? .init())
     }
 
     var body: some View {
         if let utType = document.utType, utType.conforms(to: .text) {
             CodeFileView(editorInstance: editorInstance, codeFile: document, isEditable: false)
-                .environmentObject(undoRegistration)
+                .environment(undoRegistration)
         } else {
             NonTextFileView(fileDocument: document)
         }

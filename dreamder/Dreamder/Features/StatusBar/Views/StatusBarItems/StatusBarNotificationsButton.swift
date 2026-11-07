@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct StatusBarNotificationsButton: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
-    @ObservedObject private var notificationManager = NotificationManager.shared
+    @Environment(WorkspaceDocument.self) private var workspace
+    private let notificationManager = NotificationManager.shared
 
     @State private var isHovering = false
 

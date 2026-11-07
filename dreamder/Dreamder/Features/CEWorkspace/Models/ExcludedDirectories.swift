@@ -1,5 +1,5 @@
-import Combine
 import Foundation
+import Observation
 import Synchronization
 
 nonisolated struct ExclusionRules: Sendable, Equatable {
@@ -50,7 +50,8 @@ nonisolated struct ExclusionRules: Sendable, Equatable {
     }
 }
 
-final class ExcludedDirectories: ObservableObject {
+@Observable
+final class ExcludedDirectories {
     static let excludedKeyPrefix = "dreamder.excludedDirectories."
     static let cancelledKeyPrefix = "dreamder.cancelledExclusions."
 
@@ -69,7 +70,7 @@ final class ExcludedDirectories: ObservableObject {
         }
     }
 
-    @Published private(set) var rules: ExclusionRules {
+    private(set) var rules: ExclusionRules {
         didSet { Self.register(rules) }
     }
 

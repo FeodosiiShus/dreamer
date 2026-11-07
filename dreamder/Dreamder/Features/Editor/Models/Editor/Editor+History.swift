@@ -39,14 +39,10 @@ extension Editor {
         }
     }
 
-    // TODO: move to @Observable so this works better
-    /// Warning: NOT published!
     var canGoBackInHistory: Bool {
         historyOffset != history.count - 1 && !history.isEmpty
     }
 
-    // TODO: move to @Observable so this works better
-    /// Warning: NOT published!
     var canGoForwardInHistory: Bool {
         historyOffset != 0
     }

@@ -6,15 +6,14 @@
 //
 
 import SwiftUI
-import Combine
 
 /// Wraps an ``OutlineViewController`` inside a `NSViewControllerRepresentable`
 struct ProjectNavigatorOutlineView: NSViewControllerRepresentable {
 
-    @EnvironmentObject var workspace: WorkspaceDocument
-    @EnvironmentObject var editorManager: EditorManager
+    @Environment(WorkspaceDocument.self) private var workspace
+    @Environment(EditorManager.self) private var editorManager
 
-    @StateObject var prefs: Settings = .shared
+    private let prefs = Settings.shared
 
     var controllerReference: ProjectNavigatorControllerReference?
 
@@ -53,36 +52,60 @@ struct ProjectNavigatorOutlineView: NSViewControllerRepresentable {
             self.workspace = workspace
             super.init()
 
-            workspace.listenerModel.$highlightedFileItem
-                .sink(receiveValue: { [weak self] fileItem in
+            highlightObservation = Task { [weak self, weak workspace] in
+                let highlightedFileItem = Observations({ [weak workspace] in
+                    workspace?.listenerModel.highlightedFileItem
+                })
+                for await fileItem in highlightedFileItem {
                     guard let fileItem else {
-                        return
+                        continue
                     }
                     self?.controller?.reveal(fileItem)
+                }
+            }
+            selectionObservation = Task { [weak self, weak workspace] in
+                let selectedFileID = Observations({ [weak workspace] in
+                    workspace?.editorManager?.activeEditor.selectedTab?.file.id
                 })
-                .store(in: &cancellables)
-            workspace.editorManager?.tabBarTabIdSubject
-                .sink { [weak self] editorInstance in
-                    self?.controller?.updateSelection(itemID: editorInstance?.file.id)
+                for await itemID in selectedFileID {
+                    self?.controller?.updateSelection(itemID: itemID)
                 }
-                .store(in: &cancellables)
-            workspace.$navigatorFilter
-                .throttle(for: 0.1, scheduler: RunLoop.main, latest: true)
-                .sink { [weak self] _ in
-                    self?.controller?.handleFilterChange()
+            }
+            filterObservation = Task { [weak self, weak workspace] in
+                let filters = Observations({ [weak workspace] in
+                    FilterState(
+                        name: workspace?.navigatorFilter,
+                        sourceControl: workspace?.sourceControlFilter,
+                        sortFoldersOnTop: workspace?.sortFoldersOnTop
+                    )
+                })
+                for await _ in filters {
+                    self?.scheduleFilterReload()
                 }
-                .store(in: &cancellables)
-            Publishers.Merge(workspace.$sourceControlFilter, workspace.$sortFoldersOnTop)
-                .throttle(for: 0.1, scheduler: RunLoop.main, latest: true)
-                .sink { [weak self] _ in
-                    self?.controller?.handleFilterChange()
-                }
-                .store(in: &cancellables)
+            }
         }
 
-        var cancellables: Set<AnyCancellable> = []
+        private struct FilterState: Equatable {
+            let name: String?
+            let sourceControl: Bool?
+            let sortFoldersOnTop: Bool?
+        }
+
+        var highlightObservation: Task<Void, Never>?
+        var selectionObservation: Task<Void, Never>?
+        var filterObservation: Task<Void, Never>?
+        var filterReload: Task<Void, Never>?
         weak var workspace: WorkspaceDocument?
         weak var controller: ProjectNavigatorViewController?
+
+        private func scheduleFilterReload() {
+            filterReload?.cancel()
+            filterReload = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(100))
+                guard !Task.isCancelled else { return }
+                self?.controller?.handleFilterChange()
+            }
+        }
 
         func fileManagerUpdated(updatedItems: Set<CEWorkspaceFile>) {
             guard let outlineView = controller?.outlineView else { return }
@@ -108,11 +131,16 @@ struct ProjectNavigatorOutlineView: NSViewControllerRepresentable {
         }
 
         isolated deinit {
+            highlightObservation?.cancel()
+            selectionObservation?.cancel()
+            filterObservation?.cancel()
+            filterReload?.cancel()
             workspace?.workspaceFileManager?.removeObserver(self)
         }
     }
 }
 
-final class ProjectNavigatorControllerReference: ObservableObject {
-    weak var controller: ProjectNavigatorViewController?
+@Observable
+final class ProjectNavigatorControllerReference {
+    @ObservationIgnored weak var controller: ProjectNavigatorViewController?
 }

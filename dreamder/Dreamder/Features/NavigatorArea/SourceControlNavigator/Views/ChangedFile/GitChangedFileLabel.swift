@@ -8,8 +8,8 @@
 import SwiftUI
 
 struct GitChangedFileLabel: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
-    @EnvironmentObject private var sourceControlManager: SourceControlManager
+    @Environment(WorkspaceDocument.self) private var workspace
+    @Environment(SourceControlManager.self) private var sourceControlManager
 
     let file: GitChangedFile
 
@@ -38,8 +38,8 @@ struct GitChangedFileLabel: View {
             fileURL: URL(filePath: "/Users/Dreamder/app.jsx"),
             originalFilename: nil
         ))
-        .environmentObject(SourceControlManager(workspaceURL: URL(filePath: "/Users/Dreamder"), editorManager: .init()))
-        .environmentObject(WorkspaceDocument())
+        .environment(SourceControlManager(workspaceURL: URL(filePath: "/Users/Dreamder"), editorManager: .init()))
+        .environment(WorkspaceDocument())
 
         GitChangedFileLabel(file: GitChangedFile(
             status: .none,
@@ -47,7 +47,7 @@ struct GitChangedFileLabel: View {
             fileURL: URL(filePath: "/Users/Dreamder/app.jsx"),
             originalFilename: "app2.jsx"
         ))
-        .environmentObject(SourceControlManager(workspaceURL: URL(filePath: "/Users/Dreamder"), editorManager: .init()))
-        .environmentObject(WorkspaceDocument())
+        .environment(SourceControlManager(workspaceURL: URL(filePath: "/Users/Dreamder"), editorManager: .init()))
+        .environment(WorkspaceDocument())
     }.padding()
 }

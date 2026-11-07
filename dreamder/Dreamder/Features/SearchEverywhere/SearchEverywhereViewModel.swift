@@ -1,21 +1,22 @@
 import AppKit
-import Combine
+import Observation
 import CodeEditSourceEditor
 import Foundation
 
+@Observable
 @MainActor
-final class SearchEverywhereViewModel: ObservableObject {
-    @Published private(set) var tab: SearchEverywhereTab
-    @Published var query: String = "" {
+final class SearchEverywhereViewModel {
+    private(set) var tab: SearchEverywhereTab
+    var query: String = "" {
         didSet {
             guard query != oldValue else { return }
             scheduleSearch()
         }
     }
-    @Published private(set) var sections: [SearchEverywhereSection] = []
-    @Published private(set) var selection: Int = 0
-    @Published private(set) var preview: SearchEverywherePreview?
-    @Published var showsPreview: Bool {
+    private(set) var sections: [SearchEverywhereSection] = []
+    private(set) var selection: Int = 0
+    private(set) var preview: SearchEverywherePreview?
+    var showsPreview: Bool {
         didSet {
             UserDefaults.standard.set(showsPreview, forKey: Self.previewDefaultsKey)
         }
@@ -23,21 +24,21 @@ final class SearchEverywhereViewModel: ObservableObject {
 
     let symbolIndex = SearchEverywhereSymbolIndex()
     let mode: SearchEverywhereMode
-    weak var workspace: WorkspaceDocument?
-    var dismiss: (() -> Void)?
+    @ObservationIgnored weak var workspace: WorkspaceDocument?
+    @ObservationIgnored var dismiss: (() -> Void)?
 
     private static let previewDefaultsKey = "dreamder.searchEverywhere.showPreview"
 
-    private var pools: [SearchEverywhereSectionKind: [SearchEverywhereItem]] = [:]
-    private var fileURLs: [URL] = []
-    private var filesRoot: URL?
-    private var hasLoadedFiles = false
-    private var loadFilesTask: Task<Void, Never>?
-    private var debounceTask: Task<Void, Never>?
-    private var textTask: Task<Void, Never>?
-    private var previewTask: Task<Void, Never>?
-    private var currentText = ""
-    private var cancellables = Set<AnyCancellable>()
+    @ObservationIgnored private var pools: [SearchEverywhereSectionKind: [SearchEverywhereItem]] = [:]
+    @ObservationIgnored private var fileURLs: [URL] = []
+    @ObservationIgnored private var filesRoot: URL?
+    @ObservationIgnored private var hasLoadedFiles = false
+    @ObservationIgnored private var loadFilesTask: Task<Void, Never>?
+    @ObservationIgnored private var debounceTask: Task<Void, Never>?
+    @ObservationIgnored private var textTask: Task<Void, Never>?
+    @ObservationIgnored private var previewTask: Task<Void, Never>?
+    @ObservationIgnored private var symbolsObservation: Task<Void, Never>?
+    @ObservationIgnored private var currentText = ""
 
     init(workspace: WorkspaceDocument?, mode: SearchEverywhereMode = .everywhere) {
         self.workspace = workspace
@@ -46,13 +47,21 @@ final class SearchEverywhereViewModel: ObservableObject {
         self.showsPreview = (UserDefaults.standard.object(forKey: Self.previewDefaultsKey) as? Bool ?? true)
             && mode == .everywhere
 
-        symbolIndex.$symbols
-            .dropFirst()
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
+        let symbolIndex = symbolIndex
+        symbolsObservation = Task { [weak self] in
+            var isInitialValue = true
+            for await _ in Observations({ symbolIndex.symbols }) {
+                if isInitialValue {
+                    isInitialValue = false
+                    continue
+                }
                 self?.scheduleSearch()
             }
-            .store(in: &cancellables)
+        }
+    }
+
+    isolated deinit {
+        symbolsObservation?.cancel()
     }
 
     var flatItems: [SearchEverywhereItem] {

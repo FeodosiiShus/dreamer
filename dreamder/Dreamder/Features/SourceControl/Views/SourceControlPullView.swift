@@ -11,7 +11,7 @@ struct SourceControlPullView: View {
     @Environment(\.dismiss)
     private var dismiss
 
-    @EnvironmentObject var sourceControlManager: SourceControlManager
+    @Environment(SourceControlManager.self) private var sourceControlManager
 
     let gitConfig = GitConfigClient(shellClient: currentWorld.shellClient)
 
@@ -20,12 +20,13 @@ struct SourceControlPullView: View {
     @State var preferRebaseWhenPulling: Bool = false
 
     var body: some View {
+        @Bindable var manager = sourceControlManager
         VStack(spacing: 0) {
             Form {
                 Section {
                     RemoteBranchPicker(
-                        branch: $sourceControlManager.operationBranch,
-                        remote: $sourceControlManager.operationRemote,
+                        branch: $manager.operationBranch,
+                        remote: $manager.operationRemote,
                         onSubmit: submit,
                         canCreateBranch: false
                     )
@@ -33,7 +34,7 @@ struct SourceControlPullView: View {
                     Text("Pull remote changes from")
                 }
                 Section {
-                    Toggle("Rebase local changes onto upstream changes", isOn: $sourceControlManager.operationRebase)
+                    Toggle("Rebase local changes onto upstream changes", isOn: $manager.operationRebase)
                 }
             }
             .formStyle(.grouped)

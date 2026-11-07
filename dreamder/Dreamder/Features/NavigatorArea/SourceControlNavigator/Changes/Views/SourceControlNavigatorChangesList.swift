@@ -9,13 +9,14 @@ import AppKit
 import SwiftUI
 
 struct SourceControlNavigatorChangesList: View {
-    @EnvironmentObject var workspace: WorkspaceDocument
-    @EnvironmentObject var sourceControlManager: SourceControlManager
+    @Environment(WorkspaceDocument.self) private var workspace
+    @Environment(SourceControlManager.self) private var sourceControlManager
 
     @State var selection = Set<GitChangedFile>()
 
     var body: some View {
-        List($sourceControlManager.changedFiles, selection: $selection) { $file in
+        @Bindable var manager = sourceControlManager
+        List($manager.changedFiles, selection: $selection) { $file in
             GitChangedFileListView(changedFile: $file)
                 .listRowSeparator(.hidden)
                 .padding(.vertical, -1)

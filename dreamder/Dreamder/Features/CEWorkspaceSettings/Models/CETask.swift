@@ -6,15 +6,17 @@
 //
 
 import Foundation
+import Observation
 
 /// Dreamder task that will be executed by the task manager.
-class CETask: ObservableObject, Identifiable, Hashable, Codable {
-    @Published var id = UUID()
-    @Published var name: String = ""
-    @Published var target: String = ""
-    @Published var workingDirectory: String = ""
-    @Published var command: String = ""
-    @Published var environmentVariables: [EnvironmentVariable]  = []
+@Observable
+class CETask: Identifiable, Hashable, Codable {
+    var id = UUID()
+    var name: String = ""
+    var target: String = ""
+    var workingDirectory: String = ""
+    var command: String = ""
+    var environmentVariables: [EnvironmentVariable]  = []
 
     init(
         name: String = "",

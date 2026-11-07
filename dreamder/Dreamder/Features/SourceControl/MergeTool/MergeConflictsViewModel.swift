@@ -1,23 +1,23 @@
 import AppKit
-import Combine
 import Foundation
 
 @MainActor
-final class MergeConflictsViewModel: ObservableObject {
+@Observable
+final class MergeConflictsViewModel {
     let workspace: WorkspaceDocument
     let repository: MergeConflictRepository
 
-    @Published private(set) var entries: [MergeConflictEntry] = []
-    @Published private(set) var context: MergeConflictContext?
-    @Published private(set) var selectedPaths: Set<String> = []
-    @Published private(set) var primaryPath: String?
-    @Published private(set) var isBusy = false
-    @Published private(set) var errorMessage: String?
+    private(set) var entries: [MergeConflictEntry] = []
+    private(set) var context: MergeConflictContext?
+    private(set) var selectedPaths: Set<String> = []
+    private(set) var primaryPath: String?
+    private(set) var isBusy = false
+    private(set) var errorMessage: String?
 
-    private var anchorPath: String?
+    @ObservationIgnored private var anchorPath: String?
 
     private let manager: SourceControlManager
-    private var cancellable: AnyCancellable?
+    @ObservationIgnored private var observation: Task<Void, Never>?
 
     init?(workspace: WorkspaceDocument) {
         guard let manager = workspace.sourceControlManager,
@@ -31,23 +31,25 @@ final class MergeConflictsViewModel: ObservableObject {
         let key = MergeConflictsCenter.workspaceKey(manager.workspaceURL)
         let center = MergeConflictsCenter.shared
         center.monitor(manager)
-        cancellable = center.$states
-            .receive(on: RunLoop.main)
-            .sink { [weak self] states in
-                MainActor.assumeIsolated {
-                    guard let self else { return }
-                    let state = states[key]
-                    self.entries = state?.entries ?? []
-                    if let context = state?.context {
-                        self.context = context
-                    }
-                    self.pruneSelection()
+        observation = Task { [weak self] in
+            for await _ in Observations({ _ = center.states }) {
+                guard let self else { return }
+                let state = center.states[key]
+                entries = state?.entries ?? []
+                if let context = state?.context {
+                    self.context = context
                 }
+                pruneSelection()
             }
+        }
 
         Task { [weak self] in
             await self?.reload()
         }
+    }
+
+    isolated deinit {
+        observation?.cancel()
     }
 
     var selectedEntries: [MergeConflictEntry] {

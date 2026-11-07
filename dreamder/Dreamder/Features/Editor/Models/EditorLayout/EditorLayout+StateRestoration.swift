@@ -45,7 +45,6 @@ extension EditorManager {
 
             self.editorLayout = state.groups
             self.activeEditor = activeEditor
-            switchToActiveEditor()
         } catch {
             logger.warning(
                 "Could not restore editor state from saved data: \(error.localizedDescription, privacy: .public)"

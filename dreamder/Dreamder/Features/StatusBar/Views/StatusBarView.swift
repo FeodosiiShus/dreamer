@@ -20,11 +20,13 @@ import SwiftUI
 /// host a terminal or additional debug information
 ///
 struct StatusBarView: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
-    @EnvironmentObject private var editorManager: EditorManager
-    @EnvironmentObject private var utilityAreaViewModel: UtilityAreaViewModel
+    @Environment(WorkspaceDocument.self) private var workspace
+    @Environment(EditorManager.self) private var editorManager
+    @Environment(UtilityAreaViewModel.self) private var utilityAreaViewModel
 
-    @State private var tab: EditorInstance?
+    private var tab: EditorInstance? {
+        editorManager.activeEditor.selectedTab
+    }
 
     static var height: CGFloat {
         Islands.statusBarHeight
@@ -55,18 +57,10 @@ struct StatusBarView: View {
         .frame(maxWidth: .infinity)
         .background(Color.clear)
         .onAppear {
-            updateTab()
             registerUtilityAreaCommand()
             SearchEverywhereRecentFilesStore.shared.startTracking(for: workspace)
         }
-        .onReceive(editorManager.tabBarTabIdSubject) { _ in
-            updateTab()
-        }
         .accessibilityElement(children: .contain)
-    }
-
-    private func updateTab() {
-        tab = editorManager.activeEditor.selectedTab
     }
 
     private func registerUtilityAreaCommand() {
@@ -80,7 +74,7 @@ struct StatusBarView: View {
 }
 
 private struct StatusBarProjectBreadcrumbs: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
+    @Environment(WorkspaceDocument.self) private var workspace
 
     let file: CEWorkspaceFile?
     let projectURL: URL?

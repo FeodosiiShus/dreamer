@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import Observation
 
 /// Manages task-related notifications.
 ///
@@ -114,10 +115,11 @@ import Combine
 /// ```
 ///
 /// - Important: Please refer to ``Dreamder/TaskNotificationModel`` and ensure you pass the correct values.
-final class TaskNotificationHandler: ObservableObject {
-    @Published private(set) var notifications: [TaskNotificationModel] = []
+@Observable
+final class TaskNotificationHandler {
+    private(set) var notifications: [TaskNotificationModel] = []
     var workspaceURL: URL?
-    var cancellables: Set<AnyCancellable> = []
+    @ObservationIgnored var cancellables: Set<AnyCancellable> = []
 
     enum Action: String {
         case create

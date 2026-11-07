@@ -25,13 +25,13 @@ struct UtilityAreaTerminalView: View {
     @Environment(\.colorScheme)
     private var colorScheme
 
-    @EnvironmentObject private var workspace: WorkspaceDocument
+    @Environment(WorkspaceDocument.self) private var workspace
 
-    @EnvironmentObject private var utilityAreaViewModel: UtilityAreaViewModel
+    @Environment(UtilityAreaViewModel.self) private var utilityAreaViewModel
 
     @State private var sidebarIsCollapsed = false
 
-    @StateObject private var themeModel: ThemeModel = .shared
+    private let themeModel: ThemeModel = .shared
 
     @State private var isMenuVisible = false
 
@@ -132,7 +132,7 @@ struct UtilityAreaTerminalView: View {
             .paneToolbar {
                 PaneToolbarSection {
                     UtilityAreaTerminalPicker(
-                        selectedIDs: $utilityAreaViewModel.selectedTerminals,
+                        selectedIDs: Bindable(utilityAreaViewModel).selectedTerminals,
                         terminals: utilityAreaViewModel.terminals
                     )
                     .opacity(tabState.leadingSidebarIsCollapsed ? 1 : 0)

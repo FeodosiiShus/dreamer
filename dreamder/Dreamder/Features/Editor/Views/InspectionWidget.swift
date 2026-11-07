@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct InspectionWidget: View {
-    @ObservedObject var editor: Editor
+    let editor: Editor
 
-    @EnvironmentObject private var workspace: WorkspaceDocument
+    @Environment(WorkspaceDocument.self) private var workspace
 
     @Service private var lspService: LSPService
 
@@ -19,10 +19,10 @@ struct InspectionWidget: View {
 private struct InspectionWidgetContent: View {
     let fileURL: URL?
 
-    @ObservedObject var store: DiagnosticsStore
-    @ObservedObject var lspService: LSPService
+    let store: DiagnosticsStore
+    let lspService: LSPService
 
-    @EnvironmentObject private var toolWindowManager: ToolWindowManager
+    @Environment(ToolWindowManager.self) private var toolWindowManager
 
     @State private var isHovering = false
 

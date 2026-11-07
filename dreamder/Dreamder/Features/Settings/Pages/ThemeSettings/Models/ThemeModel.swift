@@ -9,15 +9,11 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// The Theme View Model. Accessible via the singleton "``ThemeModel/shared``".
-///
-/// **Usage:**
-/// ```swift
-/// @StateObject
-/// private var themeModel: ThemeModel = .shared
-/// ```
-final class ThemeModel: ObservableObject {
+@Observable
+final class ThemeModel {
     static let shared: ThemeModel = .init()
 
+    @ObservationIgnored
     @AppSettings(\.theme)
     var settings
 
@@ -49,11 +45,11 @@ final class ThemeModel: ObservableObject {
     }
 
     /// System color scheme
-    @Published var colorScheme: ColorScheme = .light
+    var colorScheme: ColorScheme = .light
 
     /// Selected 'light' theme
     /// Used for auto-switching theme to match macOS system appearance
-    @Published var selectedLightTheme: Theme? {
+    var selectedLightTheme: Theme? {
         didSet {
             DispatchQueue.main.async {
                 Settings.shared
@@ -64,7 +60,7 @@ final class ThemeModel: ObservableObject {
 
     /// Selected 'dark' theme
     /// Used for auto-switching theme to match macOS system appearance
-    @Published var selectedDarkTheme: Theme? {
+    var selectedDarkTheme: Theme? {
         didSet {
             DispatchQueue.main.async {
                 Settings.shared
@@ -73,17 +69,17 @@ final class ThemeModel: ObservableObject {
         }
     }
 
-    @Published var detailsIsPresented: Bool = false
+    var detailsIsPresented: Bool = false
 
-    @Published var isAdding: Bool = false
+    var isAdding: Bool = false
 
-    @Published var detailsTheme: Theme?
+    var detailsTheme: Theme?
 
     /// An array of loaded ``Theme``.
-    @Published var themes: [Theme] = []
+    var themes: [Theme] = []
 
     /// The currently selected ``Theme``.
-    @Published var selectedTheme: Theme? {
+    var selectedTheme: Theme? {
         didSet {
             DispatchQueue.main.async {
                 Settings[\.theme].selectedTheme = self.selectedTheme?.name
@@ -91,7 +87,7 @@ final class ThemeModel: ObservableObject {
         }
     }
 
-    @Published var previousTheme: Theme?
+    var previousTheme: Theme?
 
     /// Only themes where ``Theme/appearance`` == ``Theme/ThemeType/dark``
     var darkThemes: [Theme] {

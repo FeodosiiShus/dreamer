@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct SourceControlNavigatorSyncView: View {
-    @ObservedObject var sourceControlManager: SourceControlManager
+    let sourceControlManager: SourceControlManager
     @State private var isLoading: Bool = false
 
     var body: some View {

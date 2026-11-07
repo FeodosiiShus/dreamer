@@ -6,17 +6,13 @@
 //
 
 import SwiftUI
-import Combine
 import CodeEditSourceEditor
 
 struct StatusBarCursorPositionLabel: View {
-    @EnvironmentObject private var editorManager: EditorManager
+    @Environment(EditorManager.self) private var editorManager
 
-    @State private var tab: EditorInstance?
-
-    /// Updates the source of cursor position notifications.
-    func updateSource() {
-        tab = editorManager.activeEditor.selectedTab
+    private var tab: EditorInstance? {
+        editorManager.activeEditor.selectedTab
     }
 
     var body: some View {
@@ -31,12 +27,6 @@ struct StatusBarCursorPositionLabel: View {
         .accessibilityIdentifier("CursorPositionLabel")
         .accessibilityAddTraits(.updatesFrequently)
         .onHover { isHovering($0) }
-        .onAppear {
-            updateSource()
-        }
-        .onReceive(editorManager.tabBarTabIdSubject) { _ in
-            updateSource()
-        }
     }
 
     struct LineLabel: View {
@@ -45,7 +35,9 @@ struct StatusBarCursorPositionLabel: View {
 
         let editorInstance: EditorInstance
 
-        @State private var cursorPositions: [CursorPosition] = []
+        private var cursorPositions: [CursorPosition] {
+            editorInstance.cursorPositions
+        }
 
         init(editorInstance: EditorInstance) {
             self.editorInstance = editorInstance
@@ -56,9 +48,6 @@ struct StatusBarCursorPositionLabel: View {
                 .font(Islands.smallFont)
                 .foregroundColor(Islands.secondaryForeground)
                 .lineLimit(1)
-                .onReceive(editorInstance.$cursorPositions) { newValue in
-                    self.cursorPositions = newValue
-                }
         }
 
         /// Finds the lines contained by a range in the currently selected document.

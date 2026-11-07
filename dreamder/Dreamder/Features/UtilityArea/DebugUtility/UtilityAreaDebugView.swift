@@ -25,12 +25,12 @@ struct UtilityAreaDebugView: View {
     @Environment(\.colorScheme)
     private var colorScheme
 
-    @EnvironmentObject private var utilityAreaViewModel: UtilityAreaViewModel
-    @EnvironmentObject private var taskManager: TaskManager
+    @Environment(UtilityAreaViewModel.self) private var utilityAreaViewModel
+    @Environment(TaskManager.self) private var taskManager
 
     @State private var scrollProxy: ScrollViewProxy?
 
-    @StateObject private var themeModel: ThemeModel = .shared
+    private let themeModel: ThemeModel = .shared
 
     @Namespace var bottomID
 
@@ -39,6 +39,7 @@ struct UtilityAreaDebugView: View {
     }
 
     var body: some View {
+        @Bindable var taskManager = taskManager
         UtilityAreaTabView(model: utilityAreaViewModel.tabViewModel) { _ in
             ZStack {
                 HStack { Spacer() }
@@ -123,7 +124,7 @@ struct UtilityAreaDebugView: View {
                 .accentColor(.secondary)
                 .paneToolbar { Spacer() } // Background
             }
-        }.onReceive(taskManager.$activeTasks) { newTasks in
+        }.onChange(of: taskManager.activeTasks, initial: true) { _, newTasks in
             if taskManager.taskShowingOutput == nil {
                 taskManager.taskShowingOutput = newTasks.first?.key
             }

@@ -27,8 +27,9 @@ nonisolated struct WorkspaceDiagnostic: Identifiable, Hashable, Sendable {
     }
 }
 
-final class DiagnosticsStore: ObservableObject {
-    @Published private(set) var diagnosticsByFile: [URL: [WorkspaceDiagnostic]] = [:]
+@Observable
+final class DiagnosticsStore {
+    private(set) var diagnosticsByFile: [URL: [WorkspaceDiagnostic]] = [:]
 
     var files: [URL] {
         diagnosticsByFile.keys.sorted { $0.path < $1.path }

@@ -6,21 +6,22 @@
 //
 
 import SwiftUI
-import Combine
+import Observation
 import SwiftTerm
 
 /// Stores the state of a task once it's executed
-class CEActiveTask: ObservableObject, Identifiable, Hashable {
+@Observable
+class CEActiveTask: Identifiable, Hashable {
     /// The current progress of the task.
-    @Published var output: CEActiveTaskTerminalView?
+    var output: CEActiveTaskTerminalView?
 
-    var hasOutputBeenConfigured: Bool = false
+    @ObservationIgnored var hasOutputBeenConfigured: Bool = false
 
     /// The status of the task.
-    @Published private(set) var status: CETaskStatus = .notRunning
+    private(set) var status: CETaskStatus = .notRunning
 
     /// The name of the associated task.
-    @ObservedObject var task: CETask
+    let task: CETask
 
     /// Prevents tasks overwriting each other.
     /// Say a user cancels one task, then runs it immediately, the cancel message should show and then the
@@ -33,14 +34,8 @@ class CEActiveTask: ObservableObject, Identifiable, Hashable {
 
     var workspaceURL: URL?
 
-    private var cancellables = Set<AnyCancellable>()
-
     init(task: CETask) {
         self.task = task
-
-        self.task.objectWillChange.sink { _ in
-            self.objectWillChange.send()
-        }.store(in: &cancellables)
     }
 
     @MainActor

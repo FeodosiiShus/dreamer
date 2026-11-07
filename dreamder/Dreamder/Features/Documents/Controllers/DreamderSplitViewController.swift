@@ -40,14 +40,14 @@ final class DreamderSplitViewController: NSSplitViewController {
             rootView: SettingsInjector {
                 WindowObserver(window: WindowBox(value: windowRef)) {
                     IslandsWorkspaceView()
-                        .environmentObject(workspace)
-                        .environmentObject(editorManager)
-                        .environmentObject(statusBarViewModel)
-                        .environmentObject(utilityAreaModel)
-                        .environmentObject(taskManager)
-                        .environmentObject(workspace.undoRegistration)
-                        .environmentObject(workspace.toolWindowManager)
-                        .environmentObjectIfPresent(workspace.sourceControlManager)
+                        .environment(workspace)
+                        .environment(editorManager)
+                        .environment(statusBarViewModel)
+                        .environment(utilityAreaModel)
+                        .environment(taskManager)
+                        .environment(workspace.undoRegistration)
+                        .environment(workspace.toolWindowManager)
+                        .environment(workspace.sourceControlManager)
                 }
             }
         )
@@ -65,16 +65,5 @@ final class DreamderSplitViewController: NSSplitViewController {
 
         ToolWindowLayout(workspace: workspace).apply(to: workspace.toolWindowManager)
         workspace.notificationPanel.updateToolbarItem()
-    }
-}
-
-private extension View {
-    @ViewBuilder
-    func environmentObjectIfPresent<T: ObservableObject>(_ object: T?) -> some View {
-        if let object {
-            environmentObject(object)
-        } else {
-            self
-        }
     }
 }

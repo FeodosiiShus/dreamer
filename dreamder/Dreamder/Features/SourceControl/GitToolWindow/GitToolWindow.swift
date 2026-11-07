@@ -2,8 +2,8 @@ import AppKit
 import SwiftUI
 
 struct GitToolWindow: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
-    @EnvironmentObject private var sourceControlManager: SourceControlManager
+    @Environment(WorkspaceDocument.self) private var workspace
+    @Environment(SourceControlManager.self) private var sourceControlManager
 
     @State private var viewModel = GitLogViewModel()
     @State private var branchesWidth: CGFloat = 210

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ProjectToolbarWidget: View {
-    @ObservedObject var workspace: WorkspaceDocument
+    let workspace: WorkspaceDocument
 
     @State private var isHovering = false
     @State private var menuAnchor = MainToolbarMenuAnchor()

@@ -7,17 +7,17 @@
 
 import AppKit
 import SwiftUI
-@preconcurrency import Combine
 import Foundation
 import LanguageServerProtocol
 
 @objc(WorkspaceDocument)
-final class WorkspaceDocument: NSDocument, ObservableObject, NSToolbarDelegate {
-    @Published var sortFoldersOnTop: Bool = true
+@Observable
+final class WorkspaceDocument: NSDocument, NSToolbarDelegate {
+    var sortFoldersOnTop: Bool = true
     /// A string used to filter the displayed files and folders in the project navigator area based on user input.
-    @Published var navigatorFilter: String = ""
+    var navigatorFilter: String = ""
     /// Whether the workspace only shows files with changes.
-    @Published var sourceControlFilter = false
+    var sourceControlFilter = false
 
     private var workspaceState: [String: Any] {
         get {
@@ -30,7 +30,7 @@ final class WorkspaceDocument: NSDocument, ObservableObject, NSToolbarDelegate {
         }
     }
 
-    var workspaceFileManager: CEWorkspaceFileManager?
+    @ObservationIgnored var workspaceFileManager: CEWorkspaceFileManager?
 
     var editorManager: EditorManager? = EditorManager()
     var statusBarViewModel: StatusBarViewModel? = StatusBarViewModel()
@@ -40,34 +40,24 @@ final class WorkspaceDocument: NSDocument, ObservableObject, NSToolbarDelegate {
     var commandsPaletteState: QuickActionsViewModel?
     var listenerModel: WorkspaceNotificationModel = .init()
     var sourceControlManager: SourceControlManager?
-    private(set) var excludedDirectories: ExcludedDirectories?
+    @ObservationIgnored private(set) var excludedDirectories: ExcludedDirectories?
 
-    var taskManager: TaskManager?
-    var workspaceSettingsManager: CEWorkspaceSettings?
-    var taskNotificationHandler: TaskNotificationHandler = TaskNotificationHandler()
+    @ObservationIgnored var taskManager: TaskManager?
+    @ObservationIgnored var workspaceSettingsManager: CEWorkspaceSettings?
+    @ObservationIgnored var taskNotificationHandler: TaskNotificationHandler = TaskNotificationHandler()
 
-    var undoRegistration: UndoManagerRegistration = UndoManagerRegistration()
+    @ObservationIgnored var undoRegistration: UndoManagerRegistration = UndoManagerRegistration()
 
     var notificationPanel = NotificationPanelViewModel()
     let toolWindowManager = ToolWindowManager()
     let diagnosticsStore = DiagnosticsStore()
-    private var cancellables = Set<AnyCancellable>()
 
     override init() {
         super.init()
         notificationPanel.workspace = self
-
-        // Observe changes to notification panel
-        notificationPanel.objectWillChange
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.objectWillChange.send()
-            }
-            .store(in: &cancellables)
     }
 
     isolated deinit {
-        cancellables.forEach { $0.cancel() }
         NotificationCenter.default.removeObserver(self)
     }
 
@@ -194,7 +184,6 @@ final class WorkspaceDocument: NSDocument, ObservableObject, NSToolbarDelegate {
         editorManager?.saveRestorationState(self)
         utilityAreaModel?.saveRestorationState(self)
 
-        cancellables.forEach({ $0.cancel() })
         statusBarViewModel = nil
         utilityAreaModel = nil
         searchState = nil

@@ -11,7 +11,7 @@ struct ThemeSettingsThemeRow: View {
     @Binding var theme: Theme
     var active: Bool
 
-    @ObservedObject private var themeModel: ThemeModel = .shared
+    private let themeModel: ThemeModel = .shared
 
     @State private var isHovering = false
 

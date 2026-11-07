@@ -7,8 +7,8 @@
 
 import SwiftUI
 
-struct WorkspacePanelView<Tab: WorkspacePanelTab, ViewModel: ObservableObject, BottomAccessory: View>: View {
-    @ObservedObject var viewModel: ViewModel
+struct WorkspacePanelView<Tab: WorkspacePanelTab, ViewModel: AnyObject & Observable, BottomAccessory: View>: View {
+    let viewModel: ViewModel
     @Binding var selectedTab: Tab?
     @Binding var tabItems: [Tab]
 

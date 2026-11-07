@@ -12,14 +12,14 @@ struct GitCheckoutBranchView: View {
     @Environment(\.dismiss)
     private var dismiss
 
-    @StateObject private var viewModel: GitCheckoutBranchViewModel
+    @State private var viewModel: GitCheckoutBranchViewModel
     private var openDocument: (URL) -> Void
 
     init(
         repoLocalPath: URL,
         openDocument: @escaping (URL) -> Void
     ) {
-        _viewModel = .init(wrappedValue: GitCheckoutBranchViewModel(repoPath: repoLocalPath))
+        _viewModel = State(wrappedValue: GitCheckoutBranchViewModel(repoPath: repoLocalPath))
         self.openDocument = openDocument
     }
     var body: some View {

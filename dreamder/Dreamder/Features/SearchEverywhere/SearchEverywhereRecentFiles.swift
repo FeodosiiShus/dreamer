@@ -1,5 +1,5 @@
-import Combine
 import Foundation
+import Observation
 
 struct SearchEverywhereRecentFileList {
     let limit: Int
@@ -32,11 +32,15 @@ final class SearchEverywhereRecentFilesStore {
     private final class Entry {
         weak var workspace: WorkspaceDocument?
         var list: SearchEverywhereRecentFileList
-        var cancellables: [AnyCancellable] = []
+        var observation: Task<Void, Never>?
 
         init(workspace: WorkspaceDocument, list: SearchEverywhereRecentFileList) {
             self.workspace = workspace
             self.list = list
+        }
+
+        isolated deinit {
+            observation?.cancel()
         }
     }
 
@@ -70,19 +74,15 @@ final class SearchEverywhereRecentFilesStore {
             seed(from: editorManager, into: entry, key: key)
         }
 
-        editorManager.tabBarTabIdSubject
-            .sink { [weak self, weak entry] tab in
-                guard let self, let entry, let url = tab?.file.url else { return }
+        entry.observation = Task { [weak self, weak entry, weak editorManager] in
+            let selectedURL = Observations({ [weak editorManager] in
+                editorManager?.activeEditor.selectedTab?.file.url
+            })
+            for await url in selectedURL {
+                guard let self, let entry, let url else { continue }
                 self.record(url, key: key, entry: entry)
             }
-            .store(in: &entry.cancellables)
-
-        editorManager.$activeEditor
-            .sink { [weak self, weak entry] editor in
-                guard let self, let entry, let url = editor.selectedTab?.file.url else { return }
-                self.record(url, key: key, entry: entry)
-            }
-            .store(in: &entry.cancellables)
+        }
     }
 
     private func seed(from editorManager: EditorManager, into entry: Entry, key: String) {

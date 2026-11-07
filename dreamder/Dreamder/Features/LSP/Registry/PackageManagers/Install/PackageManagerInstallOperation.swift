@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import Combine
+import Observation
 
 /// An executable install operation for installing a ``RegistryItem``.
 ///
@@ -15,7 +15,8 @@ import Combine
 ///
 /// If a step requires confirmation, the ``waitingForConfirmation`` value will be filled.
 @MainActor
-final class PackageManagerInstallOperation: ObservableObject, Identifiable {
+@Observable
+final class PackageManagerInstallOperation: Identifiable {
     enum RunningState {
         case none
         case running
@@ -56,17 +57,20 @@ final class PackageManagerInstallOperation: ObservableObject, Identifiable {
         }
     }
 
-    @Published var accumulatedOutput: [OutputItem] = []
-    @Published var currentStepIdx: Int = 0
-    @Published var error: Error?
-    @Published var progress: Progress
+    var accumulatedOutput: [OutputItem] = []
+    var currentStepIdx: Int = 0
+    var error: Error?
+    var progress: Progress
 
     /// If non-nil, indicates that this operation has halted and requires confirmation.
-    @Published public private(set) var waitingForConfirmation: String?
+    public private(set) var waitingForConfirmation: String?
 
     private let shellClient: ShellClient = .live()
+    @ObservationIgnored
     private var operationTask: Task<Void, Error>?
+    @ObservationIgnored
     private var confirmationContinuation: CheckedContinuation<Void, Never>?
+    @ObservationIgnored
     private var outputIdx = 0
 
     /// Create a new operation using a list of steps and a package description.

@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Observation
 import CodeEditSourceEditor
 import CodeEditTextView
 
@@ -30,6 +31,7 @@ final class GitBlameCoordinator: TextViewCoordinator {
     private var annotationView: GitBlameAnnotationView?
     private var displayedInlineText: String?
     private var cancellables = Set<AnyCancellable>()
+    private var repositoryObservation: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
     private var blameLines: [Int: GitBlameLine] = [:]
     private var caretLine = 1
@@ -50,6 +52,7 @@ final class GitBlameCoordinator: TextViewCoordinator {
 
     isolated deinit {
         observers.forEach { NotificationCenter.default.removeObserver($0) }
+        repositoryObservation?.cancel()
     }
 
     func prepareCoordinator(controller: TextViewController) {
@@ -86,6 +89,8 @@ final class GitBlameCoordinator: TextViewCoordinator {
         generation += 1
         isSubscribed = false
         cancellables.removeAll()
+        repositoryObservation?.cancel()
+        repositoryObservation = nil
         observers.forEach { NotificationCenter.default.removeObserver($0) }
         observers.removeAll()
         inlineView?.removeFromSuperview()
@@ -186,17 +191,19 @@ final class GitBlameCoordinator: TextViewCoordinator {
             .store(in: &cancellables)
 
         if let sourceControlManager = workspace?.sourceControlManager {
-            sourceControlManager.$isGitRepository
-                .receive(on: RunLoop.main)
-                .sink { [weak self] isRepository in
+            repositoryObservation = Task { [weak self, weak sourceControlManager] in
+                let states = Observations { [weak sourceControlManager] in
+                    sourceControlManager?.isGitRepository ?? false
+                }
+                for await isRepository in states {
                     guard let self else { return }
                     if isRepository {
-                        self.reload()
+                        reload()
                     } else {
-                        self.apply(lines: [])
+                        apply(lines: [])
                     }
                 }
-                .store(in: &cancellables)
+            }
         }
     }
 

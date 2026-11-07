@@ -6,13 +6,15 @@
 //
 
 import Foundation
+import Observation
 
 /// The model of the workspace settings for `Dreamder` that control the behavior of some functionality at the workspace
 /// level like the workspace name or defining tasks.  A `JSON` representation is persisted in the workspace's
 /// `./dreamder/settings.json`. file
-class CEWorkspaceSettingsData: ObservableObject, Codable {
-    @Published var project: ProjectSettings = .init()
-    @Published var tasks: [CETask] = []
+@Observable
+class CEWorkspaceSettingsData: Codable {
+    var project: ProjectSettings = .init()
+    var tasks: [CETask] = []
 
     init() { }
 

@@ -9,7 +9,7 @@ import SwiftUI
 
 /// A struct for settings
 struct SettingsView: View {
-    @StateObject private var model = SettingsViewModel()
+    @State private var model = SettingsViewModel()
 
     @State private var selectedPage: SettingsPage.Name = SettingsNavigation.defaultPage
     @State private var searchText: String = ""
@@ -41,7 +41,7 @@ struct SettingsView: View {
             }
         }
         .background(Islands.frame)
-        .environmentObject(model)
+        .environment(model)
         .onAppear {
             model.setKeyDownMonitor { event in
                 if event.keyCode == 111 {
@@ -99,11 +99,11 @@ struct SettingsView: View {
     }
 }
 
-class SettingsViewModel: ObservableObject {
-    @Published var backButtonVisible: Bool = false
+@Observable
+final class SettingsViewModel {
+    var backButtonVisible: Bool = false
 
-    /// Holds a monitor closure for the `keyDown` event
-    private var keyDownEventMonitor: Any?
+    @ObservationIgnored private var keyDownEventMonitor: Any?
 
     func setKeyDownMonitor(monitor: @escaping (NSEvent) -> NSEvent?) {
         removeKeyDownMonitor()

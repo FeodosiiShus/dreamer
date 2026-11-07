@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct FindNavigatorForm: View {
-    @ObservedObject private var state: WorkspaceDocument.SearchState
+    @Bindable private var state: WorkspaceDocument.SearchState
 
     @State private var selectedMode: [SearchModeModel] {
         didSet {
@@ -145,7 +145,7 @@ struct FindNavigatorForm: View {
                 .buttonStyle(.plain)
             }
         }
-        .onReceive(state.$shouldFocusSearchField) { shouldFocus in
+        .onChange(of: state.shouldFocusSearchField, initial: true) { _, shouldFocus in
             if shouldFocus {
                 isSearchFieldFocused = true
                 state.shouldFocusSearchField = false

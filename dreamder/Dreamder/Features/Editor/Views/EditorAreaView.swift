@@ -16,13 +16,13 @@ struct EditorAreaView: View {
     @AppSettings(\.general.dimEditorsWithoutFocus)
     var dimEditorsWithoutFocus
 
-    @ObservedObject var editor: Editor
+    let editor: Editor
 
     @FocusState.Binding var focus: Editor?
 
-    @EnvironmentObject private var editorManager: EditorManager
+    @Environment(EditorManager.self) private var editorManager
 
-    @EnvironmentObject private var workspace: WorkspaceDocument
+    @Environment(WorkspaceDocument.self) private var workspace
 
     @State var codeFile: (() -> CodeFileDocument?)?
 
@@ -46,7 +46,6 @@ struct EditorAreaView: View {
         if let selected = editor.selectedTab {
             if let codeFile = codeFile?() {
                 EditorAreaFileView(editorInstance: selected, codeFile: codeFile)
-                    .focusedObject(editor)
                     .opacity(dimEditorsWithoutFocus && editor != editorManager.activeEditor ? 0.5 : 1)
                     .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                         _ = handleDrop(providers: providers)
@@ -80,7 +79,7 @@ struct EditorAreaView: View {
             if shouldShowTabBar {
                 EditorTabBarView()
                     .id("TabBarView" + editor.id.uuidString)
-                    .environmentObject(editor)
+                    .environment(editor)
                     .environment(\.isActiveEditor, editor == editorManager.activeEditor)
             }
             if let fileURL = editor.selectedTab?.file.url {

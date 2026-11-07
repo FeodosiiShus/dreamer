@@ -27,54 +27,36 @@ import Combine
 /// ```
 @propertyWrapper
 struct UpdatingWindowController: DynamicProperty {
-    @StateObject var box = WindowControllerBox()
+    @State var box = WindowControllerBox()
 
     var wrappedValue: DreamderWindowController? {
         box.controller
     }
 
-    class WindowControllerBox: ObservableObject {
-        public private(set) weak var controller: DreamderWindowController?
+    @Observable
+    final class WindowControllerBox {
+        @ObservationIgnored private weak var weakController: DreamderWindowController?
+        // Needs to stick around between window changes.
+        @ObservationIgnored private var windowCancellable: AnyCancellable?
 
-        private var windowCancellable: AnyCancellable? // Needs to stick around between window changes.
-        private var cancellables: Set<AnyCancellable> = []
+        var controller: DreamderWindowController? {
+            get {
+                access(keyPath: \.controller)
+                return weakController
+            }
+            set {
+                withMutation(keyPath: \.controller) {
+                    weakController = newValue
+                }
+            }
+        }
 
         init() {
             windowCancellable = NSApp.publisher(for: \.keyWindow).receive(on: RunLoop.main).sink { [weak self] window in
                 // Fix an issue where NSMenuItems with custom views would trigger this callback.
                 guard window?.className != "NSPopupMenuWindow" else { return }
-                self?.setNewController(window?.windowController as? DreamderWindowController)
+                self?.controller = window?.windowController as? DreamderWindowController
             }
-        }
-
-        func setNewController(_ controller: DreamderWindowController?) {
-            cancellables.forEach { $0.cancel() }
-            cancellables.removeAll()
-
-            self.controller = controller
-
-            controller?.objectWillChange.sink { [weak self] in
-                self?.objectWillChange.send()
-            }
-            .store(in: &cancellables)
-
-            controller?.workspace?.utilityAreaModel?.objectWillChange.sink { [weak self] in
-                self?.objectWillChange.send()
-            }
-            .store(in: &cancellables)
-
-            let activeEditor = controller?.workspace?.editorManager?.activeEditor
-            activeEditor?.objectWillChange.sink { [weak self] in
-                self?.objectWillChange.send()
-            }
-            .store(in: &cancellables)
-
-            controller?.workspace?.taskManager?.objectWillChange.sink { [weak self] in
-                self?.objectWillChange.send()
-            }
-            .store(in: &cancellables)
-
-            self.objectWillChange.send()
         }
     }
 }

@@ -2,12 +2,12 @@ import AppKit
 import SwiftUI
 
 struct StructureToolWindow: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
-    @EnvironmentObject private var toolWindowManager: ToolWindowManager
+    @Environment(WorkspaceDocument.self) private var workspace
+    @Environment(ToolWindowManager.self) private var toolWindowManager
 
     @Service private var lspService: LSPService
 
-    @StateObject private var model = StructureViewModel()
+    @State private var model = StructureViewModel()
     @State private var collapsed: Set<String> = []
     @State private var selection: String?
     @FocusState private var isFocused: Bool

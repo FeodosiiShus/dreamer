@@ -1,15 +1,18 @@
 import AppKit
-import Combine
+import Observation
 
 @MainActor
-final class ShowUsagesViewModel: ObservableObject {
-    @Published private(set) var rows: [LSPUsageRow]
-    @Published var selectedIndex: Int = 0
+@Observable
+final class ShowUsagesViewModel {
+    private(set) var rows: [LSPUsageRow]
+    var selectedIndex: Int = 0
 
     let symbol: String
     let message: String?
 
+    @ObservationIgnored
     var dismiss: (() -> Void)?
+    @ObservationIgnored
     var openRow: ((LSPUsageRow) -> Void)?
 
     init(rows: [LSPUsageRow], symbol: String) {

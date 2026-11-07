@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import Combine
 
 private let f12Key = KeyEquivalent("\u{F70F}")
 

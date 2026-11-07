@@ -8,11 +8,11 @@
 import SwiftUI
 
 struct NotificationPanelView: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
+    @Environment(WorkspaceDocument.self) private var workspace
     @Environment(\.controlActiveState)
     private var controlActiveState
 
-    @ObservedObject private var notificationManager = NotificationManager.shared
+    private let notificationManager = NotificationManager.shared
     @FocusState private var isFocused: Bool
 
     // ID for the top anchor

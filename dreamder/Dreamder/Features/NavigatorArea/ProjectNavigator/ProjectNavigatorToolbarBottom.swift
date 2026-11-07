@@ -14,12 +14,13 @@ struct ProjectNavigatorToolbarBottom: View {
     @Environment(\.colorScheme)
     private var colorScheme
 
-    @EnvironmentObject var workspace: WorkspaceDocument
-    @EnvironmentObject var editorManager: EditorManager
+    @Environment(WorkspaceDocument.self) private var workspace
+    @Environment(EditorManager.self) private var editorManager
 
     @State var recentsFilter: Bool = false
 
     var body: some View {
+        @Bindable var workspace = workspace
         NavigatorFilterView(
             text: $workspace.navigatorFilter,
             hasValue: { !workspace.navigatorFilter.isEmpty || recentsFilter || workspace.sourceControlFilter },
@@ -52,6 +53,7 @@ struct ProjectNavigatorToolbarBottom: View {
     }
 
     @ViewBuilder private var trailingAccessories: some View {
+        @Bindable var workspace = workspace
         HStack(spacing: 0) {
             Toggle(isOn: $recentsFilter) {
                 Image(systemName: "clock")

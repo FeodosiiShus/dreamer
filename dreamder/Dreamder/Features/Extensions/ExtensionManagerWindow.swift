@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct ExtensionManagerWindow: Scene {
-    @ObservedObject var manager = ExtensionManager.shared
+    let manager = ExtensionManager.shared
 
     @State var selection = Set<ExtensionInfo>()
 
@@ -28,8 +28,8 @@ struct ExtensionManagerWindow: Scene {
                     Text("\(selection.count) selected")
                 }
             }
-            .environmentObject(manager)
-            .focusedObject(manager)
+            .environment(manager)
+            .focusedValue(manager)
         }
     }
 }

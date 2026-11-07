@@ -52,7 +52,7 @@ struct UtilityAreaOutputView: View {
         }
     }
 
-    @EnvironmentObject private var utilityAreaViewModel: UtilityAreaViewModel
+    @Environment(UtilityAreaViewModel.self) private var utilityAreaViewModel
 
     @State private var filterText: String = ""
     @State private var selectedSource: Sources?

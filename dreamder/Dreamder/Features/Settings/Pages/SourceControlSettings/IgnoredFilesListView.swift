@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct IgnoredFilesListView: View {
-    @StateObject private var model = IgnorePatternModel()
+    @State private var model = IgnorePatternModel()
 
     var body: some View {
         GlobPatternList(
@@ -18,5 +18,8 @@ struct IgnoredFilesListView: View {
             removePatterns: model.removePatterns,
             emptyMessage: "No ignored files"
         )
+        .task {
+            await model.start()
+        }
     }
 }

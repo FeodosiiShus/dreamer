@@ -8,8 +8,8 @@
 import SwiftUI
 
 struct TaskOutputActionsView: View {
-    @ObservedObject var activeTask: CEActiveTask
-    @ObservedObject var taskManager: TaskManager
+    let activeTask: CEActiveTask
+    let taskManager: TaskManager
     @Binding var scrollProxy: ScrollViewProxy?
 
     @Namespace var bottomID

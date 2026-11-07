@@ -9,9 +9,11 @@ import Foundation
 import OrderedCollections
 import DequeModule
 import AppKit
+import Observation
 import OSLog
 
-final class Editor: ObservableObject, Identifiable {
+@Observable
+final class Editor: Identifiable {
     enum EditorError: Error {
         case noWorkspaceAttached
     }
@@ -19,7 +21,7 @@ final class Editor: ObservableObject, Identifiable {
     typealias Tab = EditorInstance
 
     /// Set of open tabs.
-    @Published var tabs: OrderedSet<Tab> = [] {
+    var tabs: OrderedSet<Tab> = [] {
         didSet {
             let change = tabs.symmetricDifference(oldValue)
 
@@ -42,7 +44,7 @@ final class Editor: ObservableObject, Identifiable {
     /// The current offset in the history list.
     /// When set, updates the ``selectedTab`` to the tab indicated by the offset.
     /// See the ``historyOffsetDidChange()`` method for more details.
-    @Published var historyOffset: Int = 0 {
+    var historyOffset: Int = 0 {
         didSet {
             historyOffsetDidChange()
         }
@@ -50,17 +52,17 @@ final class Editor: ObservableObject, Identifiable {
 
     /// Maintains the list of tabs that have been switched to.
     /// - Warning: Use the ``addToHistory(_:)`` or ``clearFuture()`` methods to modify this. Do not modify directly.
-    @Published var history: Deque<CEWorkspaceFile> = []
+    var history: Deque<CEWorkspaceFile> = []
 
     /// Currently selected tab.
-    @Published private(set) var selectedTab: Tab?
+    private(set) var selectedTab: Tab?
 
-    @Published var temporaryTab: Tab?
+    var temporaryTab: Tab?
 
-    var id = UUID()
+    @ObservationIgnored var id = UUID()
 
-    weak var parent: SplitViewData?
-    weak var workspace: WorkspaceDocument?
+    @ObservationIgnored weak var parent: SplitViewData?
+    @ObservationIgnored weak var workspace: WorkspaceDocument?
 
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "Editor")
 

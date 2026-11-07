@@ -11,8 +11,8 @@ struct StartTaskToolbarButton: View {
     @Environment(\.controlActiveState)
     private var activeState
 
-    @ObservedObject var taskManager: TaskManager
-    @EnvironmentObject var workspace: WorkspaceDocument
+    let taskManager: TaskManager
+    @Environment(WorkspaceDocument.self) private var workspace
 
     var utilityAreaCollapsed: Bool {
         workspace.utilityAreaModel?.isCollapsed ?? true

@@ -1,5 +1,4 @@
 import AppKit
-import Combine
 import SwiftUI
 
 @MainActor
@@ -7,7 +6,7 @@ final class DiffViewerWindowController: NSWindowController, NSWindowDelegate {
     var onClose: (() -> Void)?
 
     private let model: DiffViewerViewModel
-    private var titleCancellable: AnyCancellable?
+    private var titleObservation: Task<Void, Never>?
 
     init(model: DiffViewerViewModel) {
         self.model = model
@@ -22,14 +21,19 @@ final class DiffViewerWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         super.init(window: window)
         window.delegate = self
-        titleCancellable = model.$title
-            .receive(on: RunLoop.main)
-            .sink { [weak window] title in
-                window?.title = title
+        titleObservation = Task { [weak window, model] in
+            for await title in Observations({ model.title }) {
+                guard let window else { return }
+                window.title = title
             }
+        }
         Task { [model] in
             await model.loadInitial()
         }
+    }
+
+    isolated deinit {
+        titleObservation?.cancel()
     }
 
     required init?(coder: NSCoder) {
@@ -72,7 +76,8 @@ final class DiffViewerWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        titleCancellable = nil
+        titleObservation?.cancel()
+        titleObservation = nil
         onClose?()
     }
 }

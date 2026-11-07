@@ -7,41 +7,35 @@
 
 import Combine
 import Foundation
+import Observation
 import DequeModule
 import os
 
-class EditorManager: ObservableObject {
+@Observable
+class EditorManager {
     let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "EditorManager")
 
     /// The complete editor layout.
-    @Published var editorLayout: EditorLayout
+    var editorLayout: EditorLayout
 
-    @Published var isFocusingActiveEditor: Bool
+    var isFocusingActiveEditor: Bool
 
     /// The Editor with active focus.
-    @Published var activeEditor: Editor {
+    var activeEditor: Editor {
         didSet {
             activeEditorHistory.prepend { [weak oldValue] in oldValue }
-            switchToActiveEditor()
         }
     }
 
     /// History of last-used editors.
-    var activeEditorHistory: Deque<() -> Editor?> = []
+    @ObservationIgnored var activeEditorHistory: Deque<() -> Editor?> = []
 
     /// notify listeners whenever tab selection changes on the active editor.
-    var tabBarTabIdSubject = PassthroughSubject<Editor.Tab?, Never>()
-    var cancellable: AnyCancellable?
+    @ObservationIgnored var tabBarTabIdSubject = PassthroughSubject<Editor.Tab?, Never>()
+    @ObservationIgnored private var selectionObservation: Task<Void, Never>?
 
-    // This caching mechanism is a temporary solution and is not optimized
-    @Published var updateCachedFlattenedEditors: Bool = true
-    var cachedFlettenedEditors: [Editor] = []
     var flattenedEditors: [Editor] {
-        if updateCachedFlattenedEditors {
-            cachedFlettenedEditors = self.getFlattened()
-            updateCachedFlattenedEditors = false
-        }
-        return cachedFlettenedEditors
+        getFlattened()
     }
 
     // MARK: - Init
@@ -52,7 +46,7 @@ class EditorManager: ObservableObject {
         self.activeEditorHistory.prepend { [weak tab] in tab }
         self.editorLayout = .horizontal(.init(.horizontal, editorLayouts: [.one(tab)]))
         self.isFocusingActiveEditor = false
-        switchToActiveEditor()
+        observeActiveSelection()
     }
 
     /// Initializes the editor manager's state to the "initial" state.
@@ -64,7 +58,6 @@ class EditorManager: ObservableObject {
         self.activeEditorHistory.prepend { [weak tab] in tab }
         self.editorLayout = .horizontal(.init(.horizontal, editorLayouts: [.one(tab)]))
         self.isFocusingActiveEditor = false
-        switchToActiveEditor()
     }
 
     /// Flattens the splitviews.
@@ -97,14 +90,18 @@ class EditorManager: ObservableObject {
         editor.openTab(file: item, asTemporary: asTemporary)
     }
 
-    /// bind active tap group to listen to file selection changes.
-    func switchToActiveEditor() {
-        cancellable?.cancel()
-        cancellable = nil
-        cancellable = activeEditor.$selectedTab
-            .sink { [weak self] tab in
-                self?.tabBarTabIdSubject.send(tab)
+    private func observeActiveSelection() {
+        selectionObservation = Task { [weak self] in
+            let selections = Observations { [weak self] in self?.activeEditor.selectedTab }
+            for await tab in selections {
+                guard let self else { return }
+                tabBarTabIdSubject.send(tab)
             }
+        }
+    }
+
+    isolated deinit {
+        selectionObservation?.cancel()
     }
 
     // MARK: - Close Editor
@@ -118,8 +115,6 @@ class EditorManager: ObservableObject {
         }
 
         flatten()
-        objectWillChange.send()
-        updateCachedFlattenedEditors = true
     }
 
     /// Set a new active editor.

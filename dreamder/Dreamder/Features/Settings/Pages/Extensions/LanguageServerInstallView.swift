@@ -11,9 +11,9 @@ import SwiftUI
 struct LanguageServerInstallView: View {
     @Environment(\.dismiss)
     var dismiss
-    @EnvironmentObject private var registryManager: RegistryManager
+    @Environment(RegistryManager.self) private var registryManager
 
-    @ObservedObject var operation: PackageManagerInstallOperation
+    let operation: PackageManagerInstallOperation
 
     var body: some View {
         VStack(spacing: 0) {
@@ -200,7 +200,7 @@ struct LanguageServerInstallView: View {
                         }
                     }
                 }
-                .onReceive(operation.$accumulatedOutput) { output in
+                .onChange(of: operation.accumulatedOutput) { _, output in
                     DispatchQueue.main.async {
                         withAnimation(.linear(duration: 0.1)) {
                             proxy.scrollTo(output.last?.id)

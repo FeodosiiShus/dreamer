@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import Combine
+import Observation
 
 /// This model is injected into each ``PackageManagerInstallStep`` when executing a ``PackageManagerInstallOperation``.
 /// A single model is used for each step. Output is collected by the ``PackageManagerInstallOperation``.
@@ -14,14 +14,15 @@ import Combine
 /// Yields output into an async stream, and provides common helper methods for exec-ing commands, creating
 /// directories, etc.
 @MainActor
-final class PackageManagerProgressModel: ObservableObject {
+@Observable
+final class PackageManagerProgressModel {
     enum OutputItem {
         case status(String)
         case output(String)
     }
 
     let outputStream: AsyncStream<OutputItem>
-    @Published var progress: Progress
+    var progress: Progress
 
     private let shellClient: ShellClient
     private let outputContinuation: AsyncStream<OutputItem>.Continuation

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct QuickDocumentationView: View {
-    @ObservedObject var model: QuickDocumentationViewModel
+    let model: QuickDocumentationViewModel
 
     var body: some View {
         ScrollView(.vertical) {

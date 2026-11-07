@@ -20,10 +20,10 @@ struct ToolbarBranchPicker: View {
 }
 
 private struct ToolbarBranchPickerContent: View {
-    @ObservedObject var sourceControlManager: SourceControlManager
-    @EnvironmentObject private var workspace: WorkspaceDocument
+    let sourceControlManager: SourceControlManager
+    @Environment(WorkspaceDocument.self) private var workspace
 
-    @StateObject private var anchor = ToolbarPopupAnchor()
+    @State private var anchor = ToolbarPopupAnchor()
     @State private var isHovering = false
 
     var body: some View {

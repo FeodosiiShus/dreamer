@@ -1,5 +1,5 @@
 import AppKit
-import Combine
+import Observation
 import CodeEditSourceEditor
 import CodeEditTextView
 import SwiftUI
@@ -11,7 +11,7 @@ final class DiagnosticHighlightCoordinator: TextViewCoordinator {
     private let fileURL: URL?
     private weak var controller: TextViewController?
     private weak var store: DiagnosticsStore?
-    private var cancellables: Set<AnyCancellable> = []
+    private var storeObservation: Task<Void, Never>?
     private var applyWorkItem: DispatchWorkItem?
 
     init(codeFile: CodeFileDocument) {
@@ -24,13 +24,15 @@ final class DiagnosticHighlightCoordinator: TextViewCoordinator {
 
     func controllerDidAppear(controller: TextViewController) {
         guard store == nil, let fileURL, let workspace = fileURL.findWorkspace() else { return }
-        store = workspace.diagnosticsStore
-        workspace.diagnosticsStore.$diagnosticsByFile
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.scheduleApply()
+        let diagnosticsStore = workspace.diagnosticsStore
+        store = diagnosticsStore
+        storeObservation = Task { [weak self, weak diagnosticsStore] in
+            let changes = Observations { [weak diagnosticsStore] in diagnosticsStore?.diagnosticsByFile }
+            for await _ in changes {
+                guard let self else { return }
+                scheduleApply()
             }
-            .store(in: &cancellables)
+        }
         scheduleApply()
     }
 
@@ -41,7 +43,8 @@ final class DiagnosticHighlightCoordinator: TextViewCoordinator {
     func destroy() {
         applyWorkItem?.cancel()
         applyWorkItem = nil
-        cancellables.removeAll()
+        storeObservation?.cancel()
+        storeObservation = nil
         removeEmphases()
         store = nil
         controller = nil

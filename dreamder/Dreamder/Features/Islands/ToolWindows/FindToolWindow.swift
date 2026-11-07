@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct FindToolWindow: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
-    @EnvironmentObject private var toolWindowManager: ToolWindowManager
+    @Environment(WorkspaceDocument.self) private var workspace
+    @Environment(ToolWindowManager.self) private var toolWindowManager
 
     init() {}
 

@@ -2,10 +2,10 @@ import AppKit
 import SwiftUI
 
 struct MergeRevisionsView: View {
-    @ObservedObject var model: MergeRevisionsViewModel
+    let model: MergeRevisionsViewModel
     let onClose: () -> Void
 
-    @StateObject private var scrollSync = MergeScrollCoordinator()
+    @State private var scrollSync = MergeScrollCoordinator()
 
     var body: some View {
         VStack(spacing: 0) {

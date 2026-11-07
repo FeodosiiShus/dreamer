@@ -4,42 +4,40 @@ import SwiftUI
 
 @propertyWrapper
 struct MergeConflictsMenuState: DynamicProperty {
-    @StateObject private var store = Store()
+    @State private var store = Store()
 
     var wrappedValue: Bool { store.hasUnmergedFiles }
 
-    final class Store: ObservableObject {
-        @Published private(set) var hasUnmergedFiles = false
+    func update() {
+        store.start()
+    }
 
-        private var cancellables: Set<AnyCancellable> = []
+    @Observable
+    final class Store {
+        private(set) var hasUnmergedFiles = false
 
-        init() {
-            DispatchQueue.main.async { [weak self] in
-                self?.subscribe()
+        @ObservationIgnored private var statesObservation: Task<Void, Never>?
+        @ObservationIgnored private var keyWindowCancellable: AnyCancellable?
+
+        func start() {
+            guard statesObservation == nil else { return }
+            statesObservation = Task { [weak self] in
+                for await _ in Observations({ _ = MergeConflictsCenter.shared.states }) {
+                    guard let self else { return }
+                    refresh()
+                }
             }
+            keyWindowCancellable = NSApp.publisher(for: \.keyWindow)
+                .receive(on: RunLoop.main)
+                .sink { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        self?.refresh()
+                    }
+                }
         }
 
-        private func subscribe() {
-            MainActor.assumeIsolated {
-                let center = MergeConflictsCenter.shared
-                center.$states
-                    .receive(on: RunLoop.main)
-                    .sink { [weak self] _ in
-                        MainActor.assumeIsolated {
-                            self?.refresh()
-                        }
-                    }
-                    .store(in: &cancellables)
-                NSApp.publisher(for: \.keyWindow)
-                    .receive(on: RunLoop.main)
-                    .sink { [weak self] _ in
-                        MainActor.assumeIsolated {
-                            self?.refresh()
-                        }
-                    }
-                    .store(in: &cancellables)
-                refresh()
-            }
+        isolated deinit {
+            statesObservation?.cancel()
         }
 
         @MainActor

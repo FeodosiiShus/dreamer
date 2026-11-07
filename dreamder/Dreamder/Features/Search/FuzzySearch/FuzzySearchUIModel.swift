@@ -6,16 +6,18 @@
 //
 
 import Foundation
-import Combine
+import AsyncAlgorithms
+import Observation
 
+@Observable
 @MainActor
-final class FuzzySearchUIModel<Element: FuzzySearchable>: ObservableObject {
-    @Published var items: [Element]?
+final class FuzzySearchUIModel<Element: FuzzySearchable> {
+    var items: [Element]?
 
-    private var allItems: [Element] = []
-    private var textStream: AsyncStream<String>
-    private var textStreamContinuation: AsyncStream<String>.Continuation
-    private var searchTask: Task<Void, Never>?
+    @ObservationIgnored private var allItems: [Element] = []
+    @ObservationIgnored private var textStream: AsyncStream<String>
+    @ObservationIgnored private var textStreamContinuation: AsyncStream<String>.Continuation
+    @ObservationIgnored private var searchTask: Task<Void, Never>?
 
     init(debounceTime: Duration = .milliseconds(50)) {
         (textStream, textStreamContinuation) = AsyncStream<String>.makeStream()

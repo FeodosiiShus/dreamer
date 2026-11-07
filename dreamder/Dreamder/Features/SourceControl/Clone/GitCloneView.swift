@@ -7,13 +7,12 @@
 
 import SwiftUI
 import Foundation
-import Combine
 
 struct GitCloneView: View {
     @Environment(\.dismiss)
     private var dismiss
 
-    @StateObject private var viewModel: GitCloneViewModel = .init()
+    @State private var viewModel = GitCloneViewModel()
 
     private let openBranchView: (URL) -> Void
     private let openDocument: (URL) -> Void

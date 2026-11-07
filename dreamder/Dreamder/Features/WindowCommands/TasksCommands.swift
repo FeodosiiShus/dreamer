@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import Combine
 
 struct TasksCommands: Commands {
     @UpdatingWindowController var windowController: DreamderWindowController?
@@ -15,9 +14,10 @@ struct TasksCommands: Commands {
         windowController?.workspace?.taskManager
     }
 
-    @State private var activeTaskStatus: CETaskStatus = .notRunning
-    @State private var taskManagerListener: AnyCancellable?
-    @State private var statusListener: AnyCancellable?
+    private var activeTaskStatus: CETaskStatus {
+        guard let taskManager else { return .notRunning }
+        return taskManager.activeTasks[taskManager.selectedTaskID ?? UUID()]?.status ?? .notRunning
+    }
 
     var body: some Commands {
         CommandMenu("Tasks") {
@@ -38,11 +38,6 @@ struct TasksCommands: Commands {
                 taskManager?.terminateActiveTask()
             }
             .keyboardShortcut(".")
-            .onChange(of: windowController) { _, _ in
-                taskManagerListener = taskManager?.objectWillChange.sink {
-                    updateStatusListener()
-                }
-            }
             .disabled(activeTaskStatus != .running)
 
             Button("Show \(selectedTaskName) Output") {
@@ -76,19 +71,6 @@ struct TasksCommands: Commands {
                 openSettings()
             }
             .disabled(windowController == nil)
-        }
-    }
-
-    /// Update the ``statusListener`` to listen to a potentially new active task.
-    private func updateStatusListener() {
-        statusListener?.cancel()
-        guard let taskManager else { return }
-
-        activeTaskStatus = taskManager.activeTasks[taskManager.selectedTaskID ?? UUID()]?.status ?? .notRunning
-        guard let id = taskManager.selectedTaskID else { return }
-
-        statusListener = taskManager.activeTasks[id]?.$status.sink { newValue in
-            activeTaskStatus = newValue
         }
     }
 

@@ -15,8 +15,9 @@ final class BranchesPopupRowAnchors {
     }
 }
 
-final class ToolbarPopupAnchor: ObservableObject {
-    weak var view: NSView?
+@Observable
+final class ToolbarPopupAnchor {
+    @ObservationIgnored weak var view: NSView?
 }
 
 struct ToolbarPopupAnchorView: NSViewRepresentable {

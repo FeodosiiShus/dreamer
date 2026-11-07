@@ -2,14 +2,15 @@ import AppKit
 import Foundation
 
 @MainActor
-final class MergeScrollCoordinator: ObservableObject {
+@Observable
+final class MergeScrollCoordinator {
     private final class Registration {
         weak var scrollView: NSScrollView?
         var observer: NSObjectProtocol?
     }
 
-    private var registrations: [String: Registration] = [:]
-    private var isSyncing = false
+    @ObservationIgnored private var registrations: [String: Registration] = [:]
+    @ObservationIgnored private var isSyncing = false
 
     isolated deinit {
         for registration in registrations.values {

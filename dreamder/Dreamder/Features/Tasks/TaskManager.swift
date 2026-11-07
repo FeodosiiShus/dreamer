@@ -6,45 +6,47 @@
 //
 
 import SwiftUI
-import Combine
+import Observation
 
 /// This class handles the execution of tasks
 @MainActor
-class TaskManager: ObservableObject {
-    @Published var activeTasks: [UUID: CEActiveTask] = [:]
-    @Published var selectedTaskID: UUID?
-    @Published var taskShowingOutput: UUID?
+@Observable
+class TaskManager {
+    var activeTasks: [UUID: CEActiveTask] = [:]
+    var selectedTaskID: UUID?
+    var taskShowingOutput: UUID?
 
-    @ObservedObject var workspaceSettings: CEWorkspaceSettingsData
+    let workspaceSettings: CEWorkspaceSettingsData
 
     private var workspaceURL: URL?
-    private var settingsListener: AnyCancellable?
+    @ObservationIgnored private var settingsTask: Task<Void, Never>?
 
     init(workspaceSettings: CEWorkspaceSettingsData, workspaceURL: URL?) {
         self.workspaceURL = workspaceURL
         self.workspaceSettings = workspaceSettings
+        startObservingSettings()
+    }
 
-        settingsListener = workspaceSettings.$tasks
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.updateSelectedTaskID()
+    isolated deinit {
+        settingsTask?.cancel()
+    }
+
+    private func startObservingSettings() {
+        let workspaceSettings = workspaceSettings
+        settingsTask = Task { [weak self] in
+            let changes = Observations { workspaceSettings.tasks }
+            for await _ in changes {
+                guard let self else { return }
+                self.updateSelectedTaskID()
             }
+        }
     }
 
     var selectedTask: CETask? {
         if let selectedTaskID {
             return availableTasks.first { $0.id == selectedTaskID }
-        } else {
-            if let newSelectedTask = availableTasks.first {
-                Task {
-                    await MainActor.run {
-                        self.selectedTaskID = newSelectedTask.id
-                    }
-                }
-                return newSelectedTask
-            }
         }
-        return nil
+        return availableTasks.first
     }
 
     var availableTasks: [CETask] {
@@ -56,7 +58,7 @@ class TaskManager: ObservableObject {
     }
 
     func updateSelectedTaskID() {
-        guard selectedTask == nil else { return }
+        if let selectedTaskID, availableTasks.contains(where: { $0.id == selectedTaskID }) { return }
         selectedTaskID = availableTasks.first?.id
     }
 

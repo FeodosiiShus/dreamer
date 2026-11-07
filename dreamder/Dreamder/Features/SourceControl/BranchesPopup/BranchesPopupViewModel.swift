@@ -1,8 +1,8 @@
 import AppKit
-import Combine
 import Foundation
 
-final class BranchesPopupViewModel: ObservableObject {
+@Observable
+final class BranchesPopupViewModel {
     static let showRecentBranchesKey = "dreamder.branchesPopup.showRecentBranches"
     static let showTagsKey = "dreamder.branchesPopup.showTags"
     static let groupByDirectoryKey = "dreamder.branchesPopup.groupByDirectory"
@@ -26,50 +26,50 @@ final class BranchesPopupViewModel: ObservableObject {
     var comparePresenter: ((WorkspaceDocument, String, String) -> Void)?
     var openConflicts: (() -> Void)?
 
-    @Published var query = "" {
+    var query = "" {
         didSet {
             guard query != oldValue else { return }
             rebuild()
             selectBestMatch()
         }
     }
-    @Published var sections: [BranchesPopupSection] = []
-    @Published var selectedID: BranchesPopupItemID?
-    @Published var expandedIDs: Set<BranchesPopupItemID> = [
+    var sections: [BranchesPopupSection] = []
+    var selectedID: BranchesPopupItemID?
+    var expandedIDs: Set<BranchesPopupItemID> = [
         .section(.recent),
         .section(.local),
         .section(.remote)
     ]
-    @Published var collapsedWhileSearching: Set<BranchesPopupItemID> = []
-    @Published var collapsedGroups: Set<BranchesPopupItemID> = []
-    @Published var favorites: Set<String> = []
-    @Published var operationState = GitBranchOperationState.none
-    @Published var isFetching = false
-    @Published private(set) var runningOperations = 0
-    @Published var isLoading = true
-    @Published var isBlockingInput = false
-    @Published var showsRecentBranches: Bool {
+    var collapsedWhileSearching: Set<BranchesPopupItemID> = []
+    var collapsedGroups: Set<BranchesPopupItemID> = []
+    var favorites: Set<String> = []
+    var operationState = GitBranchOperationState.none
+    var isFetching = false
+    private(set) var runningOperations = 0
+    var isLoading = true
+    var isBlockingInput = false
+    var showsRecentBranches: Bool {
         didSet {
             guard showsRecentBranches != oldValue else { return }
             defaults.set(showsRecentBranches, forKey: Self.showRecentBranchesKey)
             refreshTree()
         }
     }
-    @Published var showsTags: Bool {
+    var showsTags: Bool {
         didSet {
             guard showsTags != oldValue else { return }
             defaults.set(showsTags, forKey: Self.showTagsKey)
             refreshTree()
         }
     }
-    @Published var groupsByDirectory: Bool {
+    var groupsByDirectory: Bool {
         didSet {
             guard groupsByDirectory != oldValue else { return }
             defaults.set(groupsByDirectory, forKey: Self.groupByDirectoryKey)
             refreshTree()
         }
     }
-    @Published var showsActionsInSearch: Bool {
+    var showsActionsInSearch: Bool {
         didSet {
             guard showsActionsInSearch != oldValue else { return }
             defaults.set(showsActionsInSearch, forKey: Self.showActionsKey)
@@ -80,8 +80,12 @@ final class BranchesPopupViewModel: ObservableObject {
 
     private var tags: [GitTag] = []
     private var recentNames: [String] = []
-    private var cancellables = Set<AnyCancellable>()
+    @ObservationIgnored private var treeObservation: Task<Void, Never>?
     private let defaults: UserDefaults
+
+    isolated deinit {
+        treeObservation?.cancel()
+    }
 
     init(
         sourceControlManager: SourceControlManager,
@@ -757,17 +761,18 @@ final class BranchesPopupViewModel: ObservableObject {
     }
 
     private func observe() {
-        sourceControlManager.$branches
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.refreshTree() }
-            .store(in: &cancellables)
-
-        sourceControlManager.$currentBranch
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.refreshTree() }
-            .store(in: &cancellables)
+        let manager = sourceControlManager
+        treeObservation = Task { [weak self] in
+            var isInitial = true
+            for await _ in Observations({ _ = manager.branches; _ = manager.currentBranch }) {
+                if isInitial {
+                    isInitial = false
+                    continue
+                }
+                guard let self else { return }
+                refreshTree()
+            }
+        }
     }
 
     private func rebuild() {

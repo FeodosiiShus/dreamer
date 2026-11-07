@@ -11,7 +11,7 @@ import CodeEditSourceEditor
 import OSLog
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "AppDelegate")
 
     @Environment(\.openWindow)

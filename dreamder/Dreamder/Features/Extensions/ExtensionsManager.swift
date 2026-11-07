@@ -11,14 +11,27 @@ import ExtensionFoundation
 import CodeEditKit
 import ConcurrencyPlus
 
-final class ExtensionManager: ObservableObject {
+@Observable
+final class ExtensionManager {
 
     static var shared = ExtensionManager()
 
-    @Published var extensions: [ExtensionInfo] = []
+    var extensions: [ExtensionInfo] = ExtensionDiscovery.shared.extensions
+
+    @ObservationIgnored
+    private var observation: Task<Void, Never>?
 
     init() {
-        ExtensionDiscovery.shared.$extensions.assign(to: &$extensions)
+        observation = Task { [weak self] in
+            for await extensions in Observations({ ExtensionDiscovery.shared.extensions }) {
+                guard let self else { return }
+                self.extensions = extensions
+            }
+        }
+    }
+
+    isolated deinit {
+        observation?.cancel()
     }
 
 }

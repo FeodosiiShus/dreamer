@@ -18,7 +18,7 @@ struct SourceControlNavigatorHistoryView: View {
     @AppSettings(\.sourceControl.git.showMergeCommitsPerFileLog)
     var showMergeCommitsPerFileLog
 
-    @EnvironmentObject var sourceControlManager: SourceControlManager
+    @Environment(SourceControlManager.self) private var sourceControlManager
 
     @State var commitHistoryStatus: Status = .loading
     @State var commitHistory: [GitCommit] = []

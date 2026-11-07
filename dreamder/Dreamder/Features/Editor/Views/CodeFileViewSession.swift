@@ -1,4 +1,5 @@
 import Combine
+import Observation
 import CodeEditSourceEditor
 
 nonisolated struct CodeFileViewIdentity: Hashable, Sendable {
@@ -82,16 +83,19 @@ final class CodeFileViewSession {
     }
 }
 
-final class CodeFileViewSessionStore: ObservableObject {
-    private var current: CodeFileViewSession?
+@Observable
+final class CodeFileViewSessionStore {
+    @ObservationIgnored private var current: CodeFileViewSession?
+    private(set) var generation = 0
 
     func session(editorInstance: EditorInstance, codeFile: CodeFileDocument) -> CodeFileViewSession {
+        _ = generation
         let identity = CodeFileViewIdentity(editorInstance: editorInstance, codeFile: codeFile)
         if let current, current.identity == identity {
             return current
         }
         let session = CodeFileViewSession(editorInstance: editorInstance, codeFile: codeFile) { [weak self] in
-            self?.objectWillChange.send()
+            self?.generation += 1
         }
         current = session
         return session

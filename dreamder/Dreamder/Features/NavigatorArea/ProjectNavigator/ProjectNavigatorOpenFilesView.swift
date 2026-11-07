@@ -1,12 +1,17 @@
-import Combine
 import SwiftUI
 
-final class ProjectNavigatorOpenFilesModel: ObservableObject {
-    @Published private(set) var files: [CEWorkspaceFile] = []
-    @Published private(set) var selectedFileID: String?
+@Observable
+final class ProjectNavigatorOpenFilesModel {
+    private struct Snapshot: Equatable {
+        let files: [CEWorkspaceFile]
+        let selectedFileID: String?
+    }
 
-    private weak var editorManager: EditorManager?
-    private var cancellables = Set<AnyCancellable>()
+    private(set) var files: [CEWorkspaceFile] = []
+    private(set) var selectedFileID: String?
+
+    @ObservationIgnored private weak var editorManager: EditorManager?
+    @ObservationIgnored private var observation: Task<Void, Never>?
 
     func attach(_ editorManager: EditorManager) {
         guard self.editorManager !== editorManager else {
@@ -14,30 +19,35 @@ final class ProjectNavigatorOpenFilesModel: ObservableObject {
             return
         }
         self.editorManager = editorManager
-        cancellables.removeAll()
-
-        let tabChanges = editorManager.$activeEditor
-            .flatMap { editor in editor.$tabs.map { _ in () }.eraseToAnyPublisher() }
-            .eraseToAnyPublisher()
-        let selectionChanges = editorManager.$activeEditor
-            .flatMap { editor in editor.$selectedTab.map { _ in () }.eraseToAnyPublisher() }
-            .eraseToAnyPublisher()
-        let activeChanges = editorManager.$activeEditor
-            .map { _ in () }
-            .eraseToAnyPublisher()
-        let layoutChanges = editorManager.$editorLayout
-            .map { _ in () }
-            .eraseToAnyPublisher()
-
-        Publishers.Merge4(tabChanges, activeChanges, layoutChanges, selectionChanges)
-            .sink { [weak self] _ in self?.rebuild() }
-            .store(in: &cancellables)
+        observation?.cancel()
+        observation = Task { [weak self] in
+            for await snapshot in Observations({ Self.snapshot(of: editorManager) }) {
+                self?.apply(snapshot)
+            }
+        }
 
         rebuild()
     }
 
+    isolated deinit {
+        observation?.cancel()
+    }
+
     private func rebuild() {
         guard let editorManager else { return }
+        apply(Self.snapshot(of: editorManager))
+    }
+
+    private func apply(_ snapshot: Snapshot) {
+        if snapshot.files != files {
+            files = snapshot.files
+        }
+        if selectedFileID != snapshot.selectedFileID {
+            selectedFileID = snapshot.selectedFileID
+        }
+    }
+
+    private static func snapshot(of editorManager: EditorManager) -> Snapshot {
         var result: [CEWorkspaceFile] = []
         var seen = Set<String>()
         for editor in editors(of: editorManager) {
@@ -45,16 +55,10 @@ final class ProjectNavigatorOpenFilesModel: ObservableObject {
                 result.append(tab.file)
             }
         }
-        if result != files {
-            files = result
-        }
-        let selection = editorManager.activeEditor.selectedTab?.file.id
-        if selectedFileID != selection {
-            selectedFileID = selection
-        }
+        return Snapshot(files: result, selectedFileID: editorManager.activeEditor.selectedTab?.file.id)
     }
 
-    private func editors(of editorManager: EditorManager) -> [Editor] {
+    private static func editors(of editorManager: EditorManager) -> [Editor] {
         var result: [Editor] = [editorManager.activeEditor]
         func collect(_ layout: EditorLayout) {
             switch layout {
@@ -72,10 +76,10 @@ final class ProjectNavigatorOpenFilesModel: ObservableObject {
 }
 
 struct ProjectNavigatorOpenFilesView: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
-    @EnvironmentObject private var editorManager: EditorManager
+    @Environment(WorkspaceDocument.self) private var workspace
+    @Environment(EditorManager.self) private var editorManager
 
-    @StateObject private var model = ProjectNavigatorOpenFilesModel()
+    @State private var model = ProjectNavigatorOpenFilesModel()
 
     var body: some View {
         ScrollView {

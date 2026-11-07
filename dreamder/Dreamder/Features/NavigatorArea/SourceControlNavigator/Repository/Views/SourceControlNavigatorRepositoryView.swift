@@ -12,7 +12,7 @@ struct SourceControlNavigatorRepositoryView: View {
     @Environment(\.controlActiveState)
     var controlActiveState
 
-    @EnvironmentObject var sourceControlManager: SourceControlManager
+    @Environment(SourceControlManager.self) var sourceControlManager
 
     @State var selection = Set<String>()
     @State var showNewBranch: Bool = false

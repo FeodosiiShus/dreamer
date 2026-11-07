@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct FindNavigatorView: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
+    @Environment(WorkspaceDocument.self) private var workspace
 
     private var state: WorkspaceDocument.SearchState {
         workspace.searchState ?? .init(workspace)
@@ -96,14 +96,14 @@ struct FindNavigatorView: View {
         }
         .background(Color.clear)
         .environment(\.colorScheme, .dark)
-        .onReceive(state.$searchResult, perform: { value in
-            self.foundFilesCount = value.count
-        })
-        .onReceive(state.$searchResultsCount, perform: { value in
-            self.searchResultCount = value
-        })
-        .onReceive(state.$findNavigatorStatus, perform: { value in
-            self.findNavigatorStatus = value
-        })
+        .onChange(of: state.searchResult.count, initial: true) { _, count in
+            self.foundFilesCount = count
+        }
+        .onChange(of: state.searchResultsCount, initial: true) { _, count in
+            self.searchResultCount = count
+        }
+        .onChange(of: state.findNavigatorStatus, initial: true) { _, status in
+            self.findNavigatorStatus = status
+        }
     }
 }

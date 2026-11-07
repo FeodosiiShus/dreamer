@@ -5,7 +5,7 @@ struct GitBranchesPopupView: View {
     private let dismissPopup: () -> Void
     private let onSizeChange: ((CGSize) -> Void)?
 
-    @StateObject private var viewModel: BranchesPopupViewModel
+    @State private var viewModel: BranchesPopupViewModel
     @State private var anchors = BranchesPopupRowAnchors()
     @State private var keyMonitor: BranchesPopupKeyMonitor?
     @State private var popupWindow: NSWindow?
@@ -20,7 +20,7 @@ struct GitBranchesPopupView: View {
     ) {
         self.dismissPopup = dismiss
         self.onSizeChange = onSizeChange
-        _viewModel = StateObject(wrappedValue: BranchesPopupViewModel(
+        _viewModel = State(wrappedValue: BranchesPopupViewModel(
             sourceControlManager: sourceControlManager,
             workspace: workspace,
             dismiss: dismiss

@@ -1,28 +1,35 @@
 import AppKit
 import Combine
+import Observation
 import SwiftUI
 
+@Observable
 @MainActor
-final class MarkdownPreviewModel: ObservableObject {
-    @Published private(set) var bodyHTML: String
+final class MarkdownPreviewModel {
+    private(set) var bodyHTML = ""
 
-    let baseURL: URL?
+    @ObservationIgnored let baseURL: URL?
 
-    private let codeFile: CodeFileDocument
-    private var cancellables: Set<AnyCancellable> = []
-    private var renderGeneration = 0
-    private var renderTask: Task<Void, Never>?
+    @ObservationIgnored private let codeFile: CodeFileDocument
+    @ObservationIgnored private var cancellables: Set<AnyCancellable> = []
+    @ObservationIgnored private var renderGeneration = 0
+    @ObservationIgnored private var renderTask: Task<Void, Never>?
+    @ObservationIgnored private var isStarted = false
 
     init(codeFile: CodeFileDocument) {
         self.codeFile = codeFile
         self.baseURL = codeFile.fileURL?.deletingLastPathComponent()
-        self.bodyHTML = ""
-        observeText()
-        scheduleRender()
     }
 
-    deinit {
+    isolated deinit {
         renderTask?.cancel()
+    }
+
+    func start() {
+        guard !isStarted else { return }
+        isStarted = true
+        observeText()
+        scheduleRender()
     }
 
     private func observeText() {
@@ -55,11 +62,11 @@ final class MarkdownPreviewModel: ObservableObject {
 }
 
 struct MarkdownEditorWithPreview: View {
-    @ObservedObject private var editorInstance: EditorInstance
+    private let editorInstance: EditorInstance
     private let codeFile: CodeFileDocument
-    @ObservedObject private var layouts = MarkdownPreviewLayoutStore.shared
+    private let layouts = MarkdownPreviewLayoutStore.shared
 
-    @StateObject private var model: MarkdownPreviewModel
+    @State private var model: MarkdownPreviewModel
     @State private var splitFraction: CGFloat = 0.5
     @State private var dragStartFraction: CGFloat = 0.5
 
@@ -68,9 +75,9 @@ struct MarkdownEditorWithPreview: View {
     private let maximumFraction: CGFloat = 0.85
 
     init(editorInstance: EditorInstance, codeFile: CodeFileDocument) {
-        self._editorInstance = .init(wrappedValue: editorInstance)
+        self.editorInstance = editorInstance
         self.codeFile = codeFile
-        self._model = .init(wrappedValue: MarkdownPreviewModel(codeFile: codeFile))
+        self._model = State(wrappedValue: MarkdownPreviewModel(codeFile: codeFile))
     }
 
     private var fileURL: URL? { codeFile.fileURL }
@@ -92,6 +99,9 @@ struct MarkdownEditorWithPreview: View {
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+        }
+        .task {
+            model.start()
         }
         .overlay(alignment: .topTrailing) {
             MarkdownPreviewLayoutButtons(layout: layout) { selected in

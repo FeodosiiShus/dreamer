@@ -6,13 +6,15 @@
 //
 
 import SwiftUI
-import Combine
+import Observation
 
 /// The Dreamder workspace settings model.
-final class CEWorkspaceSettings: ObservableObject {
-    @Published public var settings: CEWorkspaceSettingsData = .init()
+@Observable
+final class CEWorkspaceSettings {
+    var settings: CEWorkspaceSettingsData = .init()
 
-    private var storeTask: AnyCancellable?
+    @ObservationIgnored private var observationTask: Task<Void, Never>?
+    @ObservationIgnored private var pendingSaveTask: Task<Void, Never>?
     private let fileManager = FileManager.default
 
     private(set) var folderURL: URL
@@ -24,18 +26,35 @@ final class CEWorkspaceSettings: ObservableObject {
     init(workspaceURL: URL) {
         folderURL = workspaceURL.appending(path: ".dreamder", directoryHint: .isDirectory)
         loadSettings()
+        startAutosave()
+    }
 
-        storeTask = $settings
-            .receive(on: DispatchQueue.main)
-            .throttle(for: 2.0, scheduler: RunLoop.main, latest: true)
-            .sink { _ in
-                try? self.savePreferences()
+    private func startAutosave() {
+        observationTask = Task { [weak self] in
+            let changes = Observations { [weak self] in
+                self.map { ObjectIdentifier($0.settings) }
             }
+            for await _ in changes {
+                guard let self else { return }
+                self.scheduleSave()
+            }
+        }
+    }
+
+    private func scheduleSave() {
+        pendingSaveTask?.cancel()
+        pendingSaveTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            try? self?.savePreferences()
+        }
     }
 
     func cleanUp() {
-        storeTask?.cancel()
-        storeTask = nil
+        observationTask?.cancel()
+        observationTask = nil
+        pendingSaveTask?.cancel()
+        pendingSaveTask = nil
     }
 
     isolated deinit {

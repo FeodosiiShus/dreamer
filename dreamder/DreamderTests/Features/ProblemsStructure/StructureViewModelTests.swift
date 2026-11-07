@@ -72,6 +72,43 @@ struct StructureViewModelTests {
     }
 
     @Test
+    func selectingAnotherOpenTabRebuildsTheTree() async throws {
+        try await withTempDir { dir in
+            let workspace = try makeWorkspace(dir)
+            let model = StructureViewModel()
+            model.start(workspace: workspace, lspService: LSPService())
+            try open("Model.swift", in: workspace, dir: dir)
+            try open("Other.swift", in: workspace, dir: dir)
+            try await eventually { model.nodes.first?.name == "Other" }
+
+            let first = try #require(workspace.workspaceFileManager?.getFile(
+                dir.appending(path: "Model.swift").path(percentEncoded: false),
+                createIfNotFound: true
+            ))
+            workspace.editorManager?.activeEditor.setSelectedTab(first)
+            try await eventually { model.nodes.first?.name == "Outer" }
+
+            #expect(model.fileURL?.lastPathComponent == "Model.swift")
+        }
+    }
+
+    @Test
+    func clearingTheSelectedTabClearsTheTree() async throws {
+        try await withTempDir { dir in
+            let workspace = try makeWorkspace(dir)
+            let model = StructureViewModel()
+            model.start(workspace: workspace, lspService: LSPService())
+            try open("Model.swift", in: workspace, dir: dir)
+            try await eventually { !model.nodes.isEmpty }
+
+            workspace.editorManager?.activeEditor.setSelectedTab(nil)
+            try await eventually { model.nodes.isEmpty }
+
+            #expect(model.fileURL == nil)
+        }
+    }
+
+    @Test
     func startingTwiceKeepsTheFirstWorkspace() async throws {
         try await withTempDir { dir in
             let workspace = try makeWorkspace(dir)

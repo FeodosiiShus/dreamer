@@ -10,7 +10,8 @@ import ExtensionFoundation
 import GRDB
 
 /// Discovery of available extension endpoints.
-final class ExtensionDiscovery: ObservableObject {
+@Observable
+final class ExtensionDiscovery {
     /// Shared instance of this class.
     static var shared = ExtensionDiscovery()
 
@@ -22,9 +23,11 @@ final class ExtensionDiscovery: ObservableObject {
 
     /// Publishes a list of extension endpoints approved by the user.
     /// These endpoints can be used to create new extension processes with XPC.
-    @Published var extensions: [ExtensionInfo] = []
+    var extensions: [ExtensionInfo] = []
 
+    @ObservationIgnored
     private var discoverTask: Task<Void, Never>?
+    @ObservationIgnored
     private var availabilityTask: Task<Void, Never>?
 
     // Init is private as only 1 instance of this class may (needs to) exist.

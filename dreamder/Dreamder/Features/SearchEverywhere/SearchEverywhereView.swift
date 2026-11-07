@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 struct SearchEverywhereView: View {
-    @ObservedObject var model: SearchEverywhereViewModel
+    @Bindable var model: SearchEverywhereViewModel
 
     @FocusState private var isQueryFocused: Bool
 

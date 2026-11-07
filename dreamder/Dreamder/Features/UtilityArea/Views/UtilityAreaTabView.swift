@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct UtilityAreaTabView<Content: View, LeadingSidebar: View, TrailingSidebar: View>: View {
-    @ObservedObject var model: UtilityAreaTabViewModel
+    @Bindable var model: UtilityAreaTabViewModel
 
     let content: (UtilityAreaTabViewModel) -> Content
     let leadingSidebar: (UtilityAreaTabViewModel) -> LeadingSidebar?
@@ -147,7 +147,7 @@ struct UtilityAreaTabView<Content: View, LeadingSidebar: View, TrailingSidebar: 
                 }
             }
         }
-        .environmentObject(model)
+        .environment(model)
         .onAppear {
             model.hasLeadingSidebar = hasLeadingSidebar
             model.hasTrailingSidebar = hasTrailingSidebar

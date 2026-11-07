@@ -9,7 +9,7 @@ import SwiftUI
 import AboutWindow
 
 struct AcknowledgementsView: View {
-    @StateObject var model = AcknowledgementsViewModel()
+    @State private var model = AcknowledgementsViewModel()
 
     var body: some View {
         AboutDetailView(title: "Acknowledgements") {

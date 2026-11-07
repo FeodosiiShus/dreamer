@@ -9,7 +9,7 @@ import SwiftUI
 import CodeEditKit
 
 struct ExtensionCommands: Commands {
-    @FocusedObject var manager: ExtensionManager?
+    @FocusedValue(ExtensionManager.self) var manager: ExtensionManager?
 
     @Environment(\.openWindow)
     var openWindow

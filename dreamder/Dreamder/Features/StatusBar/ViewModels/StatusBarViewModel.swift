@@ -7,13 +7,14 @@
 
 import SwiftUI
 
-final class StatusBarViewModel: ObservableObject {
+@Observable
+final class StatusBarViewModel {
 
     /// The file size of the currently opened file.
-    @Published var fileSize: Int?
+    var fileSize: Int?
 
     /// The dimensions (width x height) of the currently opened image.
-    @Published var dimensions: ImageDimensions?
+    var dimensions: ImageDimensions?
 
 }
 

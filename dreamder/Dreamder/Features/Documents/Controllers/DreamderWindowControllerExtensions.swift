@@ -49,38 +49,32 @@ extension DreamderWindowController {
 
     // Listen to changes in all tabs/files
     internal func listenToDocumentEdited(workspace: WorkspaceDocument) {
-        workspace.editorManager?.$activeEditor
-            .flatMap({ editor in
-                editor.$tabs
-            })
-            .compactMap({ tab in
-                Publishers.MergeMany(tab.elements.compactMap({ $0.file.fileDocumentPublisher }))
-            })
-            .switchToLatest()
-            .compactMap({ fileDocument in
-                fileDocument?.isDocumentEditedPublisher
-            })
-            .flatMap({ $0 })
-            .sink { isDocumentEdited in
-                if isDocumentEdited {
-                    self.setDocumentEdited(true)
-                    return
+        guard let editorManager = workspace.editorManager else { return }
+        documentEditedObservation?.cancel()
+        documentEditedObservation = Task { [weak self, weak workspace] in
+            for await tabs in Observations({ editorManager.activeEditor.tabs }) {
+                guard let self, let workspace else { return }
+                self.subscribeToEditedDocuments(in: tabs, workspace: workspace)
+                self.updateDocumentEdited(workspace: workspace)
+            }
+        }
+    }
+
+    private func subscribeToEditedDocuments(in tabs: some Sequence<Editor.Tab>, workspace: WorkspaceDocument) {
+        cancellables.forEach { $0.cancel() }
+        cancellables = tabs.map { tab in
+            tab.file.fileDocumentPublisher
+                .compactMap { $0?.isDocumentEditedPublisher }
+                .switchToLatest()
+                .sink { [weak self, weak workspace] isDocumentEdited in
+                    guard let self, let workspace else { return }
+                    if isDocumentEdited {
+                        self.setDocumentEdited(true)
+                        return
+                    }
+                    self.updateDocumentEdited(workspace: workspace)
                 }
-
-                self.updateDocumentEdited(workspace: workspace)
-            }
-            .store(in: &cancellables)
-
-        // Listen to change of tabs, if closed tab without saving content,
-        // we also need to recalculate isDocumentEdited
-        workspace.editorManager?.$activeEditor
-            .flatMap({ editor in
-                editor.$tabs
-            })
-            .sink { _ in
-                self.updateDocumentEdited(workspace: workspace)
-            }
-            .store(in: &cancellables)
+        }
     }
 
     // Recalculate documentEdited by checking if any tab/file is edited
@@ -112,9 +106,9 @@ extension DreamderWindowController {
                     self?.window?.endSheet(settingsWindow)
                  }
             )
-            .environmentObject(workspaceSettingsManager)
-            .environmentObject(workspace)
-            .environmentObject(taskManager)
+            .environment(workspaceSettingsManager)
+            .environment(workspace)
+            .environment(taskManager)
 
             settingsWindow.contentView = NSHostingView(rootView: contentView)
             settingsWindow.titlebarAppearsTransparent = true

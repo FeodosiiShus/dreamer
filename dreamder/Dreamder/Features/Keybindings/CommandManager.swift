@@ -22,8 +22,9 @@ mgr.executeCommand("test")
  ```
  */
 
-final class CommandManager: ObservableObject {
-    @Published private var commandsList: [String: Command]
+@Observable
+final class CommandManager {
+    private var commandsList: [String: Command]
 
     private init() {
         commandsList = [:]

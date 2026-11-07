@@ -13,13 +13,15 @@ struct QuickActionsView: View {
     @Environment(\.colorScheme)
     private var colorScheme: ColorScheme
 
-    @ObservedObject private var state: QuickActionsViewModel
+    @Bindable private var state: QuickActionsViewModel
 
-    @ObservedObject private var commandManager: CommandManager = .shared
+    private let commandManager = CommandManager.shared
 
     @State private var monitor: Any?
 
     @State private var selectedItem: Command?
+
+    @State private var queryDebounce: Task<Void, Never>?
 
     private let closePalette: () -> Void
 
@@ -61,8 +63,16 @@ struct QuickActionsView: View {
         } onClose: {
             closePalette()
         }
-        .onReceive(state.$commandQuery.debounce(for: 0.2, scheduler: DispatchQueue.main)) { _ in
-            state.fetchMatchingCommands(val: state.commandQuery)
+        .onChange(of: state.commandQuery, initial: true) {
+            queryDebounce?.cancel()
+            queryDebounce = Task {
+                try? await Task.sleep(for: .milliseconds(200))
+                guard !Task.isCancelled else { return }
+                state.fetchMatchingCommands(val: state.commandQuery)
+            }
+        }
+        .onDisappear {
+            queryDebounce?.cancel()
         }
     }
 }

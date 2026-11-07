@@ -5,16 +5,16 @@
 //  Created by Marco Carnevali on 05/04/22.
 //
 
-import Combine
 import Foundation
 import CollectionConcurrencyKit
 
-final class OpenQuicklyViewModel: ObservableObject {
-    @Published var query: String = ""
-    @Published var searchResults: [SearchResult] = []
+@Observable
+final class OpenQuicklyViewModel {
+    var query: String = ""
+    var searchResults: [SearchResult] = []
 
     let fileURL: URL
-    var runningTask: Task<Void, Never>?
+    @ObservationIgnored var runningTask: Task<Void, Never>?
 
     init(fileURL: URL) {
         self.fileURL = fileURL

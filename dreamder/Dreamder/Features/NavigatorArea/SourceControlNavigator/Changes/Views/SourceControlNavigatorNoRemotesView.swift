@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct SourceControlNavigatorNoRemotesView: View {
-    @EnvironmentObject var sourceControlManager: SourceControlManager
+    @Environment(SourceControlManager.self) private var sourceControlManager
 
     var body: some View {
         VStack(spacing: 0) {

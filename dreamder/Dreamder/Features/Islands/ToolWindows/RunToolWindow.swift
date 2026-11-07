@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct RunToolWindow: View {
-    @EnvironmentObject private var taskManager: TaskManager
-    @EnvironmentObject private var toolWindowManager: ToolWindowManager
+    @Environment(TaskManager.self) private var taskManager
+    @Environment(ToolWindowManager.self) private var toolWindowManager
 
     init() {}
 
@@ -56,7 +56,8 @@ struct RunToolWindow: View {
         }
         .background(Color.clear)
         .environment(\.colorScheme, .dark)
-        .onReceive(taskManager.$activeTasks) { newTasks in
+        .onChange(of: Set(taskManager.activeTasks.keys), initial: true) {
+            let newTasks = taskManager.activeTasks
             if let output = taskManager.taskShowingOutput, newTasks[output] != nil {
                 return
             }
@@ -99,8 +100,8 @@ struct RunToolWindow: View {
 }
 
 private struct RunTaskActions: View {
-    @ObservedObject var activeTask: CEActiveTask
-    @EnvironmentObject private var taskManager: TaskManager
+    let activeTask: CEActiveTask
+    @Environment(TaskManager.self) private var taskManager
 
     var body: some View {
         HStack(spacing: 2) {

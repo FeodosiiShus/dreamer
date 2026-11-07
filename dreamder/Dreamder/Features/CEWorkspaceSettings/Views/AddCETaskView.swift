@@ -11,12 +11,9 @@ struct AddCETaskView: View {
     @Environment(\.dismiss)
     var dismiss
 
-    @EnvironmentObject var workspaceSettingsManager: CEWorkspaceSettings
-    @StateObject var newTask: CETask
+    @Environment(CEWorkspaceSettings.self) private var workspaceSettingsManager
+    @State private var newTask = CETask(target: "My Mac")
 
-    init() {
-        self._newTask = StateObject(wrappedValue: CETask(target: "My Mac"))
-    }
     var body: some View {
         VStack(spacing: 0) {
             CETaskFormView(task: newTask)

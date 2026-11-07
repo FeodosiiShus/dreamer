@@ -7,12 +7,13 @@
 
 import Foundation
 
-class GitCheckoutBranchViewModel: ObservableObject {
-    @Published var selectedBranch: GitBranch?
-    @Published var branches: [GitBranch] = []
+@Observable
+class GitCheckoutBranchViewModel {
+    var selectedBranch: GitBranch?
+    var branches: [GitBranch] = []
 
     let repoPath: URL
-    private let gitClient: GitClient
+    @ObservationIgnored private let gitClient: GitClient
 
     init(repoPath: URL) {
         self.repoPath = repoPath

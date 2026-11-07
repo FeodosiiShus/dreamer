@@ -2,10 +2,10 @@ import AppKit
 import SwiftUI
 
 struct CommitToolWindow: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
-    @EnvironmentObject private var sourceControlManager: SourceControlManager
+    @Environment(WorkspaceDocument.self) private var workspace
+    @Environment(SourceControlManager.self) private var sourceControlManager
 
-    @StateObject private var viewModel = CommitToolWindowViewModel()
+    @State private var viewModel = CommitToolWindowViewModel()
 
     private var files: [GitChangedFile] {
         sourceControlManager.changedFiles

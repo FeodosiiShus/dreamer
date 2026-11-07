@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct SourceControlNavigatorView: View {
-    @EnvironmentObject private var workspace: WorkspaceDocument
+    @Environment(WorkspaceDocument.self) private var workspace
 
     @AppSettings(\.sourceControl.general.fetchRefreshServerStatus)
     var fetchRefreshServerStatus
@@ -17,7 +17,7 @@ struct SourceControlNavigatorView: View {
         if let sourceControlManager = workspace.sourceControlManager {
             VStack(spacing: 0) {
                 SourceControlNavigatorTabs()
-                    .environmentObject(sourceControlManager)
+                    .environment(sourceControlManager)
                     .task {
                         do {
                             while true {
@@ -36,7 +36,7 @@ struct SourceControlNavigatorView: View {
 }
 
 struct SourceControlNavigatorTabs: View {
-    @EnvironmentObject var sourceControlManager: SourceControlManager
+    @Environment(SourceControlManager.self) private var sourceControlManager
     @State private var selectedSection: Int = 0
 
     var body: some View {

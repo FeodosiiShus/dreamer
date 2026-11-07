@@ -9,15 +9,16 @@ import SwiftUI
 
 /// Simple state class for command palette view. Contains currently selected command,
 /// query text and list of filtered commands
-final class QuickActionsViewModel: ObservableObject {
+@Observable
+final class QuickActionsViewModel {
 
-    @Published var commandQuery: String = ""
+    var commandQuery: String = ""
 
-    @Published var selected: Command?
+    var selected: Command?
 
-    @Published var isShowingCommandsList: Bool = true
+    var isShowingCommandsList: Bool = true
 
-    @Published var filteredCommands: [Command] = []
+    var filteredCommands: [Command] = []
 
     init() {}
 

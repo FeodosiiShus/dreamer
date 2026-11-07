@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import Combine
+import Observation
 import UserNotifications
 
 /// Manages the application's notification system, handling both in-app notifications and system notifications.
@@ -14,13 +14,15 @@ import UserNotifications
 /// - Managing notification persistence
 /// - Tracking notification read status
 /// - Broadcasting notifications to workspaces
-final class NotificationManager: NSObject, ObservableObject {
+@Observable
+final class NotificationManager: NSObject {
     /// Shared instance for accessing the notification manager
     static let shared = NotificationManager()
 
     /// Collection of all notifications, both read and unread
-    @Published private(set) var notifications: [CENotification] = []
+    private(set) var notifications: [CENotification] = []
 
+    @ObservationIgnored
     private var isAppActive: Bool = true
 
     /// Number of unread notifications

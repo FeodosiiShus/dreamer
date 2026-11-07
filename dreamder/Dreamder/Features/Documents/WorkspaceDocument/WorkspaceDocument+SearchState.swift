@@ -6,9 +6,12 @@
 //
 
 import Foundation
+import Observation
 
 extension WorkspaceDocument {
-    final class SearchState: ObservableObject {
+    @Observable
+    @MainActor
+    final class SearchState {
         enum IndexStatus: Equatable {
             case none
             case indexing(progress: Double)
@@ -24,27 +27,27 @@ extension WorkspaceDocument {
             case failed(errorMessage: String)
         }
 
-        @Published var searchResult: [SearchResultModel] = []
-        @Published var searchResultsFileCount: Int = 0
-        @Published var searchResultsCount: Int = 0
+        var searchResult: [SearchResultModel] = []
+        var searchResultsFileCount: Int = 0
+        var searchResultsCount: Int = 0
         /// Stores the user's input, shown when no files are found, and persists across navigation items.
-        @Published var searchQuery: String = ""
-        @Published var replaceText: String = ""
+        var searchQuery: String = ""
+        var replaceText: String = ""
 
-        @Published var indexStatus: IndexStatus = .none
+        var indexStatus: IndexStatus = .none
 
-        @Published var findNavigatorStatus: FindNavigatorStatus = .none
+        var findNavigatorStatus: FindNavigatorStatus = .none
 
-        @Published var shouldFocusSearchField: Bool = false
+        var shouldFocusSearchField: Bool = false
 
-        weak var workspace: WorkspaceDocument?
-        var tempSearchResults = [SearchResultModel]()
-        var caseSensitive: Bool = false
-        var indexer: SearchIndexer?
-        var indexGeneration: Int = 0
-        var indexingTask: Task<Void, Never>?
-        var indexingNotificationID: String?
-        var selectedMode: [SearchModeModel] = [
+        @ObservationIgnored weak var workspace: WorkspaceDocument?
+        @ObservationIgnored var tempSearchResults = [SearchResultModel]()
+        @ObservationIgnored var caseSensitive: Bool = false
+        @ObservationIgnored var indexer: SearchIndexer?
+        @ObservationIgnored var indexGeneration: Int = 0
+        @ObservationIgnored var indexingTask: Task<Void, Never>?
+        @ObservationIgnored var indexingNotificationID: String?
+        @ObservationIgnored var selectedMode: [SearchModeModel] = [
             .Find,
             .Text,
             .Containing
@@ -55,19 +58,11 @@ extension WorkspaceDocument {
             addProjectToIndex()
         }
 
-        deinit {
+        isolated deinit {
             indexingTask?.cancel()
         }
 
-        /// Represents the compare options to be used for find and replace.
-        ///
-        /// The `replaceOptions` property is a lazy, computed property that dynamically calculates
-        /// the compare options based on the values of `selectedMode` and `ignoreCase`. It is used
-        /// for controlling string replacement behavior for the find and replace functions.
-        ///
-        /// - Note: This property is implemented as a lazy property in the main class body because
-        /// extensions cannot contain stored properties directly.
-        lazy var replaceOptions: NSString.CompareOptions = {
+        var replaceOptions: NSString.CompareOptions {
             var options: NSString.CompareOptions = []
 
             if selectedMode.second == .RegularExpression {
@@ -79,6 +74,6 @@ extension WorkspaceDocument {
             }
 
             return options
-        }()
+        }
     }
 }

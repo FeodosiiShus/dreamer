@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct ToolWindowStripe: View {
-    @EnvironmentObject private var toolWindowManager: ToolWindowManager
+    @Environment(ToolWindowManager.self) private var toolWindowManager
 
     @AppStorage(Islands.BackgroundImageKey.path)
     private var backgroundImagePath = ""
@@ -44,12 +44,19 @@ struct ToolWindowStripe: View {
 }
 
 private struct LanguageServicesStripeButton: View {
-    @EnvironmentObject private var toolWindowManager: ToolWindowManager
-    @EnvironmentObject private var workspace: WorkspaceDocument
+    @Environment(ToolWindowManager.self) private var toolWindowManager
+    @Environment(WorkspaceDocument.self) private var workspace
 
     @Service private var lspService: LSPService
 
-    @State private var problemCount = 0
+    private var problemCount: Int {
+        let path = workspace.fileURL?.absolutePath
+        return lspService.serverStates.filter { key, state in
+            guard path == nil || key.workspacePath == path else { return false }
+            if case .failed = state { return true }
+            return false
+        }.count
+    }
 
     var body: some View {
         let isSelected = toolWindowManager.isVisible(.languageServices)
@@ -68,14 +75,6 @@ private struct LanguageServicesStripeButton: View {
                     .background(Capsule().fill(Color(hex: 0xE55765)))
                     .offset(x: -1, y: 1)
             }
-        }
-        .onReceive(lspService.$serverStates) { states in
-            let path = workspace.fileURL?.absolutePath
-            problemCount = states.filter { key, state in
-                guard path == nil || key.workspacePath == path else { return false }
-                if case .failed = state { return true }
-                return false
-            }.count
         }
     }
 }

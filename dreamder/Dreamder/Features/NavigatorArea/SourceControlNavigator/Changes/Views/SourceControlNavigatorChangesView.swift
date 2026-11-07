@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct SourceControlNavigatorChangesView: View {
-    @EnvironmentObject var sourceControlManager: SourceControlManager
+    @Environment(SourceControlManager.self) private var sourceControlManager
 
     var hasRemotes: Bool {
         !sourceControlManager.remotes.isEmpty
