@@ -134,10 +134,14 @@ class CEActiveTask: ObservableObject, Identifiable, Hashable {
         }
     }
 
-    func waitForExit() {
-        if let shellPID = output?.runningPID() {
-            waitid(P_PGID, UInt32(shellPID), nil, 0)
-        }
+    func waitForExit() async {
+        guard let shellPID = output?.runningPID() else { return }
+        await Self.waitForProcessGroup(shellPID)
+    }
+
+    @concurrent
+    private nonisolated static func waitForProcessGroup(_ processIdentifier: pid_t) async {
+        waitid(P_PGID, UInt32(processIdentifier), nil, 0)
     }
 
     @MainActor

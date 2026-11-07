@@ -8,6 +8,7 @@
 import OSLog
 import LogStream
 
+@MainActor
 protocol UtilityAreaOutputMessage: Identifiable {
     var message: String { get }
     var date: Date { get }
@@ -16,6 +17,7 @@ protocol UtilityAreaOutputMessage: Identifiable {
     var level: UtilityAreaLogLevel { get }
 }
 
+@MainActor
 protocol UtilityAreaOutputSource: Identifiable {
     associatedtype Message: UtilityAreaOutputMessage
     func cachedMessages() -> [Message]

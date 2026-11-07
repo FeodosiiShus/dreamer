@@ -73,7 +73,7 @@ struct GitConsoleLogTests {
         let date = Date(timeIntervalSince1970: 0)
         log.record(command: "checkout main", directory: URL(fileURLWithPath: "/tmp/repo"), output: "", date: date)
 
-        let entry = try? #require(log.entries.first)
+        let entry = log.entries.first
         let time = GitConsoleEntry.timeFormatter.string(from: date)
         #expect(entry?.header == "\(time): [/tmp/repo] git checkout main")
         #expect(entry?.errorLines.isEmpty == true)

@@ -149,7 +149,7 @@ final class CEWorkspaceFileManagerUnitTests: XCTestCase {
         try fileManager.duplicate(file: CEWorkspaceFile(url: testFileURL))
         XCTAssert(FileManager.default.fileExists(atPath: testFileURL.path()) == true)
         XCTAssert(FileManager.default.fileExists(atPath: testDuplicatedFileURL.path(percentEncoded: false)) == true)
-        XCTAssert(try String(contentsOf: testDuplicatedFileURL) == "😄")
+        XCTAssert(try String(contentsOf: testDuplicatedFileURL, encoding: .utf8) == "😄")
     }
 
     func testAddFile() throws {

@@ -26,29 +26,20 @@ final class LanguageServerCodeFileDocumentTests: XCTestCase {
 
     var tempTestDir: URL!
 
-    override func setUp() {
+    override func setUp() async throws {
         continueAfterFailure = false
-        do {
-            let tempDir = FileManager.default.temporaryDirectory.appending(
-                path: "dreamder-lsp-tests"
-            )
-            // Clean up first.
-            if FileManager.default.fileExists(atPath: tempDir.absoluteURL.path()) {
-                try FileManager.default.removeItem(at: tempDir)
-            }
-            try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-            tempTestDir = tempDir
-        } catch {
-            XCTFail(error.localizedDescription)
+        let tempDir = FileManager.default.temporaryDirectory.appending(
+            path: "dreamder-lsp-tests"
+        )
+        if FileManager.default.fileExists(atPath: tempDir.absoluteURL.path()) {
+            try FileManager.default.removeItem(at: tempDir)
         }
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        tempTestDir = tempDir
     }
 
-    override func tearDown() {
-        do {
-            try FileManager.default.removeItem(at: tempTestDir)
-        } catch {
-            XCTFail(error.localizedDescription)
-        }
+    override func tearDown() async throws {
+        try FileManager.default.removeItem(at: tempTestDir)
     }
 
     func makeTestServer() async throws -> (connection: BufferingServerConnection, server: LanguageServerType) {
@@ -95,7 +86,7 @@ final class LanguageServerCodeFileDocumentTests: XCTestCase {
         file: CEWorkspaceFile,
         syncOption: TwoTypeOption<TextDocumentSyncOptions, TextDocumentSyncKind>?
     ) async throws -> CodeFileDocument {
-        let codeFile = try await CodeFileDocument(
+        let codeFile = try CodeFileDocument(
             for: file.url,
             withContentsOf: file.url,
             ofType: "public.swift-source"
@@ -126,17 +117,19 @@ final class LanguageServerCodeFileDocumentTests: XCTestCase {
         description: String
     ) async {
         let expectation = expectation(description: description)
+        let events = connection.clientEventSequence
+        let expectedRequests = expectedValue.0
+        let expectedNotifications = expectedValue.1
 
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { await self.fulfillment(of: [expectation], timeout: 2) }
-            group.addTask {
-                for await events in connection.clientEventSequence
-                where events.0.map(\.method) == expectedValue.0 && events.1.map(\.method) == expectedValue.1 {
-                    expectation.fulfill()
-                    return
-                }
+        let observer = Task {
+            for await events in events
+            where events.0.map(\.method) == expectedRequests && events.1.map(\.method) == expectedNotifications {
+                expectation.fulfill()
+                return
             }
         }
+        await fulfillment(of: [expectation], timeout: 2)
+        observer.cancel()
     }
 
     // MARK: - Open Close

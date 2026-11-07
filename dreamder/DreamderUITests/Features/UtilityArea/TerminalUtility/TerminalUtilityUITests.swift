@@ -7,6 +7,7 @@
 
 import XCTest
 
+@MainActor
 final class TerminalUtilityUITests: XCTestCase {
     var app: XCUIApplication!
     var window: XCUIElement!
@@ -14,17 +15,14 @@ final class TerminalUtilityUITests: XCTestCase {
     var path: String!
 
     override func setUp() async throws {
-        // MainActor required for async compatibility which is required to make this method throwing
-        try await MainActor.run {
-            (app, path) = try App.launchWithTempDir()
+        (app, path) = try App.launchWithTempDir()
 
-            window = Query.getWindow(app)
-            XCTAssertTrue(window.exists, "Window not found")
-            window.toolbars.firstMatch.click()
+        window = Query.getWindow(app)
+        XCTAssertTrue(window.exists, "Window not found")
+        window.toolbars.firstMatch.click()
 
-            utilityArea = Query.Window.getUtilityArea(window)
-            XCTAssertTrue(utilityArea.exists, "Utility Area not found")
-        }
+        utilityArea = Query.Window.getUtilityArea(window)
+        XCTAssertTrue(utilityArea.exists, "Utility Area not found")
     }
 
     func testTerminalsInputData() throws {

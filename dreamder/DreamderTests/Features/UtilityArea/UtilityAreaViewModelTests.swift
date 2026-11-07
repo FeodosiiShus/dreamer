@@ -13,7 +13,7 @@ final class UtilityAreaViewModelTests: XCTestCase {
     var model: UtilityAreaViewModel!
     let rootURL: URL = URL(filePath: "~/")
 
-    override func setUp() {
+    override func setUp() async throws {
         model = UtilityAreaViewModel()
         model.terminals = [
             UtilityAreaTerminal(id: UUID(), url: rootURL, title: "Terminal 1", shell: .bash),

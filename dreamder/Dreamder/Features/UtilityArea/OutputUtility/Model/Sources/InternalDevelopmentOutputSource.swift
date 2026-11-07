@@ -7,10 +7,10 @@
 
 import Foundation
 
-class InternalDevelopmentOutputSource: @MainActor UtilityAreaOutputSource {
+class InternalDevelopmentOutputSource: UtilityAreaOutputSource {
     static let shared = InternalDevelopmentOutputSource()
 
-    struct Message: @MainActor UtilityAreaOutputMessage {
+    nonisolated struct Message: UtilityAreaOutputMessage, Sendable {
         var id: UUID = UUID()
 
         var message: String
@@ -20,7 +20,7 @@ class InternalDevelopmentOutputSource: @MainActor UtilityAreaOutputSource {
         var level: UtilityAreaLogLevel
     }
 
-    var id: UUID = UUID()
+    nonisolated let id: UUID = UUID()
     private var logs: [Message] = []
     private(set) var streamContinuation: AsyncStream<Message>.Continuation
     private var stream: AsyncStream<Message>

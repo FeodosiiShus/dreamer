@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import Dreamder
 
@@ -29,15 +30,37 @@ struct GitTestPayload: Codable, Equatable, Sendable {
     let name: String
 }
 
-final class GitCallOutcome<T> {
-    var value: T?
-    var error: Error?
-    var calls = 0
+final class GitCallOutcome<T: Sendable>: Sendable {
+    private struct State {
+        var value: T?
+        var error: Error?
+        var calls = 0
+    }
 
+    private let state = Mutex(State())
+
+    var value: T? { state.withLock { $0.value } }
+    var error: Error? { state.withLock { $0.error } }
+    var calls: Int { state.withLock { $0.calls } }
+
+    @Sendable
     func record(_ value: T?, _ error: Error?) {
-        calls += 1
-        self.value = value
-        self.error = error
+        state.withLock {
+            $0.calls += 1
+            $0.value = value
+            $0.error = error
+        }
+    }
+}
+
+extension GitCallOutcome where T == Data {
+    @Sendable
+    func recordJSON(_ value: [String: Any]?, _ error: Error?) {
+        record(value.flatMap { try? JSONSerialization.data(withJSONObject: $0) }, error)
+    }
+
+    var jsonObject: [String: Any]? {
+        value.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
     }
 }
 
@@ -614,10 +637,10 @@ struct GitJSONPostRouterTests {
     @Test
     func postJSONUploadsParamsAsJSONToTheIssuesEndpoint() throws {
         let session = FakeGitSession(status: 201, body: #"{"id":7}"#)
-        let outcome = GitCallOutcome<[String: Any]>()
+        let outcome = GitCallOutcome<Data>()
         let router = GitHubIssueRouter.postIssue(configuration, "octo", "hello", "Crash", "Steps", "octocat", ["bug", "ui"])
 
-        let task = router.postJSON(session, expectedResultType: [String: Any].self, completion: outcome.record)
+        let task = router.postJSON(session, expectedResultType: [String: Any].self, completion: outcome.recordJSON)
 
         #expect(task != nil)
         let request = try #require(session.uploadRequests.first)
@@ -631,7 +654,7 @@ struct GitJSONPostRouterTests {
         #expect(json["assignee"] as? String == "octocat")
         #expect(json["labels"] as? [String] == ["bug", "ui"])
         #expect(outcome.calls == 1)
-        #expect(outcome.value?["id"] as? Int == 7)
+        #expect(outcome.jsonObject?["id"] as? Int == 7)
         #expect(outcome.error == nil)
     }
 
@@ -650,10 +673,10 @@ struct GitJSONPostRouterTests {
     @Test
     func postJSONMapsJSONErrorBodiesIntoErrorKey() throws {
         let session = FakeGitSession(status: 422, body: #"{"message":"Validation Failed"}"#)
-        let outcome = GitCallOutcome<[String: Any]>()
+        let outcome = GitCallOutcome<Data>()
 
         _ = GitHubIssueRouter.commentIssue(configuration, "o", "r", 1, "hi")
-            .postJSON(session, expectedResultType: [String: Any].self, completion: outcome.record)
+            .postJSON(session, expectedResultType: [String: Any].self, completion: outcome.recordJSON)
 
         let error = try #require(outcome.error.map { $0 as NSError })
         #expect(error.domain == "com.dreamder.models.accounts.github")
@@ -665,10 +688,10 @@ struct GitJSONPostRouterTests {
     @Test
     func postJSONKeepsNonJSONErrorBodiesAsStrings() throws {
         let session = FakeGitSession(status: 502, body: "Bad gateway")
-        let outcome = GitCallOutcome<[String: Any]>()
+        let outcome = GitCallOutcome<Data>()
 
         _ = GitHubIssueRouter.commentIssue(configuration, "o", "r", 1, "hi")
-            .postJSON(session, expectedResultType: [String: Any].self, completion: outcome.record)
+            .postJSON(session, expectedResultType: [String: Any].self, completion: outcome.recordJSON)
 
         let error = try #require(outcome.error.map { $0 as NSError })
         #expect(error.code == 502)
@@ -678,11 +701,11 @@ struct GitJSONPostRouterTests {
     @Test
     func postJSONReturnsNilForAnInvalidEndpointWithoutUploading() {
         let session = FakeGitSession()
-        let outcome = GitCallOutcome<[String: Any]>()
+        let outcome = GitCallOutcome<Data>()
         let broken = GitHubTokenConfiguration("secret", url: "")
 
         let task = GitHubIssueRouter.commentIssue(broken, "o", "r", 1, "hi")
-            .postJSON(session, expectedResultType: [String: Any].self, completion: outcome.record)
+            .postJSON(session, expectedResultType: [String: Any].self, completion: outcome.recordJSON)
 
         #expect(task == nil)
         #expect(session.requestCount == 0)

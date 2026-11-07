@@ -715,7 +715,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Dreamder.app/Contents/MacOS/Dreamder";
 			};
 			name = Alpha;
@@ -745,7 +745,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TEST_TARGET_NAME = Dreamder;
 			};
 			name = Alpha;
@@ -922,7 +922,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Dreamder.app/Contents/MacOS/Dreamder";
 			};
 			name = Beta;
@@ -952,7 +952,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TEST_TARGET_NAME = Dreamder;
 			};
 			name = Beta;
@@ -1203,7 +1203,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Dreamder.app/Contents/MacOS/Dreamder";
 			};
 			name = Pre;
@@ -1233,7 +1233,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TEST_TARGET_NAME = Dreamder;
 			};
 			name = Pre;
@@ -1530,7 +1530,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				OTHER_SWIFT_FLAGS = "$(inherited) -continue-building-after-errors";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Dreamder.app/Contents/MacOS/Dreamder";
 			};
@@ -1559,7 +1559,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Dreamder.app/Contents/MacOS/Dreamder";
 			};
 			name = Release;
@@ -1590,7 +1590,7 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TEST_TARGET_NAME = Dreamder;
 			};
 			name = Debug;
@@ -1620,7 +1620,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TEST_TARGET_NAME = Dreamder;
 			};
 			name = Release;

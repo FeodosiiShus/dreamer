@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-enum UtilityAreaLogLevel {
+nonisolated enum UtilityAreaLogLevel: Sendable {
     case error
     case warning
     case info
@@ -26,7 +26,7 @@ enum UtilityAreaLogLevel {
         }
     }
 
-    var color: Color {
+    @MainActor var color: Color {
         switch self {
         case .error:
             return Color(red: 202.0/255.0, green: 27.0/255.0, blue: 0)
@@ -39,7 +39,7 @@ enum UtilityAreaLogLevel {
         }
     }
 
-    var backgroundColor: Color {
+    @MainActor var backgroundColor: Color {
         switch self {
         case .error:
             color.opacity(0.1)

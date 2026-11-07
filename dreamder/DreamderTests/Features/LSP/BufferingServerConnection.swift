@@ -8,6 +8,7 @@
 import Foundation
 import LanguageClient
 import LanguageServerProtocol
+import Synchronization
 import JSONRPC
 
 /// Mock server connection that retains all requests and notifications in an array for comparing later.
@@ -15,19 +16,22 @@ import JSONRPC
 /// To listen for changes, this type produces an async stream of all requests and notifications. Use the
 /// `clientEventSequence` sequence to receive a copy of both whenever they're updated.
 /// 
-class BufferingServerConnection: ServerConnection {
+final class BufferingServerConnection: ServerConnection, Sendable {
     typealias ClientEventSequence = AsyncStream<([ClientRequest], [ClientNotification])>
 
-    public var eventSequence: EventSequence
+    private struct State {
+        var id = 0
+        var clientRequests: [ClientRequest] = []
+        var clientNotifications: [ClientNotification] = []
+    }
 
-    /// A sequence of all events.
-    public var clientEventSequence: ClientEventSequence
-    private var clientEventContinuation: ClientEventSequence.Continuation
+    let eventSequence: EventSequence
+    let clientEventSequence: ClientEventSequence
+    private let clientEventContinuation: ClientEventSequence.Continuation
+    private let state = Mutex(State())
 
-    private var id = 0
-
-    public var clientRequests: [ClientRequest] = []
-    public var clientNotifications: [ClientNotification] = []
+    var clientRequests: [ClientRequest] { state.withLock { $0.clientRequests } }
+    var clientNotifications: [ClientNotification] { state.withLock { $0.clientNotifications } }
 
     init() {
         let (sequence, _) = EventSequence.makeStream()
@@ -36,17 +40,22 @@ class BufferingServerConnection: ServerConnection {
     }
 
     func sendNotification(_ notif: ClientNotification) async throws {
-        clientNotifications.append(notif)
-        clientEventContinuation.yield((clientRequests, clientNotifications))
+        let snapshot = state.withLock { state in
+            state.clientNotifications.append(notif)
+            return (state.clientRequests, state.clientNotifications)
+        }
+        clientEventContinuation.yield(snapshot)
     }
 
     func sendRequest<Response: Decodable & Sendable>(_ request: ClientRequest) async throws -> Response {
-        defer {
-            clientEventContinuation.yield((clientRequests, clientNotifications))
+        let snapshot = state.withLock { state in
+            state.clientRequests.append(request)
+            state.id += 1
+            return (state.clientRequests, state.clientNotifications)
         }
-
-        clientRequests.append(request)
-        id += 1
+        defer {
+            clientEventContinuation.yield(snapshot)
+        }
         let response: Codable
         switch request {
         case .initialize:

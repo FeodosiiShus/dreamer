@@ -7,6 +7,7 @@
 
 import XCTest
 
+@MainActor
 final class ProjectNavigatorFileManagementUITests: XCTestCase {
 
     var app: XCUIApplication!
@@ -15,18 +16,15 @@ final class ProjectNavigatorFileManagementUITests: XCTestCase {
     var path: String!
 
     override func setUp() async throws {
-        // MainActor required for async compatibility which is required to make this method throwing
-        try await MainActor.run {
-            (app, path) = try App.launchWithTempDir()
+        (app, path) = try App.launchWithTempDir()
 
-            window = Query.getWindow(app)
-            XCTAssertTrue(window.exists, "Window not found")
-            window.toolbars.firstMatch.click()
+        window = Query.getWindow(app)
+        XCTAssertTrue(window.exists, "Window not found")
+        window.toolbars.firstMatch.click()
 
-            navigator = Query.Window.getProjectNavigator(window)
-            XCTAssertTrue(navigator.exists, "Navigator not found")
-            XCTAssertEqual(Query.Navigator.getRows(navigator).count, 1, "Found more than just the root file.")
-        }
+        navigator = Query.Window.getProjectNavigator(window)
+        XCTAssertTrue(navigator.exists, "Navigator not found")
+        XCTAssertEqual(Query.Navigator.getRows(navigator).count, 1, "Found more than just the root file.")
     }
 
     func testNewFilesAppear() throws {

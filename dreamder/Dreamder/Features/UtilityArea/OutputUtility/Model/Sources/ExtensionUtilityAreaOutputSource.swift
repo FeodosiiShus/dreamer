@@ -8,7 +8,7 @@
 import OSLog
 import LogStream
 
-extension LogMessage: @retroactive Identifiable, UtilityAreaOutputMessage {
+nonisolated extension LogMessage: @retroactive Identifiable, UtilityAreaOutputMessage {
     public var id: String {
         "\(date.timeIntervalSince1970)" + process + (subsystem ?? "") + (category ?? "")
     }
@@ -27,12 +27,15 @@ extension LogMessage: @retroactive Identifiable, UtilityAreaOutputMessage {
     }
 }
 
-struct ExtensionUtilityAreaOutputSource: @MainActor UtilityAreaOutputSource {
-    var id: String {
-        "extension_output" + extensionInfo.id
-    }
+struct ExtensionUtilityAreaOutputSource: UtilityAreaOutputSource {
+    nonisolated let id: String
 
     let extensionInfo: ExtensionInfo
+
+    init(extensionInfo: ExtensionInfo) {
+        self.extensionInfo = extensionInfo
+        self.id = "extension_output" + extensionInfo.id
+    }
 
     func cachedMessages() -> [LogMessage] {
         []

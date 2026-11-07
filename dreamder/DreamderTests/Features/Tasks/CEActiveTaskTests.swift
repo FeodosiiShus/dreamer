@@ -36,7 +36,7 @@ class CEActiveTaskTests {
         } onTimeout: {
             Issue.record("Task never started. \(activeTask.status)")
         }
-        activeTask.waitForExit()
+        await activeTask.waitForExit()
 
         await waitForExpectation(timeout: .seconds(90)) {
             activeTask.status == .finished
@@ -56,7 +56,7 @@ class CEActiveTaskTests {
     func testHandleProcessFinished(_ shell: Shell) async throws {
         task.command = "aNon-existentCommand"
         activeTask.run(workspaceURL: nil, shell: shell)
-        activeTask.waitForExit()
+        await activeTask.waitForExit()
 
         await waitForExpectation(timeout: .seconds(90)) {
             activeTask.status == .failed
@@ -68,7 +68,7 @@ class CEActiveTaskTests {
     @Test(arguments: [Shell.zsh, Shell.bash])
     func testClearOutput(_ shell: Shell) async throws {
         activeTask.run(workspaceURL: nil, shell: shell)
-        activeTask.waitForExit()
+        await activeTask.waitForExit()
 
         await waitForExpectation(timeout: .seconds(90)) {
             activeTask.status == .finished

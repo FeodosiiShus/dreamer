@@ -38,13 +38,24 @@ class CEActiveTaskTerminalView: CELocalShellTerminalView {
         guard let (shell, shellPath) = getShell(shell, userSetting: terminalSettings.shell) else {
             return
         }
-        let shellArgs = ["-lic", activeTask.task.command]
 
         terminalEnvironment.append(contentsOf: environment)
         terminalEnvironment.append("\(ShellIntegration.Variables.disableHistory)=1")
         terminalEnvironment.append(
             contentsOf: activeTask.task.environmentVariables.map({ $0.key + "=" + $0.value })
         )
+
+        var shellArgs = ["-lic"]
+        if terminalSettings.useShellIntegration,
+           let integrationArgs = try? ShellIntegration.setUpIntegration(
+                for: shell,
+                environment: &terminalEnvironment,
+                useLogin: true,
+                interactive: interactive
+           ) {
+            shellArgs = integrationArgs + ["-c"]
+        }
+        shellArgs.append(activeTask.task.command)
 
         sendOutputMessage("Starting task: " + self.activeTask.task.name)
         sendOutputMessage(self.activeTask.task.command)

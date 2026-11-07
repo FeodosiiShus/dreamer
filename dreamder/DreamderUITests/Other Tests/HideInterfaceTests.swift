@@ -6,16 +6,15 @@
 //
 
 import XCTest
+@MainActor
 final class HideInterfaceUITests: XCTestCase {
 
-    // MARK: – Setup
+    // MARK: – Setup
     private var app: XCUIApplication!
     private var path: String!
 
     override func setUp() async throws {
-        try await MainActor.run {
-            (app, path) = try App.launchWithTempDir()
-        }
+        (app, path) = try App.launchWithTempDir()
     }
 
     /// List of the  panels to test with

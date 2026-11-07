@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Synchronization
 
 func projectPath() -> String {
     return String(
@@ -17,15 +18,12 @@ func projectPath() -> String {
     )
 }
 
-private var tempProjectPathIds = Set<String>()
+private let tempProjectPathIds = Mutex(Set<String>())
 
 private func makeTempID() -> String {
     let id = String((0..<10).map { _ in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-".randomElement()! })
-    if tempProjectPathIds.contains(id) {
-        return makeTempID()
-    }
-    tempProjectPathIds.insert(id)
-    return id
+    let inserted = tempProjectPathIds.withLock { $0.insert(id).inserted }
+    return inserted ? id : makeTempID()
 }
 
 func tempProjectPath() throws -> String {
@@ -39,5 +37,5 @@ func tempProjectPath() throws -> String {
 func cleanUpTempProjectPaths() throws {
     let baseDir = FileManager.default.temporaryDirectory.appending(path: "DreamderUITests")
     try FileManager.default.removeItem(at: baseDir)
-    tempProjectPathIds.removeAll()
+    tempProjectPathIds.withLock { $0.removeAll() }
 }

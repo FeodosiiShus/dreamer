@@ -14,7 +14,7 @@ import Foundation
 // MARK: - helpers
 // -----------------------------------------------------------------------------
 
-private let testDefaults: UserDefaults = {
+@MainActor private let testDefaults: UserDefaults = {
     let name = "RecentsStoreTests.\(UUID())"
     let userDefaults   = UserDefaults(suiteName: name)!
     userDefaults.removePersistentDomain(forName: name)   // start clean

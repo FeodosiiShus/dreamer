@@ -11,48 +11,52 @@ struct ThemeTests {
 
     private static let neutral = Attributes(color: "#000000")
 
-    private static let editorKeyPaths: [(String, WritableKeyPath<EditorColors, Attributes>)] = [
-        ("text", \.text),
-        ("insertionPoint", \.insertionPoint),
-        ("invisibles", \.invisibles),
-        ("background", \.background),
-        ("lineHighlight", \.lineHighlight),
-        ("selection", \.selection),
-        ("keywords", \.keywords),
-        ("commands", \.commands),
-        ("types", \.types),
-        ("attributes", \.attributes),
-        ("variables", \.variables),
-        ("values", \.values),
-        ("numbers", \.numbers),
-        ("strings", \.strings),
-        ("characters", \.characters),
-        ("comments", \.comments)
-    ]
+    private static var editorKeyPaths: [(String, WritableKeyPath<EditorColors, Attributes>)] {
+        [
+            ("text", \.text),
+            ("insertionPoint", \.insertionPoint),
+            ("invisibles", \.invisibles),
+            ("background", \.background),
+            ("lineHighlight", \.lineHighlight),
+            ("selection", \.selection),
+            ("keywords", \.keywords),
+            ("commands", \.commands),
+            ("types", \.types),
+            ("attributes", \.attributes),
+            ("variables", \.variables),
+            ("values", \.values),
+            ("numbers", \.numbers),
+            ("strings", \.strings),
+            ("characters", \.characters),
+            ("comments", \.comments)
+        ]
+    }
 
-    private static let terminalKeyPaths: [(String, WritableKeyPath<TerminalColors, Attributes>)] = [
-        ("text", \.text),
-        ("boldText", \.boldText),
-        ("cursor", \.cursor),
-        ("background", \.background),
-        ("selection", \.selection),
-        ("black", \.black),
-        ("red", \.red),
-        ("green", \.green),
-        ("yellow", \.yellow),
-        ("blue", \.blue),
-        ("magenta", \.magenta),
-        ("cyan", \.cyan),
-        ("white", \.white),
-        ("brightBlack", \.brightBlack),
-        ("brightRed", \.brightRed),
-        ("brightGreen", \.brightGreen),
-        ("brightYellow", \.brightYellow),
-        ("brightBlue", \.brightBlue),
-        ("brightMagenta", \.brightMagenta),
-        ("brightCyan", \.brightCyan),
-        ("brightWhite", \.brightWhite)
-    ]
+    private static var terminalKeyPaths: [(String, WritableKeyPath<TerminalColors, Attributes>)] {
+        [
+            ("text", \.text),
+            ("boldText", \.boldText),
+            ("cursor", \.cursor),
+            ("background", \.background),
+            ("selection", \.selection),
+            ("black", \.black),
+            ("red", \.red),
+            ("green", \.green),
+            ("yellow", \.yellow),
+            ("blue", \.blue),
+            ("magenta", \.magenta),
+            ("cyan", \.cyan),
+            ("white", \.white),
+            ("brightBlack", \.brightBlack),
+            ("brightRed", \.brightRed),
+            ("brightGreen", \.brightGreen),
+            ("brightYellow", \.brightYellow),
+            ("brightBlue", \.brightBlue),
+            ("brightMagenta", \.brightMagenta),
+            ("brightCyan", \.brightCyan),
+            ("brightWhite", \.brightWhite)
+        ]
+    }
 
     private static func attributes(_ number: Int) -> Attributes {
         Attributes(color: String(format: "#%06x", number))

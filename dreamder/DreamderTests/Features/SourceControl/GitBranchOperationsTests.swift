@@ -165,7 +165,7 @@ struct GitBranchOperationsTests {
             try repo.fixture.commit("feature adds b")
             try repo.fixture.run("checkout", "-q", "main")
 
-            try await repo.client.branchOpsMerge("feature")
+            _ = try await repo.client.branchOpsMerge("feature")
             #expect(try repo.fixture.read("b.txt") == "feature\n")
 
             try repo.fixture.run("checkout", "-q", "feature")
@@ -196,7 +196,7 @@ struct GitBranchOperationsTests {
             try repo.fixture.write("main.txt", "m\n")
             try repo.fixture.commit("main work")
 
-            try await repo.client.branchOpsCheckoutAndRebase("feature", onto: "main")
+            _ = try await repo.client.branchOpsCheckoutAndRebase("feature", onto: "main")
 
             #expect(try repo.currentBranch == "feature")
             let log = try repo.fixture.run("log", "--format=%s").split(separator: "\n").map(String.init)

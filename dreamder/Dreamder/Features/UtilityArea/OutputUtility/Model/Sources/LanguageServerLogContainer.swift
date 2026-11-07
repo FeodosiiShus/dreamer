@@ -8,8 +8,8 @@
 import OSLog
 import LanguageServerProtocol
 
-class LanguageServerLogContainer: @MainActor UtilityAreaOutputSource {
-    struct LanguageServerMessage: @MainActor UtilityAreaOutputMessage {
+class LanguageServerLogContainer: UtilityAreaOutputSource {
+    nonisolated struct LanguageServerMessage: UtilityAreaOutputMessage, Sendable {
         let log: LogMessageParams
         var id: UUID = UUID()
 
@@ -35,7 +35,7 @@ class LanguageServerLogContainer: @MainActor UtilityAreaOutputSource {
         var category: String?
     }
 
-    let id: String
+    nonisolated let id: String
 
     private var streamContinuation: AsyncStream<LanguageServerMessage>.Continuation
     private var stream: AsyncStream<LanguageServerMessage>
