@@ -122,7 +122,7 @@ class FileSystemTableViewCell: StandardTableViewCell {
         }
     }
 
-    deinit {
+    isolated deinit {
         toolTip = nil
     }
 }

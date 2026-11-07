@@ -89,7 +89,7 @@ final class WorkspaceDocument: NSDocument, ObservableObject, NSToolbarDelegate {
         ".DS_Store"
     ]
 
-    override static var autosavesInPlace: Bool {
+    nonisolated override static var autosavesInPlace: Bool {
         false
     }
 
@@ -179,11 +179,13 @@ final class WorkspaceDocument: NSDocument, ObservableObject, NSToolbarDelegate {
         utilityAreaModel?.restoreFromState(self)
     }
 
-    override func read(from url: URL, ofType typeName: String) throws {
-        try initWorkspaceState(url)
+    nonisolated override func read(from url: URL, ofType typeName: String) throws {
+        try MainActor.assumeIsolated {
+            try initWorkspaceState(url)
+        }
     }
 
-    override func write(to url: URL, ofType typeName: String) throws {}
+    nonisolated override func write(to url: URL, ofType typeName: String) throws {}
 
     // MARK: Close Workspace
 

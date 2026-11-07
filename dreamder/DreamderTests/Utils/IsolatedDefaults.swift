@@ -51,10 +51,10 @@ nonisolated func withIsolatedDefaults<T>(_ body: (UserDefaults) throws -> T) thr
 nonisolated struct IsolatedDefaultsTrait: SuiteTrait, TestTrait, TestScoping {
     var isRecursive: Bool { true }
 
-    func provideScope(
+    @concurrent func provideScope(
         for test: Test,
         testCase: Test.Case?,
-        performing function: @Sendable () async throws -> Void
+        performing function: @concurrent @Sendable () async throws -> Void
     ) async throws {
         guard testCase != nil else {
             try await function()

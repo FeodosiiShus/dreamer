@@ -29,12 +29,12 @@ final class CodeFileDocument: NSDocument {
         let cursorPositions: [CursorPosition]
     }
 
-    static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "CodeFileDocument")
+    nonisolated static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "CodeFileDocument")
 
     /// Sent when the document is opened. The document will be sent in the notification's object.
-    static let didOpenNotification = Notification.Name(rawValue: "CodeFileDocument.didOpen")
+    nonisolated static let didOpenNotification = Notification.Name(rawValue: "CodeFileDocument.didOpen")
     /// Sent when the document is closed. The document's `fileURL` will be sent in the notification's object.
-    static let didCloseNotification = Notification.Name(rawValue: "CodeFileDocument.didClose")
+    nonisolated static let didCloseNotification = Notification.Name(rawValue: "CodeFileDocument.didClose")
 
     /// The text content of the document, stored as a text storage
     ///
@@ -97,7 +97,7 @@ final class CodeFileDocument: NSDocument {
     }
 
     @ObservationIgnored private var autosaveTask: Task<Void, Never>?
-    private static let autosaveDelay: Duration = .seconds(2)
+    private nonisolated static let autosaveDelay: Duration = .seconds(2)
 
     deinit {
         autosaveTask?.cancel()
@@ -105,14 +105,25 @@ final class CodeFileDocument: NSDocument {
 
     // MARK: - NSDocument
 
-    override static var autosavesInPlace: Bool {
-        Settings.shared.preferences.general.isAutoSaveOn
+    nonisolated override static var autosavesInPlace: Bool {
+        onMain { Settings.shared.preferences.general.isAutoSaveOn }
     }
 
-    override var autosavingFileType: String? {
-        Settings.shared.preferences.general.isAutoSaveOn
-            ? fileType
-            : nil
+    nonisolated override var autosavingFileType: String? {
+        Self.onMain {
+            Settings.shared.preferences.general.isAutoSaveOn
+                ? fileType
+                : nil
+        }
+    }
+
+    private nonisolated static func onMain<T: Sendable>(_ body: @MainActor () -> T) -> T {
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated(body)
+        }
+        return DispatchQueue.main.sync {
+            MainActor.assumeIsolated(body)
+        }
     }
 
     override func makeWindowControllers() {
@@ -153,7 +164,7 @@ final class CodeFileDocument: NSDocument {
 
     /// This function is used for decoding files.
     /// It should not throw error as unsupported files can still be opened by QLPreviewView.
-    override func read(from data: Data, ofType _: String) throws {
+    nonisolated override func read(from data: Data, ofType _: String) throws {
         var nsString: NSString?
         let rawEncoding = NSString.stringEncoding(
             for: data,
@@ -169,14 +180,16 @@ final class CodeFileDocument: NSDocument {
             Self.logger.error("Failed to read file from data using encoding: \(rawEncoding)")
             return
         }
-        self.sourceEncoding = validEncoding
-        if let content {
-            registerContentChangeUndo(fileURL: fileURL, nsString: nsString, content: content)
-            content.mutableString.setString(nsString as String)
-        } else {
-            self.content = NSTextStorage(string: nsString as String)
+        Self.onMain {
+            self.sourceEncoding = validEncoding
+            if let content {
+                registerContentChangeUndo(fileURL: fileURL, nsString: nsString, content: content)
+                content.mutableString.setString(nsString as String)
+            } else {
+                self.content = NSTextStorage(string: nsString as String)
+            }
+            NotificationCenter.default.post(name: Self.didOpenNotification, object: self)
         }
-        NotificationCenter.default.post(name: Self.didOpenNotification, object: self)
     }
 
     /// If this file is already open and being tracked by an undo manager, we register an undo mutation
@@ -251,20 +264,19 @@ final class CodeFileDocument: NSDocument {
     /// we continue.
     /// To determine if we can reload the file, we check if the document has outstanding edits. If not, we reload the
     /// file.
-    override func presentedItemDidChange() {
-        guard fileModificationDate != getModificationDate(), !isDocumentEdited else {
-            super.presentedItemDidChange()
-            return
-        }
+    nonisolated override func presentedItemDidChange() {
+        let reloaded = Self.onMain { self.reloadFromDiskIfUnedited() }
+        guard !reloaded else { return }
+        super.presentedItemDidChange()
+    }
+
+    private func reloadFromDiskIfUnedited() -> Bool {
+        guard fileModificationDate != getModificationDate(), !isDocumentEdited else { return false }
         fileModificationDate = getModificationDate()
-        guard let fileURL, let fileType else { return }
-        if Thread.isMainThread {
+        if let fileURL, let fileType {
             try? read(from: fileURL, ofType: fileType)
-        } else {
-            DispatchQueue.main.sync {
-                try? self.read(from: fileURL, ofType: fileType)
-            }
         }
+        return true
     }
 
     /// Helper to find the last modified date of the represented file item.
@@ -302,7 +314,7 @@ final class CodeFileDocument: NSDocument {
         }
     }
 
-    override func fileNameExtension(
+    nonisolated override func fileNameExtension(
         forType typeName: String,
         saveOperation: NSDocument.SaveOperationType
     ) -> String? {
@@ -344,7 +356,7 @@ extension CodeFileDocument: LanguageServerDocument {
 
 private extension CodeFileDocument {
 
-    static let fileTypeExtension: [String: String?] = [
+    nonisolated static let fileTypeExtension: [String: String?] = [
         "public.make-source": nil
     ]
 }
