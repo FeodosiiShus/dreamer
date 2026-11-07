@@ -7,15 +7,15 @@
 
 import Foundation
 
-extension GitClient {
+nonisolated extension GitClient {
     /// Pull changes from remote
     func pullFromRemote(remote: String? = nil, branch: String? = nil, rebase: Bool = false) async throws {
-        var command = "pull \(rebase ? "--rebase" : "--no-rebase")"
+        var arguments = ["pull", rebase ? "--rebase" : "--no-rebase"]
 
         if let remote = remote, let branch = branch {
-            command += " \(remote) \(branch)"
+            arguments += [remote, branch]
         }
 
-        _ = try await self.run(command)
+        _ = try await self.run(arguments: arguments)
     }
 }

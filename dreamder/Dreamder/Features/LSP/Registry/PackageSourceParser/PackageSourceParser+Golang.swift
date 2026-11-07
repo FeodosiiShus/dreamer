@@ -13,21 +13,24 @@ extension PackageSourceParser {
         guard sourceId.hasPrefix(pkgPrefix) else { return .unknown }
 
         let pkgString = sourceId.dropFirst(pkgPrefix.count)
+        guard let firstCharacter = pkgString.first, !"?#@".contains(firstCharacter) else { return .unknown }
 
         // Extract subpath first if present
         let subpathComponents = pkgString.split(separator: "#", maxSplits: 1)
-        let packageVersionParam = String(subpathComponents[0])
+        guard let packageVersionParamString = subpathComponents.first else { return .unknown }
+        let packageVersionParam = String(packageVersionParamString)
         let subpath = subpathComponents.count > 1 ? String(subpathComponents[1]) : nil
 
         // Then split into package@version and parameters
         let components = packageVersionParam.split(separator: "?", maxSplits: 1)
-        let packageVersion = String(components[0])
+        guard let packageVersionString = components.first else { return .unknown }
+        let packageVersion = String(packageVersionString)
         let parameters = components.count > 1 ? String(components[1]) : ""
 
         let packageVersionParts = packageVersion.split(separator: "@", maxSplits: 1)
-        guard packageVersionParts.count >= 1 else { return .unknown }
+        guard let packageNameString = packageVersionParts.first else { return .unknown }
 
-        let packageName = String(packageVersionParts[0])
+        let packageName = String(packageNameString)
         let version = packageVersionParts.count > 1 ? String(packageVersionParts[1]) : "latest"
 
         // Parse parameters as options

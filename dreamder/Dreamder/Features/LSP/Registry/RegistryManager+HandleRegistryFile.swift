@@ -10,13 +10,14 @@ import Foundation
 extension RegistryManager {
     /// Downloads the latest registry
     func downloadRegistryItems() async {
+        guard let registryURL, let checksumURL else { return }
         isDownloadingRegistry = true
         defer { isDownloadingRegistry = false }
 
         let registryData, checksumData: Data
         do {
-            async let zipDataTask = download(from: self.registryURL)
-            async let checksumsTask = download(from: self.checksumURL)
+            async let zipDataTask = download(from: registryURL)
+            async let checksumsTask = download(from: checksumURL)
 
             (registryData, checksumData) = try await (zipDataTask, checksumsTask)
         } catch {

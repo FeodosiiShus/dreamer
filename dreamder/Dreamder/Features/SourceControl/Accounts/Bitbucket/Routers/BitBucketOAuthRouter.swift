@@ -55,15 +55,14 @@ enum BitBucketOAuthRouter: GitRouter {
     }
 
     var URLRequest: Foundation.URLRequest? {
+        let config: BitBucketOAuthConfiguration
         switch self {
-        case .authorize(let config):
-            let url = URL(string: path, relativeTo: URL(string: config.webEndpoint!)!)
-            let components = URLComponents(url: url!, resolvingAgainstBaseURL: true)
-            return request(components!, parameters: params)
-        case .accessToken(let config, _):
-            let url = URL(string: path, relativeTo: URL(string: config.webEndpoint!)!)
-            let components = URLComponents(url: url!, resolvingAgainstBaseURL: true)
-            return request(components!, parameters: params)
+        case .authorize(let value): config = value
+        case .accessToken(let value, _): config = value
         }
+        guard let base = config.webEndpoint.flatMap({ URL(string: $0) }),
+              let url = URL(string: path, relativeTo: base),
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: true) else { return nil }
+        return request(components, parameters: params)
     }
 }

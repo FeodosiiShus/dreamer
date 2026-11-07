@@ -513,4 +513,103 @@ struct GitBranchOperationsTests {
             #expect(await repo.client.branchOpsOperationState() == .none)
         }
     }
+
+    @Test
+    func branchExistenceTreatsAMissingBranchAsFalseNotAnError() async throws {
+        try await withTempDir { dir in
+            let repo = try makeRepo(dir)
+            #expect(try await repo.client.branchOpsBranchExists("main"))
+            #expect(try await repo.client.branchOpsBranchExists("missing") == false)
+            #expect(try await repo.client.branchOpsBranchExists("feature/with space") == false)
+        }
+    }
+
+    @Test
+    func mergingAnUnknownRefIsAnErrorRatherThanACleanMerge() async throws {
+        try await withTempDir { dir in
+            let repo = try makeRepo(dir)
+            await #expect(throws: GitClient.GitClientError.self) {
+                try await repo.client.branchOpsMerge("does-not-exist")
+            }
+            #expect(await repo.client.branchOpsOperationState() == .none)
+        }
+    }
+
+    @Test
+    func mergeRefusedBecauseOfLocalChangesIsAnErrorNotAConflict() async throws {
+        try await withTempDir { dir in
+            let repo = try makeRepo(dir)
+            try repo.fixture.run("checkout", "-q", "-b", "feature")
+            try repo.fixture.write("a.txt", "feature side\n")
+            try repo.fixture.commit("feature edits a")
+            try repo.fixture.run("checkout", "-q", "main")
+            try repo.fixture.write("a.txt", "uncommitted\n")
+
+            await #expect(throws: GitClient.GitClientError.self) {
+                try await repo.client.branchOpsMerge("feature")
+            }
+            #expect(await repo.client.branchOpsOperationState() == .none)
+            #expect(try repo.fixture.read("a.txt") == "uncommitted\n")
+        }
+    }
+
+    @Test
+    func rebasingOntoAnUnknownRefIsAnError() async throws {
+        try await withTempDir { dir in
+            let repo = try makeRepo(dir)
+            await #expect(throws: GitClient.GitClientError.self) {
+                try await repo.client.branchOpsRebase(onto: "does-not-exist")
+            }
+        }
+    }
+
+    @Test
+    func revisionLookupOfAnUnknownRevisionThrows() async throws {
+        try await withTempDir { dir in
+            let repo = try makeRepo(dir)
+            await #expect(throws: GitClient.GitClientError.self) {
+                try await repo.client.branchOpsRevision("does-not-exist")
+            }
+            #expect(try await repo.client.branchOpsRevision("main").count == 40)
+        }
+    }
+
+    @Test
+    func abortingWithoutAnOperationInProgressFails() async throws {
+        try await withTempDir { dir in
+            let repo = try makeRepo(dir)
+            await #expect(throws: GitClient.GitClientError.self) { try await repo.client.branchOpsMergeAbort() }
+            await #expect(throws: GitClient.GitClientError.self) { try await repo.client.branchOpsRebaseAbort() }
+        }
+    }
+
+    @Test
+    func hostileBranchNamesAreNeverInterpretedByAShell() async throws {
+        try await withTempDir { dir in
+            let repo = try makeRepo(dir)
+            let name = "feature$(>pwned-name)`x`;y\"z'w"
+
+            try await repo.client.branchOpsCreateBranch(name: name, from: nil, checkout: false)
+            #expect(try repo.branches().contains(name))
+            #expect(try await repo.client.branchOpsBranchExists(name))
+
+            try await repo.client.branchOpsCheckoutLocal(name)
+            #expect(try repo.currentBranch == name)
+
+            try await repo.client.branchOpsCheckoutLocal("main")
+            try await repo.client.branchOpsDeleteLocalBranch(name)
+            #expect(try repo.branches() == ["main"])
+            #expect(!repo.fixture.exists("pwned-name"))
+        }
+    }
+
+    @Test
+    func deletingABranchOnAnUnknownRemoteIsAnError() async throws {
+        try await withTempDir { dir in
+            let repo = try makeRepo(dir)
+            await #expect(throws: GitClient.GitClientError.self) {
+                try await repo.client.branchOpsDeleteRemoteBranch(remote: "nowhere", branch: "x")
+            }
+        }
+    }
 }

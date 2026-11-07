@@ -111,7 +111,9 @@ struct AccountsSettingsSigninView: View {
                                 .foregroundColor(.secondary)
                             }
                             Button {
-                                createToken(provider.authHelpURL)
+                                if let helpURL = provider.authHelpURL {
+                                    createToken(helpURL)
+                                }
                             } label: {
                                 if provider.authType == .password {
                                     Text("Create a Password on \(provider.name)")

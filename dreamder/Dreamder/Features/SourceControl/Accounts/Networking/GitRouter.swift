@@ -83,7 +83,8 @@ extension GitRouter {
     var gitErrorKey: String { "ErrorKey" }
 
     func request() -> URLRequest? {
-        let url = URL(string: path, relativeTo: URL(string: configuration?.apiEndpoint ?? "")!)
+        guard let baseURL = configuration?.apiEndpoint.flatMap({ URL(string: $0) }),
+              let url = URL(string: path, relativeTo: baseURL) else { return nil }
 
         var parameters = encoding == .json ? [:] : params
 
@@ -91,9 +92,9 @@ extension GitRouter {
             parameters[configuration?.accessTokenFieldName ?? ""] = accessToken as Any?
         }
 
-        let components = URLComponents(url: url!, resolvingAgainstBaseURL: true)
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: true) else { return nil }
 
-        var urlRequest = request(components!, parameters: parameters)
+        var urlRequest = request(components, parameters: parameters)
 
         if let accessToken = configuration?.accessToken, let tokenType = configuration?.authorizationHeader {
             urlRequest?.addValue("\(tokenType) \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -174,7 +175,9 @@ extension GitRouter {
             // clear the query items as they go into the body
             urlComponents.queryItems = nil
 
-            var mutableURLRequest = Foundation.URLRequest(url: urlComponents.url!)
+            guard let formURL = urlComponents.url else { return nil }
+
+            var mutableURLRequest = Foundation.URLRequest(url: formURL)
 
             mutableURLRequest.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "content-type")
 

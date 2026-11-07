@@ -20,11 +20,11 @@ final class RegistryManager: ObservableObject {
     /// The URL of where the registry.json file will be downloaded from
     let registryURL = URL(
         string: "https://github.com/mason-org/mason-registry/releases/latest/download/registry.json.zip"
-    )!
+    )
     /// The URL of where the checksums.txt file will be downloaded from
     let checksumURL = URL(
         string: "https://github.com/mason-org/mason-registry/releases/latest/download/checksums.txt"
-    )!
+    )
 
     @Published var isDownloadingRegistry: Bool = false
     /// Holds an errors found while downloading the registry file. Needs a UI to dismiss, is logged.

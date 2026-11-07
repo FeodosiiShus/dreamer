@@ -1,18 +1,20 @@
-import Combine
 import Foundation
+import Observation
 import SwiftUI
 
-struct GitConsoleEntry: Identifiable, Equatable {
+nonisolated struct GitConsoleEntry: Identifiable, Equatable, Sendable {
     let id = UUID()
     let date: Date
     let directory: String
     let command: String
     let errorLines: [String]
 
+    @MainActor
     var header: String {
         "\(GitConsoleEntry.timeFormatter.string(from: date)): [\(directory)] git \(command)"
     }
 
+    @MainActor
     static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -21,29 +23,28 @@ struct GitConsoleEntry: Identifiable, Equatable {
     }()
 }
 
-final class GitConsoleLog: ObservableObject {
-    @Published private(set) var entries: [GitConsoleEntry] = []
-    @Published var isDismissed = false
+@Observable
+@MainActor
+final class GitConsoleLog {
+    private(set) var entries: [GitConsoleEntry] = []
+    var isDismissed = false
 
-    private static let lock = NSLock()
     private static var logs: [String: GitConsoleLog] = [:]
-    static let maximumEntries = 1000
+    nonisolated static let maximumEntries = 1000
 
-    static let changingCommands: Set<String> = [
+    nonisolated static let changingCommands: Set<String> = [
         "add", "am", "branch", "checkout", "cherry-pick", "clean", "clone", "commit", "fetch", "init",
         "merge", "mv", "pull", "push", "rebase", "remote", "reset", "restore", "revert", "rm",
         "stash", "switch", "tag", "worktree"
     ]
 
-    static let readOnlyBranchFlags: Set<String> = ["--list", "-l", "--show-current", "-a", "-r", "--format", "-v", "-vv"]
+    nonisolated static let readOnlyBranchFlags: Set<String> = ["--list", "-l", "--show-current", "-a", "-r", "--format", "-v", "-vv"]
 
     static func log(for directory: URL) -> GitConsoleLog {
         var key = directory.standardizedFileURL.path(percentEncoded: false)
         while key.count > 1, key.hasSuffix("/") {
             key.removeLast()
         }
-        lock.lock()
-        defer { lock.unlock() }
         if let log = logs[key] {
             return log
         }
@@ -52,7 +53,7 @@ final class GitConsoleLog: ObservableObject {
         return log
     }
 
-    static func subcommand(of command: String) -> String? {
+    nonisolated static func subcommand(of command: String) -> String? {
         let tokens = command.split(separator: " ").map(String.init)
         var index = 0
         while index < tokens.count {
@@ -70,7 +71,7 @@ final class GitConsoleLog: ObservableObject {
         return nil
     }
 
-    static func changesRepository(_ command: String) -> Bool {
+    nonisolated static func changesRepository(_ command: String) -> Bool {
         guard let subcommand = subcommand(of: command), changingCommands.contains(subcommand) else {
             return false
         }
@@ -96,7 +97,7 @@ final class GitConsoleLog: ObservableObject {
         return true
     }
 
-    static func errorLines(in output: String) -> [String] {
+    nonisolated static func errorLines(in output: String) -> [String] {
         output
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -113,19 +114,11 @@ final class GitConsoleLog: ObservableObject {
             command: command,
             errorLines: Self.errorLines(in: output)
         )
-        let apply = { [weak self] in
-            guard let self else { return }
-            self.entries.append(entry)
-            if self.entries.count > Self.maximumEntries {
-                self.entries.removeFirst(self.entries.count - Self.maximumEntries)
-            }
-            self.isDismissed = false
+        entries.append(entry)
+        if entries.count > Self.maximumEntries {
+            entries.removeFirst(entries.count - Self.maximumEntries)
         }
-        if Thread.isMainThread {
-            apply()
-        } else {
-            DispatchQueue.main.async(execute: apply)
-        }
+        isDismissed = false
     }
 
     func clear() {
@@ -134,7 +127,7 @@ final class GitConsoleLog: ObservableObject {
 }
 
 struct GitConsoleView: View {
-    @ObservedObject var log: GitConsoleLog
+    let log: GitConsoleLog
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -167,7 +160,7 @@ struct GitConsoleView: View {
 }
 
 struct GitConsoleTab: View {
-    @ObservedObject var log: GitConsoleLog
+    let log: GitConsoleLog
     @Binding var isSelected: Bool
 
     var body: some View {

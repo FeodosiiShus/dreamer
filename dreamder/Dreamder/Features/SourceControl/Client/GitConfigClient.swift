@@ -6,39 +6,43 @@
 //
 
 import Foundation
+import OSLog
 
 /// A client for managing Git configuration settings.
 /// Provides methods to read and write Git configuration values at both
 /// project and global levels.
-class GitConfigClient {
+nonisolated final class GitConfigClient: Sendable {
+    private static let unsetKeyMissingExitCode: Int32 = 5
+    private static let keyMissingExitCode: Int32 = 1
+
     private let projectURL: URL?
-    private let shellClient: ShellClient
+    private let commandRunner: GitCommandRunner
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "GitConfigClient")
+
+    init(projectURL: URL? = nil, commandRunner: GitCommandRunner) {
+        self.projectURL = projectURL
+        self.commandRunner = commandRunner
+    }
 
     /// Initializes a new GitConfigClient.
     /// - Parameters:
     ///   - projectURL: The project directory URL (if any).
     ///   - shellClient: The client responsible for executing shell commands.
-    init(projectURL: URL? = nil, shellClient: ShellClient) {
-        self.projectURL = projectURL
-        self.shellClient = shellClient
+    convenience init(
+        projectURL: URL? = nil,
+        shellClient: ShellClient,
+        processRunner: any ProcessRunning = ProcessRunner()
+    ) {
+        self.init(projectURL: projectURL, commandRunner: GitCommandRunner(runner: processRunner))
     }
 
-    /// Runs a Git configuration command.
-    /// - Parameters:
-    ///   - command: The Git command to execute.
-    ///   - global: Whether to apply the command globally or locally.
-    /// - Returns: The command output as a string.
-    private func runConfigCommand(_ command: String, global: Bool) async throws -> String {
-        var fullCommand = "git config"
-
+    private func runConfigCommand(_ arguments: [String], global: Bool) async throws -> GitCommandResult {
+        var fullArguments = ["config"]
         if global {
-            fullCommand += " --global"
-        } else if let projectURL = projectURL {
-            fullCommand = "cd \(projectURL.relativePath.escapedDirectory()); " + fullCommand
+            fullArguments.append("--global")
         }
-
-        fullCommand += " \(command)"
-        return try shellClient.run(fullCommand)
+        fullArguments.append(contentsOf: arguments)
+        return try await commandRunner.run(arguments: fullArguments, workingDirectory: global ? nil : projectURL)
     }
 
     /// Retrieves a Git configuration value.
@@ -47,8 +51,14 @@ class GitConfigClient {
     ///   - global: Whether to retrieve the value globally or locally.
     /// - Returns: The value as a type conforming to `GitConfigRepresentable`, or `nil` if not found.
     func get<T: GitConfigRepresentable>(key: String, global: Bool = false) async throws -> T? {
-        let output = try await runConfigCommand(key, global: global)
-        let trimmedOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = try await runConfigCommand([key], global: global)
+        if result.exitCode == Self.keyMissingExitCode, result.startFailure == nil {
+            return nil
+        }
+        guard result.success else {
+            throw GitClient.error(for: result)
+        }
+        let trimmedOutput = result.outputText.trimmingCharacters(in: .whitespacesAndNewlines)
         return T(configValue: trimmedOutput)
     }
 
@@ -67,12 +77,16 @@ class GitConfigClient {
             shouldUnset = false
         }
 
-        let commandString = shouldUnset ? "--unset \(key)" : "\(key) \(value.asConfigValue)"
+        let arguments = shouldUnset ? ["--unset", key] : [key, value.asConfigValue]
 
         do {
-            _ = try await runConfigCommand(commandString, global: global)
+            let result = try await runConfigCommand(arguments, global: global)
+            let ignoredExitCodes: Set<Int32> = shouldUnset ? [Self.unsetKeyMissingExitCode] : []
+            if !result.success(ignoring: ignoredExitCodes) {
+                logger.error("Failed to set \(key, privacy: .public): \(result.errorMessage, privacy: .public)")
+            }
         } catch {
-            print("Failed to set \(key): \(error)")
+            logger.error("Failed to set \(key, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
     }
 }

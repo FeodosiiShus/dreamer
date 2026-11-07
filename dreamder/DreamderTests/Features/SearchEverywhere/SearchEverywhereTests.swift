@@ -1,106 +1,255 @@
-import XCTest
+import Foundation
+import Testing
 @testable import Dreamder
 
-final class SearchEverywhereMatcherTests: XCTestCase {
-    func testRankingExactThenPrefixThenCamelHumpThenSubstring() {
-        let exact = SearchEverywhereMatcher.match(query: "ContentView", in: "ContentView")
-        let prefix = SearchEverywhereMatcher.match(query: "ContentView", in: "ContentViewDetail")
-        let camel = SearchEverywhereMatcher.match(query: "CV", in: "ContentView")
-        let substring = SearchEverywhereMatcher.match(query: "ContentView", in: "MyContentViewThing")
+@Suite("SearchEverywhereMatcher")
+struct SearchEverywhereMatcherTests {
+    @Test func rankingExactThenPrefixThenSubstringThenOtherHumps() throws {
+        let exact = try #require(SearchEverywhereMatcher.match(query: "ContentView", in: "ContentView"))
+        let prefix = try #require(SearchEverywhereMatcher.match(query: "ContentView", in: "ContentViewDetail"))
+        let midWordStart = try #require(SearchEverywhereMatcher.match(query: "ContentView", in: "MyContentViewThing"))
 
-        guard let exact, let prefix, let camel, let substring else {
-            return XCTFail("Expected all candidates to match")
-        }
-
-        XCTAssertGreaterThan(exact.score, prefix.score)
-        XCTAssertGreaterThan(prefix.score, camel.score)
-        XCTAssertGreaterThan(camel.score, substring.score)
+        #expect(exact.score > prefix.score)
+        #expect(prefix.score > midWordStart.score)
     }
 
-    func testNoMatchForUnrelatedQuery() {
-        XCTAssertNil(SearchEverywhereMatcher.match(query: "zzq", in: "ContentView"))
+    @Test func startMatchesOutrankEverythingElse() throws {
+        let startMatch = try #require(SearchEverywhereMatcher.match(query: "view", in: "ViewModel"))
+        let middleMatch = try #require(SearchEverywhereMatcher.match(query: "view", in: "ContentView"))
+        #expect(startMatch.score - middleMatch.score >= 9000)
     }
 
-    func testEmptyQueryMatchesEverything() {
+    @Test func noMatchForUnrelatedQuery() {
+        #expect(SearchEverywhereMatcher.match(query: "zzq", in: "ContentView") == nil)
+    }
+
+    @Test func emptyQueryMatchesEverything() {
         let match = SearchEverywhereMatcher.match(query: "", in: "ContentView")
-        XCTAssertEqual(match?.score, 0)
-        XCTAssertEqual(match?.ranges, [])
+        #expect(match?.score == 0)
+        #expect(match?.ranges == [])
     }
 
-    func testCamelHumpMatchesMultipleWords() {
+    @Test func whitespaceOnlyQueryMatchesEverything() {
+        let match = SearchEverywhereMatcher.match(query: "   ", in: "ContentView")
+        #expect(match?.score == 0)
+        #expect(match?.ranges == [])
+    }
+
+    @Test func emptyCandidateNeverMatchesARealQuery() {
+        #expect(SearchEverywhereMatcher.match(query: "a", in: "") == nil)
+    }
+
+    @Test func camelHumpMatchesMultipleWords() {
         let match = SearchEverywhereMatcher.match(query: "DWFM", in: "DreamderWorkspaceFileManager")
-        guard let match else {
-            return XCTFail("Expected camel hump match")
-        }
-        XCTAssertEqual(match.ranges, [
-            NSRange(location: 0, length: 1),
-            NSRange(location: 8, length: 1),
-            NSRange(location: 17, length: 1),
-            NSRange(location: 21, length: 1)
-        ])
+        #expect(
+            match?.ranges == [
+                NSRange(location: 0, length: 1),
+                NSRange(location: 8, length: 1),
+                NSRange(location: 17, length: 1),
+                NSRange(location: 21, length: 1)
+            ]
+        )
     }
 
-    func testCaseInsensitivePrefix() {
+    @Test func lowercaseHumpsMatchWordPrefixes() {
+        let match = SearchEverywhereMatcher.match(query: "conview", in: "ContentView")
+        #expect(match?.ranges == [NSRange(location: 0, length: 3), NSRange(location: 7, length: 4)])
+    }
+
+    @Test func mixedCaseHumpsMatchWordPrefixes() {
+        let match = SearchEverywhereMatcher.match(query: "UsSe", in: "UserService")
+        #expect(match?.ranges == [NSRange(location: 0, length: 2), NSRange(location: 4, length: 2)])
+    }
+
+    @Test func caseInsensitivePrefix() {
         let match = SearchEverywhereMatcher.match(query: "openquick", in: "OpenQuicklyView")
-        XCTAssertEqual(match?.score, 900 - (15 / 40))
-        XCTAssertEqual(match?.ranges, [NSRange(location: 0, length: 9)])
+        #expect(match?.ranges == [NSRange(location: 0, length: 9)])
     }
 
-    func testSubstringHighlightRange() {
+    @Test func substringHighlightRange() {
         let match = SearchEverywhereMatcher.match(query: "Quickly", in: "MyQuicklyView")
-        XCTAssertEqual(match?.ranges, [NSRange(location: 2, length: 7)])
+        #expect(match?.ranges == [NSRange(location: 2, length: 7)])
+    }
+
+    @Test func allCapsAcronymWordStartsAreHonored() {
+        let match = SearchEverywhereMatcher.match(query: "Serv", in: "HTTPServer")
+        #expect(match?.ranges == [NSRange(location: 4, length: 4)])
+    }
+
+    @Test func lowercaseLetterInsideWordNeedsThreeCharacters() {
+        #expect(SearchEverywhereMatcher.match(query: "ogn", in: "login") == nil)
+        #expect(SearchEverywhereMatcher.match(query: "pcl", in: "ApplicationController") == nil)
+        #expect(SearchEverywhereMatcher.match(query: "ogi", in: "login")?.ranges == [NSRange(location: 1, length: 3)])
+        #expect(SearchEverywhereMatcher.match(query: "ogin", in: "login") != nil)
+    }
+
+    @Test func leadingStarIsNotDoubled() {
+        let plain = SearchEverywhereMatcher.match(query: "view", in: "ContentView")
+        let starred = SearchEverywhereMatcher.match(query: "*view", in: "ContentView")
+        #expect(plain == starred)
+    }
+
+    @Test func surroundingWhitespaceIsIgnored() {
+        let plain = SearchEverywhereMatcher.match(query: "view", in: "ContentView")
+        let padded = SearchEverywhereMatcher.match(query: "  view  ", in: "ContentView")
+        #expect(plain == padded)
+    }
+
+    @Test func russianLayoutQueryFindsLatinName() {
+        let match = SearchEverywhereMatcher.match(query: "ыек", in: "StringUtils")
+        #expect(match?.ranges == [NSRange(location: 0, length: 3)])
+    }
+
+    @Test func rangesAreUTF16Offsets() {
+        let match = SearchEverywhereMatcher.match(query: "Foo", in: "\u{1F600}Foo")
+        #expect(match?.ranges == [NSRange(location: 2, length: 3)])
+    }
+
+    @Test func cachedMatcherIsReusedForTheSameQueryOnly() {
+        let first = SearchEverywhereMatcher.match(query: "alpha", in: "AlphaBeta")
+        let other = SearchEverywhereMatcher.match(query: "beta", in: "AlphaBeta")
+        let again = SearchEverywhereMatcher.match(query: "alpha", in: "AlphaBeta")
+        #expect(first == again)
+        #expect(first?.ranges == [NSRange(location: 0, length: 5)])
+        #expect(other?.ranges == [NSRange(location: 5, length: 4)])
+    }
+
+    @Test func matcherMatchesUsingPrebuiltMatcher() {
+        let matcher = SearchEverywhereMatcher.matcher(for: "cv")
+        #expect(SearchEverywhereMatcher.match(using: matcher, in: "ContentView")?.ranges
+            == [NSRange(location: 0, length: 1), NSRange(location: 7, length: 1)])
+        #expect(SearchEverywhereMatcher.match(using: matcher, in: "Other") == nil)
     }
 }
 
-final class SearchEverywhereQueryTests: XCTestCase {
-    func testPlainQueryHasNoLine() {
+@Suite("SearchEverywhereQuery")
+struct SearchEverywhereQueryTests {
+    @Test func plainQueryHasNoLine() {
         let parsed = SearchEverywhereQuery.parse("ContentView.swift")
-        XCTAssertEqual(parsed.text, "ContentView.swift")
-        XCTAssertNil(parsed.line)
-        XCTAssertNil(parsed.column)
+        #expect(parsed.text == "ContentView.swift")
+        #expect(parsed.line == nil)
+        #expect(parsed.column == nil)
     }
 
-    func testLineSuffix() {
+    @Test func lineSuffix() {
         let parsed = SearchEverywhereQuery.parse("ContentView.swift:42")
-        XCTAssertEqual(parsed.text, "ContentView.swift")
-        XCTAssertEqual(parsed.line, 42)
-        XCTAssertNil(parsed.column)
+        #expect(parsed.text == "ContentView.swift")
+        #expect(parsed.line == 42)
+        #expect(parsed.column == nil)
     }
 
-    func testLineAndColumnSuffix() {
+    @Test func lineAndColumnSuffix() {
         let parsed = SearchEverywhereQuery.parse("ContentView.swift:42:7")
-        XCTAssertEqual(parsed.text, "ContentView.swift")
-        XCTAssertEqual(parsed.line, 42)
-        XCTAssertEqual(parsed.column, 7)
+        #expect(parsed.text == "ContentView.swift")
+        #expect(parsed.line == 42)
+        #expect(parsed.column == 7)
     }
 
-    func testColonInNameIsKept() {
+    @Test func colonInNameIsKept() {
         let parsed = SearchEverywhereQuery.parse("app:server")
-        XCTAssertEqual(parsed.text, "app:server")
-        XCTAssertNil(parsed.line)
+        #expect(parsed.text == "app:server")
+        #expect(parsed.line == nil)
     }
 
-    func testURLLikeQueryIsUntouched() {
+    @Test func urlLikeQueryIsUntouched() {
         let parsed = SearchEverywhereQuery.parse("https://example.com")
-        XCTAssertEqual(parsed.text, "https://example.com")
-        XCTAssertNil(parsed.line)
+        #expect(parsed.text == "https://example.com")
+        #expect(parsed.line == nil)
     }
 
-    func testNumericOnlyQueryIsNotSuffix() {
+    @Test func numericOnlyQueryIsNotSuffix() {
         let parsed = SearchEverywhereQuery.parse(":42")
-        XCTAssertEqual(parsed.text, ":42")
-        XCTAssertNil(parsed.line)
+        #expect(parsed.text == ":42")
+        #expect(parsed.line == nil)
     }
 
-    func testTrailingWhitespaceIsTrimmed() {
+    @Test func surroundingWhitespaceIsTrimmed() {
         let parsed = SearchEverywhereQuery.parse("  App.swift:12  ")
-        XCTAssertEqual(parsed.text, "App.swift")
-        XCTAssertEqual(parsed.line, 12)
+        #expect(parsed.text == "App.swift")
+        #expect(parsed.line == 12)
+    }
+
+    @Test func emptyAndBlankQueries() {
+        #expect(SearchEverywhereQuery.parse("") == SearchEverywhereQuery(text: ""))
+        #expect(SearchEverywhereQuery.parse("   ") == SearchEverywhereQuery(text: ""))
+    }
+
+    @Test(arguments: [
+        ("Foo.swift:12", 12, nil),
+        ("Foo.swift@12", 12, nil),
+        ("Foo.swift,12", 12, nil),
+        ("Foo.swift 12", 12, nil),
+        ("Foo.swift#12", 12, nil),
+        ("Foo.swift#L12", 12, nil),
+        ("Foo.swift?l=12", 12, nil),
+        ("Foo.swift on line 12", 12, nil),
+        ("Foo.swift at line 12", 12, nil),
+        ("Foo.swift:line 12", 12, nil),
+        ("Foo.swift(12)", 12, nil),
+        ("Foo.swift:(12)", 12, nil),
+        ("Foo.swift[12]", 12, nil),
+        ("Foo.swift:[12]", 12, nil),
+        ("Foo.swift: 5", 5, nil),
+        ("Foo.swift:12:5", 12, 5),
+        ("Foo.swift:12,5", 12, 5),
+        ("Foo.swift 12 5", 12, 5),
+        ("Foo.swift(12,5)", 12, 5),
+        ("Foo.swift:(12:5)", 12, 5),
+        ("Foo.swift[12,5]", 12, 5),
+        ("Foo.swift#L12:5", 12, 5),
+        ("Foo.swift:12:", 12, nil)
+    ] as [(String, Int, Int?)])
+    func intelliJLineAndColumnForms(raw: String, line: Int, column: Int?) {
+        let parsed = SearchEverywhereQuery.parse(raw)
+        #expect(parsed.text == "Foo.swift", "\(raw)")
+        #expect(parsed.line == line, "\(raw)")
+        #expect(parsed.column == column, "\(raw)")
+    }
+
+    @Test func separatorWithoutNumbersStripsTheSuffix() {
+        #expect(SearchEverywhereQuery.parse("Foo.swift:") == SearchEverywhereQuery(text: "Foo.swift"))
+        #expect(SearchEverywhereQuery.parse("main(") == SearchEverywhereQuery(text: "main"))
+        #expect(SearchEverywhereQuery.parse("c#") == SearchEverywhereQuery(text: "c"))
+    }
+
+    @Test func zeroLineIsDropped() {
+        #expect(SearchEverywhereQuery.parse("Foo.swift:0") == SearchEverywhereQuery(text: "Foo.swift"))
+    }
+
+    @Test func zeroColumnIsDropped() {
+        #expect(SearchEverywhereQuery.parse("Foo.swift:4:0") == SearchEverywhereQuery(text: "Foo.swift", line: 4))
+    }
+
+    @Test func overflowingLineIsDropped() {
+        let parsed = SearchEverywhereQuery.parse("Foo.swift:99999999999999999999")
+        #expect(parsed == SearchEverywhereQuery(text: "Foo.swift"))
+    }
+
+    @Test func multiWordNameKeepsInnerSpaces() {
+        #expect(SearchEverywhereQuery.parse("foo bar") == SearchEverywhereQuery(text: "foo bar"))
+        #expect(SearchEverywhereQuery.parse("foo bar 7") == SearchEverywhereQuery(text: "foo bar", line: 7))
+    }
+
+    @Test func nameStopsAtFirstSeparatorThatLeavesAValidTail() {
+        let parsed = SearchEverywhereQuery.parse("a:b.swift:3")
+        #expect(parsed == SearchEverywhereQuery(text: "a:b.swift", line: 3))
+    }
+
+    @Test func nonLatinNames() {
+        let parsed = SearchEverywhereQuery.parse("Ключ.swift:3:4")
+        #expect(parsed == SearchEverywhereQuery(text: "Ключ.swift", line: 3, column: 4))
+    }
+
+    @Test func multilineTextIsNotSplit() {
+        let parsed = SearchEverywhereQuery.parse("foo\nbar:3")
+        #expect(parsed == SearchEverywhereQuery(text: "foo\nbar:3"))
     }
 }
 
-final class SearchEverywhereSymbolExtractorTests: XCTestCase {
-    func testSwiftDeclarations() {
+@Suite("SymbolExtractor")
+@MainActor
+struct SearchEverywhereSymbolExtractorTests {
+    @Test func swiftDeclarations() {
         let source = """
         import Foundation
 
@@ -133,29 +282,29 @@ final class SearchEverywhereSymbolExtractorTests: XCTestCase {
         let symbols = SymbolExtractor.symbols(in: source, fileExtension: "swift")
         let byName = Dictionary(grouping: symbols, by: \.name)
 
-        XCTAssertEqual(byName["WorkspaceController"]?.count, 2)
-        XCTAssertEqual(byName["WorkspaceController"]?.first?.kind, .classType)
-        XCTAssertEqual(byName["WorkspaceController"]?.first?.line, 4)
-        XCTAssertEqual(byName["WorkspaceController"]?.last?.kind, .extensionDecl)
-        XCTAssertEqual(byName["WorkspaceController"]?.last?.line, 22)
+        #expect(byName["WorkspaceController"]?.count == 2)
+        #expect(byName["WorkspaceController"]?.first?.kind == .classType)
+        #expect(byName["WorkspaceController"]?.first?.line == 4)
+        #expect(byName["WorkspaceController"]?.last?.kind == .extensionDecl)
+        #expect(byName["WorkspaceController"]?.last?.line == 22)
 
-        XCTAssertEqual(byName["manager"]?.first?.kind, .field)
-        XCTAssertEqual(byName["manager"]?.first?.line, 5)
-        XCTAssertEqual(byName["title"]?.first?.kind, .field)
-        XCTAssertEqual(byName["Point"]?.first?.kind, .structType)
-        XCTAssertEqual(byName["Point"]?.first?.line, 10)
-        XCTAssertEqual(byName["x"]?.first?.line, 11)
-        XCTAssertEqual(byName["Direction"]?.first?.kind, .enumType)
-        XCTAssertEqual(byName["Reloading"]?.first?.kind, .protocolType)
-        XCTAssertEqual(byName["reload"]?.map(\.line), [7, 19])
-        XCTAssertEqual(byName["extra"]?.first?.kind, .method)
-        XCTAssertEqual(byName["extra"]?.first?.line, 23)
-        XCTAssertEqual(byName["Store"]?.first?.kind, .actorType)
-        XCTAssertEqual(byName["Store"]?.first?.line, 26)
-        XCTAssertNil(byName["func"])
+        #expect(byName["manager"]?.first?.kind == .field)
+        #expect(byName["manager"]?.first?.line == 5)
+        #expect(byName["title"]?.first?.kind == .field)
+        #expect(byName["Point"]?.first?.kind == .structType)
+        #expect(byName["Point"]?.first?.line == 10)
+        #expect(byName["x"]?.first?.line == 11)
+        #expect(byName["Direction"]?.first?.kind == .enumType)
+        #expect(byName["Reloading"]?.first?.kind == .protocolType)
+        #expect(byName["reload"]?.map(\.line) == [7, 19])
+        #expect(byName["extra"]?.first?.kind == .method)
+        #expect(byName["extra"]?.first?.line == 23)
+        #expect(byName["Store"]?.first?.kind == .actorType)
+        #expect(byName["Store"]?.first?.line == 26)
+        #expect(byName["func"] == nil)
     }
 
-    func testTypeScriptDeclarations() {
+    @Test func typeScriptDeclarations() {
         let source = """
         import { helper } from "./helper"
 
@@ -181,21 +330,21 @@ final class SearchEverywhereSymbolExtractorTests: XCTestCase {
         let symbols = SymbolExtractor.symbols(in: source, fileExtension: "ts")
         let byName = Dictionary(grouping: symbols, by: \.name)
 
-        XCTAssertEqual(byName["CartService"]?.first?.kind, .classType)
-        XCTAssertEqual(byName["CartService"]?.first?.line, 3)
-        XCTAssertEqual(byName["Cart"]?.first?.kind, .protocolType)
-        XCTAssertEqual(byName["Cart"]?.first?.line, 7)
-        XCTAssertEqual(byName["CartID"]?.first?.kind, .typeAlias)
-        XCTAssertEqual(byName["CartID"]?.first?.line, 11)
-        XCTAssertEqual(byName["createCart"]?.first?.kind, .function)
-        XCTAssertEqual(byName["createCart"]?.first?.line, 13)
-        XCTAssertEqual(byName["emptyCart"]?.first?.kind, .variable)
-        XCTAssertEqual(byName["emptyCart"]?.first?.line, 17)
-        XCTAssertEqual(byName["Status"]?.first?.kind, .enumType)
-        XCTAssertEqual(byName["Status"]?.first?.line, 19)
+        #expect(byName["CartService"]?.first?.kind == .classType)
+        #expect(byName["CartService"]?.first?.line == 3)
+        #expect(byName["Cart"]?.first?.kind == .protocolType)
+        #expect(byName["Cart"]?.first?.line == 7)
+        #expect(byName["CartID"]?.first?.kind == .typeAlias)
+        #expect(byName["CartID"]?.first?.line == 11)
+        #expect(byName["createCart"]?.first?.kind == .function)
+        #expect(byName["createCart"]?.first?.line == 13)
+        #expect(byName["emptyCart"]?.first?.kind == .variable)
+        #expect(byName["emptyCart"]?.first?.line == 17)
+        #expect(byName["Status"]?.first?.kind == .enumType)
+        #expect(byName["Status"]?.first?.line == 19)
     }
 
-    func testPythonDeclarations() {
+    @Test func pythonDeclarations() {
         let source = """
         import os
 
@@ -213,17 +362,17 @@ final class SearchEverywhereSymbolExtractorTests: XCTestCase {
         let symbols = SymbolExtractor.symbols(in: source, fileExtension: "py")
         let byName = Dictionary(grouping: symbols, by: \.name)
 
-        XCTAssertEqual(byName["Greeter"]?.first?.kind, .classType)
-        XCTAssertEqual(byName["Greeter"]?.first?.line, 3)
-        XCTAssertEqual(byName["__init__"]?.first?.kind, .method)
-        XCTAssertEqual(byName["__init__"]?.first?.line, 4)
-        XCTAssertEqual(byName["greet"]?.first?.kind, .method)
-        XCTAssertEqual(byName["greet"]?.first?.line, 7)
-        XCTAssertEqual(byName["main"]?.first?.kind, .function)
-        XCTAssertEqual(byName["main"]?.first?.line, 10)
+        #expect(byName["Greeter"]?.first?.kind == .classType)
+        #expect(byName["Greeter"]?.first?.line == 3)
+        #expect(byName["__init__"]?.first?.kind == .method)
+        #expect(byName["__init__"]?.first?.line == 4)
+        #expect(byName["greet"]?.first?.kind == .method)
+        #expect(byName["greet"]?.first?.line == 7)
+        #expect(byName["main"]?.first?.kind == .function)
+        #expect(byName["main"]?.first?.line == 10)
     }
 
-    func testCommentLinesAreIgnored() {
+    @Test func commentLinesAreIgnored() {
         let source = """
         // class NotASymbol {}
         # class AlsoNotASymbol {}
@@ -231,11 +380,11 @@ final class SearchEverywhereSymbolExtractorTests: XCTestCase {
         """
 
         let symbols = SymbolExtractor.symbols(in: source, fileExtension: "swift")
-        XCTAssertEqual(symbols.map(\.name), ["RealSymbol"])
-        XCTAssertEqual(symbols.first?.line, 3)
+        #expect(symbols.map(\.name) == ["RealSymbol"])
+        #expect(symbols.first?.line == 3)
     }
 
-    func testUnknownExtensionYieldsNoSymbols() {
-        XCTAssertTrue(SymbolExtractor.symbols(in: "class Foo {}", fileExtension: "xyz").isEmpty)
+    @Test func unknownExtensionYieldsNoSymbols() {
+        #expect(SymbolExtractor.symbols(in: "class Foo {}", fileExtension: "xyz").isEmpty)
     }
 }

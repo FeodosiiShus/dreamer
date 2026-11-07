@@ -9,7 +9,7 @@
 ///
 /// Conforming types must be able to initialize from a Git configuration string
 /// and convert their value back to a Git-compatible string representation.
-protocol GitConfigRepresentable {
+nonisolated protocol GitConfigRepresentable {
     /// Initializes a new instance from a Git configuration value string.
     /// - Parameter configValue: The configuration value string.
     init?(configValue: String)

@@ -81,7 +81,7 @@ final class CEWorkspaceFile: Codable, Comparable, Hashable, Identifiable, Editor
             return customImage
         } else {
             return NSImage(systemSymbolName: systemImage, accessibilityDescription: systemImage)
-                ?? NSImage(systemSymbolName: "doc", accessibilityDescription: "doc")!
+                ?? NSImage(systemSymbolName: "doc", accessibilityDescription: "doc") ?? NSImage()
         }
     }
 

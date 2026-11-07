@@ -63,15 +63,14 @@ enum GitLabOAuthRouter: GitRouter {
     }
 
     var URLRequest: Foundation.URLRequest? {
+        let config: GitLabOAuthConfiguration
         switch self {
-        case .authorize(let config, _):
-            let url = URL(string: path, relativeTo: URL(string: config.webEndpoint!)!)
-            let components = URLComponents(url: url!, resolvingAgainstBaseURL: true)
-            return request(components!, parameters: params)
-        case .accessToken(let config, _, _):
-            let url = URL(string: path, relativeTo: URL(string: config.webEndpoint!)!)
-            let components = URLComponents(url: url!, resolvingAgainstBaseURL: true)
-            return request(components!, parameters: params)
+        case .authorize(let value, _): config = value
+        case .accessToken(let value, _, _): config = value
         }
+        guard let base = config.webEndpoint.flatMap({ URL(string: $0) }),
+              let url = URL(string: path, relativeTo: base),
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: true) else { return nil }
+        return request(components, parameters: params)
     }
 }

@@ -7,13 +7,12 @@
 
 import Foundation
 
-extension GitClient {
+nonisolated extension GitClient {
     /// Gets all remotes
     /// - Parameter name: Name for remote
     /// - Parameter location: URL string for remote location
     func getRemotes() async throws -> [GitRemote] {
-        let command = "remote -v"
-        let output = try await run(command)
+        let output = try await run(arguments: ["remote", "-v"])
         let remotes = parseGitRemotes(from: output)
 
         return remotes
@@ -23,13 +22,13 @@ extension GitClient {
     /// - Parameter name: Name for remote
     /// - Parameter location: URL string for remote location
     func addRemote(name: String, location: String) async throws {
-        _ = try await run("remote add \(name) \(location)")
+        _ = try await run(arguments: ["remote", "add", name, location])
     }
 
     /// Remove remote from local git
     /// - Parameter name: Name for remote to remove
     func removeRemote(name: String) async throws {
-        _ = try await run("remote rm \(name)")
+        _ = try await run(arguments: ["remote", "rm", name])
     }
 
     /// Get the URL of the remote
@@ -40,7 +39,7 @@ extension GitClient {
     /// - Throws: `GitClientError.outputError` if the underlying git command fails unexpectedly
     func getRemoteURL() async throws -> URL? {
         do {
-            let remote = try await run("ls-remote --get-url")
+            let remote = try await run(arguments: ["ls-remote", "--get-url"])
             return URL(string: remote.trimmingCharacters(in: .whitespacesAndNewlines))
         } catch GitClientError.noRemoteConfigured {
             return nil
@@ -50,16 +49,25 @@ extension GitClient {
     }
 }
 
-func parseGitRemotes(from output: String) -> [GitRemote] {
+nonisolated func parseGitRemotes(from output: String) -> [GitRemote] {
     var remotes: [String: (fetch: String?, push: String?)] = [:]
 
     output.split(separator: "\n").forEach { line in
-        let components = line.split { $0 == " " || $0 == "\t" }
-        guard components.count == 3 else { return }
+        guard let tabIndex = line.firstIndex(of: "\t") else { return }
+        let name = String(line[line.startIndex..<tabIndex])
+        let remainder = line[line.index(after: tabIndex)...]
 
-        let name = String(components[0])
-        let location = String(components[1])
-        let type = components[2].contains("(fetch)") ? "fetch" : "push"
+        let type: String
+        let location: String
+        if remainder.hasSuffix(" (fetch)") {
+            type = "fetch"
+            location = String(remainder.dropLast(" (fetch)".count))
+        } else if remainder.hasSuffix(" (push)") {
+            type = "push"
+            location = String(remainder.dropLast(" (push)".count))
+        } else {
+            return
+        }
 
         if var remote = remotes[name] {
             if type == "fetch" {

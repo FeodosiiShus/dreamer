@@ -19,9 +19,9 @@ final class ProjectNavigatorViewController: NSViewController {
         category: "ProjectNavigatorViewController"
     )
 
-    var scrollView: NSScrollView!
-    var outlineView: NSOutlineView!
-    var noResultsLabel: NSTextField!
+    let scrollView = NSScrollView()
+    let outlineView: NSOutlineView = ProjectNavigatorNSOutlineView()
+    let noResultsLabel = NSTextField(labelWithString: "No Filter Results")
 
     /// Gets the folder structure
     ///
@@ -41,7 +41,7 @@ final class ProjectNavigatorViewController: NSViewController {
     var iconColor: SettingsData.FileIconStyle = .color {
         willSet {
             if newValue != iconColor {
-                outlineView?.reloadData()
+                outlineView.reloadData()
             }
         }
     }
@@ -78,13 +78,11 @@ final class ProjectNavigatorViewController: NSViewController {
 
     /// Setup the ``scrollView`` and ``outlineView``
     override func loadView() {
-        self.scrollView = NSScrollView()
         self.scrollView.hasVerticalScroller = true
         self.scrollView.drawsBackground = false
         self.view = scrollView
         self.view.wantsLayer = true
 
-        self.outlineView = ProjectNavigatorNSOutlineView()
         configureOutlineView()
 
         scrollView.documentView = outlineView
@@ -108,7 +106,6 @@ final class ProjectNavigatorViewController: NSViewController {
         }
 
         /// "No Filter Results" label.
-        noResultsLabel = NSTextField(labelWithString: "No Filter Results")
         noResultsLabel.isHidden = true
         noResultsLabel.font = .systemFont(ofSize: Islands.uiFontSize)
         noResultsLabel.textColor = NSColor(Islands.secondaryForeground)
@@ -156,13 +153,13 @@ final class ProjectNavigatorViewController: NSViewController {
     }
 
     deinit {
-        outlineView?.removeFromSuperview()
-        scrollView?.removeFromSuperview()
-        noResultsLabel?.removeFromSuperview()
+        outlineView.removeFromSuperview()
+        scrollView.removeFromSuperview()
+        noResultsLabel.removeFromSuperview()
     }
 
     required init?(coder: NSCoder) {
-        fatalError()
+        nil
     }
 
     /// Forces to reveal the selected file through the command regardless of the auto reveal setting
@@ -179,7 +176,7 @@ final class ProjectNavigatorViewController: NSViewController {
     }
 
     func clearSearchFieldFocus() {
-        guard let window = outlineView?.window,
+        guard let window = outlineView.window,
               let editor = window.firstResponder as? NSTextView,
               editor.isFieldEditor,
               editor.string.isEmpty,

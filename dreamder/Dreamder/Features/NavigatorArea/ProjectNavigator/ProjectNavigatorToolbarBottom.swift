@@ -82,8 +82,9 @@ struct ProjectNavigatorToolbarBottom: View {
                 var pathComponents = activeTabFileURL.pathComponents
                 pathComponents.removeLast()
 
-                let fileURL = NSURL.fileURL(withPathComponents: pathComponents)! as URL
-                return fileURL
+                if let fileURL = NSURL.fileURL(withPathComponents: pathComponents) {
+                    return fileURL
+                }
             }
         }
 

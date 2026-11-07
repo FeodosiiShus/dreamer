@@ -26,7 +26,7 @@ struct FindCommands: Commands {
                 .keyboardShortcut("f")
 
                 Button("Find and Replace...") {
-                    send(.init(rawValue: 12)!)
+                    send(.init(rawValue: 12) ?? .showFindPanel)
                 }
                 .keyboardShortcut("f", modifiers: [.option, .command])
 

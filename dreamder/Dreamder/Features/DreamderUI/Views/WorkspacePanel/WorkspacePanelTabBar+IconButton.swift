@@ -55,20 +55,16 @@ extension WorkspacePanelTabBar {
         }
 
         private var capsuleButtonStyle: CapsuleButtonStyle {
-            if #available(macOS 26, *) {
-                if position == .side {
-                    .capsuleIcon(
-                        isActive: tab == selection,
-                        size: CGSize(width: 26, height: 40)
-                    )
-                } else {
-                    .capsuleIcon(
-                        isActive: tab == selection,
-                        height: 28
-                    )
-                }
+            if position == .side {
+                .capsuleIcon(
+                    isActive: tab == selection,
+                    size: CGSize(width: 26, height: 40)
+                )
             } else {
-                fatalError("Used on non tahoe platform")
+                .capsuleIcon(
+                    isActive: tab == selection,
+                    height: 28
+                )
             }
         }
 

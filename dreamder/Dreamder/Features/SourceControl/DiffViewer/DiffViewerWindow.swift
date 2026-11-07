@@ -33,7 +33,7 @@ final class DiffViewerWindowController: NSWindowController, NSWindowDelegate {
     }
 
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
+        return nil
     }
 
     func place(relativeTo parent: NSWindow?) {

@@ -5,12 +5,11 @@
 //  Created by Matthijs Eikelenboom on 26/11/2022.
 //
 
-import Combine
 import Foundation
 import OSLog
 
-class GitClient {
-    enum GitClientError: Error, Equatable {
+nonisolated final class GitClient: Sendable {
+    nonisolated enum GitClientError: Error, Equatable {
         case outputError(String)
         case notGitRepository
         case failedToDecodeURL
@@ -38,20 +37,42 @@ class GitClient {
     let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "GitClient")
 
     internal let directoryURL: URL
-    internal let shellClient: ShellClient
     internal let scopePath: String?
 
     private let configClient: GitConfigClient
+    private let commandRunner: GitCommandRunner
 
-    init(directoryURL: URL, shellClient: ShellClient, scopePath: String? = nil) {
+    init(
+        directoryURL: URL,
+        scopePath: String? = nil,
+        commandRunner: GitCommandRunner
+    ) {
         self.directoryURL = directoryURL
-        self.shellClient = shellClient
         self.scopePath = scopePath
-        self.configClient = GitConfigClient(projectURL: directoryURL, shellClient: shellClient)
+        self.commandRunner = commandRunner
+        self.configClient = GitConfigClient(projectURL: directoryURL, commandRunner: commandRunner)
+    }
+
+    convenience init(
+        directoryURL: URL,
+        shellClient: ShellClient,
+        scopePath: String? = nil,
+        processRunner: any ProcessRunning = ProcessRunner(),
+        gitExecutable: URL? = nil
+    ) {
+        self.init(
+            directoryURL: directoryURL,
+            scopePath: scopePath,
+            commandRunner: GitCommandRunner(runner: processRunner, gitExecutable: gitExecutable)
+        )
     }
 
     var scopePathspec: String {
         scopePath.map { " -- " + Self.logGraphQuote($0) } ?? ""
+    }
+
+    var scopePathspecArguments: [String] {
+        scopePath.map { ["--", $0] } ?? []
     }
 
     func getConfig<T: GitConfigRepresentable>(key: String) async throws -> T? {
@@ -62,49 +83,120 @@ class GitClient {
         await configClient.set(key: key, value: value, global: false)
     }
 
-    /// Runs a git command, it will prepend the command with `cd <directoryURL>;git`,
-    /// If you need to run "git checkout", pass "checkout" as the command parameter
-    internal func run(_ command: String) async throws -> String {
-        let output = try shellClient.run(generateCommand(command))
-        if GitConsoleLog.changesRepository(command) {
-            GitConsoleLog.log(for: directoryURL).record(command: command, directory: directoryURL, output: output)
-        }
-        return try processCommonErrors(output)
+    @concurrent
+    internal func run(_ command: String, accepting acceptedExitCodes: Set<Int32> = [0]) async throws -> String {
+        let arguments = try Self.arguments(from: command)
+        return try await run(arguments: arguments, accepting: acceptedExitCodes)
     }
 
-    internal typealias LiveCommandStream = AsyncThrowingMapSequence<AsyncThrowingStream<String, Error>, String>
+    @concurrent
+    internal func run(arguments: [String], accepting acceptedExitCodes: Set<Int32> = [0]) async throws -> String {
+        let result = try await runResult(arguments: arguments)
+        guard result.success(ignoring: acceptedExitCodes) else {
+            throw Self.error(for: result)
+        }
+        return result.outputText
+    }
+
+    @concurrent
+    internal func runData(_ command: String) async throws -> Data {
+        let result = try await runResult(command)
+        guard result.success else {
+            throw Self.error(for: result)
+        }
+        return result.standardOutput
+    }
+
+    @concurrent
+    internal func runResult(_ command: String) async throws -> GitCommandResult {
+        try await execute(arguments: try Self.arguments(from: command), display: command)
+    }
+
+    @concurrent
+    internal func runResult(arguments: [String]) async throws -> GitCommandResult {
+        try await execute(arguments: arguments, display: GitCommandLine.display(arguments))
+    }
+
+    internal typealias LiveCommandStream = AsyncThrowingStream<String, any Error>
 
     /// Runs a git command in same way as `run`, but returns a async stream of the output
     internal func runLive(_ command: String) -> LiveCommandStream {
-        return runLive(customCommand: generateCommand(command))
+        do {
+            return runLive(arguments: try Self.arguments(from: command))
+        } catch {
+            return AsyncThrowingStream { $0.finish(throwing: error) }
+        }
     }
 
-    /// Here you can run a custom command, this is needed for git clone
-    internal func runLive(customCommand: String) -> LiveCommandStream {
-        return shellClient
-            .runAsync(customCommand)
-            .map { output in
-                return try self.processCommonErrors(output)
+    internal func runLive(arguments: [String]) -> LiveCommandStream {
+        AsyncThrowingStream { continuation in
+            let task = Task { [self] in
+                var errorLines: [String] = []
+                do {
+                    for try await event in commandRunner.stream(arguments: arguments, workingDirectory: directoryURL) {
+                        switch event {
+                        case .line(let stream, let line):
+                            if stream == .standardError, !GitCommandResult.looksLikeProgress(line) {
+                                errorLines.append(line)
+                            }
+                            continuation.yield(line)
+                        case .exit(let code, let terminatedBySignal):
+                            if code != 0 || terminatedBySignal {
+                                throw Self.error(for: GitCommandResult(
+                                    exitCode: code,
+                                    terminatedBySignal: terminatedBySignal,
+                                    standardError: Data(errorLines.joined(separator: "\n").utf8)
+                                ))
+                            }
+                        }
+                    }
+                    continuation.finish()
+                } catch ProcessRunnerError.launchFailed(let executable, let reason) {
+                    continuation.finish(throwing: GitClientError.outputError("Failed to start \(executable): \(reason)"))
+                } catch {
+                    continuation.finish(throwing: error)
+                }
             }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 
-    private func generateCommand(_ command: String) -> String {
-        "cd \(directoryURL.relativePath.escapedDirectory());git \(command)"
+    static func arguments(from command: String) throws -> [String] {
+        do {
+            return try GitCommandLine.tokenize(command)
+        } catch let error as GitCommandLineError {
+            throw GitClientError.outputError(error.description)
+        }
     }
 
-    private func processCommonErrors(_ output: String) throws -> String {
-        if output.contains("fatal: not a git repository") {
-            throw GitClientError.notGitRepository
-        }
+    static func field(at index: Int, in fields: [String]) -> String? {
+        fields.indices.contains(index) ? fields[index] : nil
+    }
 
-        if output.contains("fatal: No remote configured") {
-            throw GitClientError.noRemoteConfigured
+    static func error(for result: GitCommandResult) -> GitClientError {
+        let errorText = result.startFailure ?? result.standardErrorText
+        if errorText.contains("not a git repository") {
+            return .notGitRepository
         }
-
-        if output.hasPrefix("fatal:") {
-            throw GitClientError.outputError(output)
+        if errorText.contains("No remote configured") {
+            return .noRemoteConfigured
         }
+        return .outputError(result.errorMessage)
+    }
 
-        return output
+    private func execute(arguments: [String], display: String) async throws -> GitCommandResult {
+        let result = try await commandRunner.run(arguments: arguments, workingDirectory: directoryURL)
+        await recordInConsole(arguments: arguments, display: display, result: result)
+        return result
+    }
+
+    private func recordInConsole(arguments: [String], display: String, result: GitCommandResult) async {
+        guard !GitCommandPolicy.isQuery(arguments) else { return }
+        let directory = directoryURL
+        let output = result.combinedText
+        await MainActor.run {
+            guard GitConsoleLog.changesRepository(display) else { return }
+            GitConsoleLog.log(for: directory).record(command: display, directory: directory, output: output)
+        }
     }
 }

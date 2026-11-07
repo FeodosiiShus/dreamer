@@ -17,9 +17,9 @@ enum PackageSourceParser {
 
         let pkgString = sourceId.dropFirst(pkgPrefix.count)
         let packagePathVersion = pkgString.split(separator: "@", maxSplits: 1)
-        guard packagePathVersion.count >= 1 else { return .unknown }
+        guard let packagePathString = packagePathVersion.first else { return .unknown }
 
-        let packagePath = String(packagePathVersion[0])
+        let packagePath = String(packagePathString)
         let version = packagePathVersion.count > 1 ? String(packagePathVersion[1]) : "main"
 
         let pathComponents = packagePath.split(separator: "/")
@@ -80,7 +80,9 @@ enum PackageSourceParser {
             return .unknown
         }
 
-        let downloadURL = URL(string: "\(repoURL)/releases/download/\(gitTag)/\(fileName)")!
+        guard let downloadURL = URL(string: "\(repoURL)/releases/download/\(gitTag)/\(fileName)") else {
+            return .unknown
+        }
         return .binaryDownload(source: pkgSource, url: downloadURL)
     }
 

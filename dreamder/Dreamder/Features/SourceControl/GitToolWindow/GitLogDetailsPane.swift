@@ -3,7 +3,7 @@ import SwiftUI
 struct GitLogDetailsPane: View {
     @EnvironmentObject private var workspace: WorkspaceDocument
     @EnvironmentObject private var sourceControlManager: SourceControlManager
-    @ObservedObject var viewModel: GitLogViewModel
+    let viewModel: GitLogViewModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -106,7 +106,7 @@ struct GitLogDetailsPane: View {
         guard let ceFile = workspace.workspaceFileManager?.getFile(file.ceFileKey, createIfNotFound: true) else {
             return
         }
-        DispatchQueue.main.async {
+        Task { @MainActor in
             workspace.editorManager?.openTab(item: ceFile, asTemporary: true)
         }
     }

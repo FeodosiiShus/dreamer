@@ -186,7 +186,9 @@ struct CommitListItemView: View {
                 if let commitRemoteURL = commit.commitBaseURL?.absoluteString {
                     Button("View on \(commit.remoteString)...") {
                         let commitURL = "\(commitRemoteURL)/\(commit.commitHash)"
-                        openCommit(URL(string: commitURL)!)
+                        if let url = URL(string: commitURL) {
+                            openCommit(url)
+                        }
                     }
                     Divider()
                 }

@@ -21,11 +21,8 @@ struct PopoverContainer<ContentView: View>: View {
             content()
         }
         .font(.subheadline)
-        .if(.tahoe) {
-            $0.padding(13).containerShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        } else: {
-            $0.padding(5)
-        }
+        .padding(13)
+        .containerShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .frame(minWidth: 215)
     }
 }

@@ -191,7 +191,7 @@ private extension WorkspacePanelTabBar {
 
                 // Update the last dragging location if there's enough offset
                 let currentLocationOnAxis = ((position == .top) ? value.location.x : value.location.y)
-                if draggingLastLocation == nil || abs(currentLocationOnAxis - draggingLastLocation!) >= 10 {
+                if draggingLastLocation.map({ abs(currentLocationOnAxis - $0) >= 10 }) ?? true {
                     draggingLastLocation = (position == .top) ? value.location.x : value.location.y
                 }
             })
@@ -265,8 +265,8 @@ private extension WorkspacePanelTabBar {
         // Swap tab positions
         if isWithinBounds {
             let changing = swapTabWidth - 1
-            draggingStartLocation! += direction == .previous ? -changing : changing
-            tabOffsets[tab]! += direction == .previous ? changing : -changing
+            draggingStartLocation? += direction == .previous ? -changing : changing
+            tabOffsets[tab, default: 0] += direction == .previous ? changing : -changing
             items.swapAt(currentIndex, swapIndex)
         }
     }

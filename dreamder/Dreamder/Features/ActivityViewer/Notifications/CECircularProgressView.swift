@@ -53,7 +53,7 @@ struct CECircularProgressView: View {
             .accessibilityElement()
             .accessibilityAddTraits(.updatesFrequently)
             .accessibilityValue(
-                progress != nil ? Text(progress!, format: .percent) : Text("working")
+                progress.map { Text($0, format: .percent) } ?? Text("working")
             )
     }
 }

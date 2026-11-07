@@ -14,7 +14,7 @@ final class DreamderSplitViewController: NSSplitViewController {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+        nil
     }
 
     override func viewDidLoad() {
@@ -33,13 +33,6 @@ final class DreamderSplitViewController: NSSplitViewController {
               let utilityAreaModel = workspace.utilityAreaModel,
               let taskManager = workspace.taskManager else {
             hasInstalledContent = false
-            assertionFailure(
-                "Missing a workspace model: workspace=\(workspace != nil), "
-                + "editorManager=\(workspace?.editorManager != nil), "
-                + "statusBarModel=\(workspace?.statusBarViewModel != nil), "
-                + "utilityAreaModel=\(workspace?.utilityAreaModel != nil), "
-                + "taskManager=\(workspace?.taskManager != nil)"
-            )
             return
         }
 

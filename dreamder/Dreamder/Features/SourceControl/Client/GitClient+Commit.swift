@@ -8,72 +8,58 @@
 import Foundation
 import RegexBuilder
 
-extension GitClient {
+nonisolated extension GitClient {
     /// Commit files
     /// - Parameters:
     ///   - message: Commit message
     func commit(message: String, details: String?) async throws {
-        let message = message.replacingOccurrences(of: #"""#, with: #"\""#)
-        let command: String
-
-        if let msgDetails = details {
-            command = "commit --message=\"\(message + (msgDetails.isEmpty ? "" : ("\n\n" + msgDetails)))\""
-        } else {
-            command = "commit --message=\"\(message)\""
+        var fullMessage = message
+        if let details, !details.isEmpty {
+            fullMessage += "\n\n" + details
         }
 
-        _ = try await run(command)
+        _ = try await run(arguments: ["commit", "--message=\(fullMessage)"])
     }
 
     /// Add file to git
     /// - Parameter file: File to add
     func add(_ files: [URL]) async throws {
-        let output = try await run("add \(files.map { "'\($0.path(percentEncoded: false))'" }.joined(separator: " "))")
-        print(output)
+        _ = try await run(arguments: ["add", "--"] + files.map { $0.path(percentEncoded: false) })
     }
 
     /// Add file to git
     /// - Parameter file: File to add
     func reset(_ files: [URL]) async throws {
-        _ = try await run("reset \(files.map { "'\($0.path(percentEncoded: false))'" }.joined(separator: " "))")
+        _ = try await run(arguments: ["reset", "--"] + files.map { $0.path(percentEncoded: false) })
     }
 
     /// Returns tuple of unsynced commits both ahead and behind
     func numberOfUnsyncedCommits() async throws -> (ahead: Int, behind: Int) {
-        let output = try await run("status -sb --porcelain=v2").trimmingCharacters(in: .whitespacesAndNewlines)
+        let output = try await run(arguments: ["status", "-sb", "--porcelain=v2"])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         return try parseUnsyncedCommitsOutput(from: output)
     }
 
     func getCommitChangedFiles(commitSHA: String) async throws -> [GitChangedFile] {
-        do {
-            let output = try await run("diff-tree --no-commit-id --name-status -r \(commitSHA)")
-            let data = output
-                .trimmingCharacters(in: .newlines)
-                .components(separatedBy: "\n")
-            return try data.compactMap { line -> GitChangedFile? in
+        let output = try await run(arguments: ["diff-tree", "--no-commit-id", "--name-status", "-r", commitSHA])
+        return output
+            .trimmingCharacters(in: .newlines)
+            .components(separatedBy: "\n")
+            .compactMap { line -> GitChangedFile? in
                 let components = line.split(separator: "\t")
                 guard components.count == 2 else { return nil }
                 let changeType = String(components[0])
                 let pathName = String(components[1])
 
-                guard let url = URL(string: pathName ) else {
-                    throw GitClientError.failedToDecodeURL
-                }
-
                 let gitType: GitStatus? = .init(rawValue: changeType)
-                let fullLink = self.directoryURL.appending(path: url.relativePath)
 
                 return GitChangedFile(
                     status: gitType ?? .none,
                     stagedStatus: .none,
-                    fileURL: fullLink,
+                    fileURL: directoryURL.appending(path: pathName),
                     originalFilename: nil
                 )
             }
-        } catch {
-            print("Error: \(error)")
-            return []
-        }
     }
 
     private func parseUnsyncedCommitsOutput(from string: String) throws -> (ahead: Int, behind: Int) {

@@ -8,21 +8,17 @@
 import SwiftUI
 
 class RegexFormatter: Formatter {
-    let regex: NSRegularExpression
+    let regex: NSRegularExpression?
     let replacementTemplate: String
 
     init(pattern: String, replacementTemplate: String = "") {
-        do {
-            self.regex = try NSRegularExpression(pattern: pattern, options: [])
-        } catch {
-            fatalError("Invalid regex pattern")
-        }
+        self.regex = try? NSRegularExpression(pattern: pattern, options: [])
         self.replacementTemplate = replacementTemplate
         super.init()
     }
 
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+        return nil
     }
 
     override func string(for obj: Any?) -> String? {
@@ -50,6 +46,7 @@ class RegexFormatter: Formatter {
     }
 
     private func formatString(_ string: String) -> String {
+        guard let regex else { return string }
         let range = NSRange(location: 0, length: string.utf16.count)
         return regex.stringByReplacingMatches(in: string, options: [], range: range, withTemplate: replacementTemplate)
     }

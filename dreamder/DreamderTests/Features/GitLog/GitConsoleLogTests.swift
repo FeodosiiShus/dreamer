@@ -86,6 +86,7 @@ struct GitConsoleLogTests {
     }
 
     @Test
+    @MainActor
     func logsAreSharedPerRepository() {
         let first = GitConsoleLog.log(for: URL(fileURLWithPath: "/tmp/repo-a"))
         let second = GitConsoleLog.log(for: URL(fileURLWithPath: "/tmp/repo-a/"))

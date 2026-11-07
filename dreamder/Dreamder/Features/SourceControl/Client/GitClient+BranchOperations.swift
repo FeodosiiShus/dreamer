@@ -1,6 +1,6 @@
 import Foundation
 
-struct GitBranchOperationState: Hashable {
+nonisolated struct GitBranchOperationState: Hashable {
     var isMerging = false
     var isRebasing = false
     var isCherryPicking = false
@@ -13,20 +13,22 @@ struct GitBranchOperationState: Hashable {
     }
 }
 
-extension GitClient {
+nonisolated extension GitClient {
     func branchOpsListTags() async throws -> [GitTag] {
-        let output = try await run("for-each-ref --format=\"%(refname:short)|%(objectname:short)\" refs/tags")
+        let output = try await run(arguments: [
+            "for-each-ref", "--format=%(refname:short)|%(objectname:short)", "refs/tags"
+        ])
         return GitTag.list(from: output)
     }
 
     func branchOpsRecentBranchNames(limit: Int) async throws -> [String] {
         let safeLimit = max(limit, 1) * 4
-        let output = try await run("reflog --format=%gs -n \(safeLimit)")
+        let output = try await run(arguments: ["reflog", "--format=%gs", "-n", "\(safeLimit)"])
         return BranchesPopupReflogParser.recentBranchNames(from: output, limit: limit)
     }
 
     func branchOpsOperationState() async -> GitBranchOperationState {
-        guard let gitDirectory = try? await run("rev-parse --git-dir")
+        guard let gitDirectory = try? await run(arguments: ["rev-parse", "--git-dir"])
             .trimmingCharacters(in: .whitespacesAndNewlines),
             !gitDirectory.isEmpty else {
             return .none
@@ -47,17 +49,20 @@ extension GitClient {
     }
 
     func branchOpsRevision(_ revision: String) async throws -> String {
-        try await run("rev-parse \(branchOpsQuote(revision))")
+        try await run(arguments: ["rev-parse", revision])
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func branchOpsBranchExists(_ name: String) async throws -> Bool {
-        let output = try await run("rev-parse -q --verify \(branchOpsQuote("refs/heads/\(name)"))")
-        return !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let result = try await runResult(arguments: ["rev-parse", "-q", "--verify", "refs/heads/\(name)"])
+        guard result.success(ignoring: [1]) else {
+            throw Self.error(for: result)
+        }
+        return !result.outputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     func branchOpsCheckoutLocal(_ name: String) async throws {
-        try await branchOpsCheckedRun("checkout \(branchOpsQuote(name))")
+        try await branchOpsCheckedRun(["checkout", name])
     }
 
     func branchOpsCheckoutRemote(_ shortName: String) async throws {
@@ -78,30 +83,28 @@ extension GitClient {
         remote: String,
         overwrite: Bool = false
     ) async throws {
-        let flag = overwrite ? "-B" : "--track -b"
-        try await branchOpsCheckedRun(
-            "checkout \(flag) \(branchOpsQuote(localName)) \(branchOpsQuote(remote))"
-        )
+        let flags = overwrite ? ["-B"] : ["--track", "-b"]
+        try await branchOpsCheckedRun(["checkout"] + flags + [localName, remote])
     }
 
     func branchOpsResetLocalBranchToRemote(localName: String, remote: String) async throws {
-        try await branchOpsCheckedRun("checkout -B \(branchOpsQuote(localName)) \(branchOpsQuote(remote))")
+        try await branchOpsCheckedRun(["checkout", "-B", localName, remote])
     }
 
     func branchOpsCommitCount(branch: String, notIn base: String) async throws -> Int {
-        let output = try await branchOpsCheckedRun("rev-list --count \(branchOpsQuote("\(base)..\(branch)"))")
+        let output = try await branchOpsCheckedRun(["rev-list", "--count", "\(base)..\(branch)"])
         return Int(output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
     }
 
     func branchOpsCommits(branch: String, notIn base: String) async throws -> [BranchesCompareCommit] {
-        let output = try await run(
-            "log --format=\"%h|%s|%an|%ad\" --date=short \(branchOpsQuote("\(base)..\(branch)"))"
-        )
+        let output = try await run(arguments: [
+            "log", "--format=%h|%s|%an|%ad", "--date=short", "\(base)..\(branch)"
+        ])
         return BranchesCompareCommit.list(from: output)
     }
 
     func branchOpsCheckoutRevision(_ revision: String) async throws {
-        try await branchOpsCheckedRun("checkout \(branchOpsQuote(revision))")
+        try await branchOpsCheckedRun(["checkout", revision])
     }
 
     func branchOpsCreateBranch(
@@ -127,28 +130,25 @@ extension GitClient {
         newName: String,
         unsetUpstream: Bool = false
     ) async throws {
-        try await branchOpsCheckedRun(
-            "branch -m \(branchOpsQuote(oldName)) \(branchOpsQuote(newName))"
-        )
+        try await branchOpsCheckedRun(["branch", "-m", oldName, newName])
         if unsetUpstream {
-            try await branchOpsCheckedRun("branch --unset-upstream \(branchOpsQuote(newName))")
+            try await branchOpsCheckedRun(["branch", "--unset-upstream", newName])
         }
     }
 
     func branchOpsDeleteLocalBranch(_ name: String, force: Bool = false) async throws {
-        let output = try await run("branch \(force ? "-D" : "-d") \(branchOpsQuote(name))")
-        if !force, output.contains("not fully merged") || output.contains("not merged") {
-            throw GitClientError.branchNotFullyMerged
-        }
-        if let failure = branchOpsFailure(in: output) {
-            throw GitClientError.outputError(failure)
+        let result = try await runResult(arguments: ["branch", force ? "-D" : "-d", name])
+        guard result.success else {
+            let text = result.combinedText
+            if !force, text.contains("not fully merged") || text.contains("not merged") {
+                throw GitClientError.branchNotFullyMerged
+            }
+            throw Self.error(for: result)
         }
     }
 
     func branchOpsUnmergedCommits(branch: String, base: String) async throws -> [String] {
-        let output = try await run(
-            "log --format=\"%h  %s\" \(branchOpsQuote("\(base)..\(branch)"))"
-        )
+        let output = try await run(arguments: ["log", "--format=%h  %s", "\(base)..\(branch)"])
         return output
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -156,44 +156,42 @@ extension GitClient {
     }
 
     func branchOpsRestoreBranch(name: String, at revision: String) async throws {
-        try await branchOpsCheckedRun("branch \(branchOpsQuote(name)) \(branchOpsQuote(revision))")
+        try await branchOpsCheckedRun(["branch", name, revision])
     }
 
     func branchOpsRestoreTag(name: String, at revision: String) async throws {
-        try await branchOpsCheckedRun("tag \(branchOpsQuote(name)) \(branchOpsQuote(revision))")
+        try await branchOpsCheckedRun(["tag", name, revision])
     }
 
     func branchOpsDeleteRemoteBranch(remote: String, branch: String) async throws {
-        try await branchOpsCheckedRun("push \(branchOpsQuote(remote)) --delete \(branchOpsQuote(branch))")
+        try await branchOpsCheckedRun(["push", remote, "--delete", branch])
     }
 
     func branchOpsDeleteTag(_ name: String) async throws {
-        try await branchOpsCheckedRun("tag -d \(branchOpsQuote(name))")
+        try await branchOpsCheckedRun(["tag", "-d", name])
     }
 
     func branchOpsMerge(_ ref: String) async throws -> Bool {
-        let output = try await run("-c core.editor=true merge --no-edit \(branchOpsQuote(ref))")
+        let result = try await runResult(arguments: ["-c", "core.editor=true", "merge", "--no-edit", ref])
         let state = await branchOpsOperationState()
-        if state.isMerging {
+        if state.isMerging || result.combinedText.contains("CONFLICT") {
             return true
         }
-        if output.contains("CONFLICT") {
-            return true
-        }
-        if let failure = branchOpsFailure(in: output) {
-            throw GitClientError.outputError(failure)
+        guard result.success else {
+            throw Self.error(for: result)
         }
         return false
     }
 
     func branchOpsRebase(onto ref: String) async throws -> Bool {
-        let output = try await run("rebase \(branchOpsQuote(ref))")
+        let result = try await runResult(arguments: ["rebase", ref])
         let state = await branchOpsOperationState()
-        if state.isRebasing || output.contains("CONFLICT") || output.contains("could not apply") {
+        let text = result.combinedText
+        if state.isRebasing || text.contains("CONFLICT") || text.contains("could not apply") {
             return true
         }
-        if let failure = branchOpsFailure(in: output) {
-            throw GitClientError.outputError(failure)
+        guard result.success else {
+            throw Self.error(for: result)
         }
         return false
     }
@@ -204,35 +202,35 @@ extension GitClient {
     }
 
     func branchOpsRebaseAbort() async throws {
-        try await branchOpsCheckedRun("rebase --abort")
+        try await branchOpsCheckedRun(["rebase", "--abort"])
     }
 
     func branchOpsRebaseContinue() async throws {
-        try await branchOpsCheckedRun("-c core.editor=true rebase --continue")
+        try await branchOpsCheckedRun(["-c", "core.editor=true", "rebase", "--continue"])
     }
 
     func branchOpsRebaseSkip() async throws {
-        try await branchOpsCheckedRun("-c core.editor=true rebase --skip")
+        try await branchOpsCheckedRun(["-c", "core.editor=true", "rebase", "--skip"])
     }
 
     func branchOpsMergeAbort() async throws {
-        try await branchOpsCheckedRun("merge --abort")
+        try await branchOpsCheckedRun(["merge", "--abort"])
     }
 
     func branchOpsCherryPickAbort() async throws {
-        try await branchOpsCheckedRun("cherry-pick --abort")
+        try await branchOpsCheckedRun(["cherry-pick", "--abort"])
     }
 
     func branchOpsCherryPickContinue() async throws {
-        try await branchOpsCheckedRun("-c core.editor=true cherry-pick --continue")
+        try await branchOpsCheckedRun(["-c", "core.editor=true", "cherry-pick", "--continue"])
     }
 
     func branchOpsFetchAll() async throws {
-        try await branchOpsCheckedRun("fetch --all --prune")
+        try await branchOpsCheckedRun(["fetch", "--all", "--prune"])
     }
 
     func branchOpsPullCurrent() async throws {
-        try await branchOpsCheckedRun("pull --no-rebase")
+        try await branchOpsCheckedRun(["pull", "--no-rebase"])
     }
 
     func branchOpsPull(ref: String, rebase: Bool) async throws {
@@ -241,18 +239,14 @@ extension GitClient {
             throw GitClientError.outputError("Invalid remote branch '\(ref)'")
         }
         let mode = rebase ? "--rebase" : "--no-rebase"
-        try await branchOpsCheckedRun(
-            "-c core.editor=true pull \(mode) \(branchOpsQuote(parts[0])) \(branchOpsQuote(parts[1]))"
-        )
+        try await branchOpsCheckedRun(["-c", "core.editor=true", "pull", mode, parts[0], parts[1]])
     }
 
     func branchOpsSetUpstream(branch: String, upstream: String?) async throws {
         if let upstream {
-            try await branchOpsCheckedRun(
-                "branch --set-upstream-to=\(branchOpsQuote(upstream)) \(branchOpsQuote(branch))"
-            )
+            try await branchOpsCheckedRun(["branch", "--set-upstream-to=\(upstream)", branch])
         } else {
-            try await branchOpsCheckedRun("branch --unset-upstream \(branchOpsQuote(branch))")
+            try await branchOpsCheckedRun(["branch", "--unset-upstream", branch])
         }
     }
 
@@ -264,78 +258,35 @@ extension GitClient {
         let remote = parts[0]
         let remoteBranch = parts[1]
         if isCurrent {
-            try await branchOpsCheckedRun("fetch \(branchOpsQuote(remote))")
-            try await branchOpsCheckedRun("merge --ff-only \(branchOpsQuote(upstream))")
+            try await branchOpsCheckedRun(["fetch", remote])
+            try await branchOpsCheckedRun(["merge", "--ff-only", upstream])
         } else {
-            try await branchOpsCheckedRun(
-                "fetch \(branchOpsQuote(remote)) \(branchOpsQuote(remoteBranch)):\(branchOpsQuote(name))"
-            )
+            try await branchOpsCheckedRun(["fetch", remote, "\(remoteBranch):\(name)"])
         }
     }
 
     func branchOpsAddWorktree(path: String, ref: String?) async throws {
         if let ref {
-            try await branchOpsCheckedRun(
-                "worktree add \(branchOpsQuote(path)) \(branchOpsQuote(ref))"
-            )
+            try await branchOpsCheckedRun(["worktree", "add", path, ref])
         } else {
-            try await branchOpsCheckedRun("worktree add \(branchOpsQuote(path))")
+            try await branchOpsCheckedRun(["worktree", "add", path])
         }
     }
 
     func branchOpsPushTag(name: String, remote: String) async throws {
-        try await branchOpsCheckedRun(
-            "push \(branchOpsQuote(remote)) \(branchOpsQuote("refs/tags/\(name)"))"
-        )
+        try await branchOpsCheckedRun(["push", remote, "refs/tags/\(name)"])
     }
 
     private func branchOpsCreateCheckedOutBranch(name: String, from ref: String?, flag: String) async throws {
-        if let ref {
-            try await branchOpsCheckedRun(
-                "checkout \(flag) \(branchOpsQuote(name)) \(branchOpsQuote(ref))"
-            )
-        } else {
-            try await branchOpsCheckedRun("checkout \(flag) \(branchOpsQuote(name))")
-        }
+        try await branchOpsCheckedRun(["checkout", flag, name] + (ref.map { [$0] } ?? []))
     }
 
     private func branchOpsCreateUncheckedBranch(name: String, from ref: String?, flag: String?) async throws {
-        let prefix = flag.map { "branch \($0) " } ?? "branch "
-        if let ref {
-            try await branchOpsCheckedRun("\(prefix)\(branchOpsQuote(name)) \(branchOpsQuote(ref))")
-        } else {
-            try await branchOpsCheckedRun("\(prefix)\(branchOpsQuote(name))")
-        }
+        try await branchOpsCheckedRun(["branch"] + (flag.map { [$0] } ?? []) + [name] + (ref.map { [$0] } ?? []))
     }
 
     @discardableResult
-    private func branchOpsCheckedRun(_ command: String) async throws -> String {
-        let output = try await run(command)
-        if let failure = branchOpsFailure(in: output) {
-            throw GitClientError.outputError(failure)
-        }
-        return output
-    }
-
-    private func branchOpsFailure(in output: String) -> String? {
-        for line in output.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("fatal:")
-                || trimmed.hasPrefix("error:")
-                || trimmed.hasPrefix("! [rejected]")
-                || trimmed.contains("Updates were rejected")
-                || trimmed.hasPrefix("There is no tracking information")
-                || trimmed.contains("has no upstream branch") {
-                return trimmed
-            }
-        }
-        return nil
-    }
-
-    private func branchOpsQuote(_ value: String) -> String {
-        let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        return "\"\(escaped)\""
+    private func branchOpsCheckedRun(_ arguments: [String]) async throws -> String {
+        try await run(arguments: arguments)
     }
 }

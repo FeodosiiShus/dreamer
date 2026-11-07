@@ -129,7 +129,7 @@ class EditorManager: ObservableObject {
         if activeEditorHistory.isEmpty {
             activeEditor = findSomeEditor(excluding: editor)
         } else {
-            activeEditor = activeEditorHistory.removeFirst()()!
+            activeEditor = activeEditorHistory.removeFirst()() ?? findSomeEditor(excluding: editor)
         }
     }
 

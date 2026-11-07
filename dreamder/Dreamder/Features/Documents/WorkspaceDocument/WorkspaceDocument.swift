@@ -146,9 +146,13 @@ final class WorkspaceDocument: NSDocument, ObservableObject, NSToolbarDelegate {
         self.displayName = url.lastPathComponent
         self.excludedDirectories = ExcludedDirectories(rootURL: url)
 
+        guard let editorManager else {
+            throw CocoaError(.fileReadUnknown)
+        }
+
         let sourceControlManager = SourceControlManager(
             workspaceURL: url,
-            editorManager: editorManager!
+            editorManager: editorManager
         )
 
         self.workspaceFileManager = .init(
@@ -171,7 +175,7 @@ final class WorkspaceDocument: NSDocument, ObservableObject, NSToolbarDelegate {
         self.taskNotificationHandler.workspaceURL = url
 
         workspaceFileManager?.addObserver(undoRegistration)
-        editorManager?.restoreFromState(self)
+        editorManager.restoreFromState(self)
         utilityAreaModel?.restoreFromState(self)
     }
 

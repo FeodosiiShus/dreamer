@@ -53,11 +53,7 @@ struct CEContentUnavailableView<Actions: View>: View {
     }
 
     var body: some View {
-        if #available(macOS 14, *) {
-            contentUnavailableView
-                .buttonStyle(.accessoryBarAction)
-        } else {
-            contentUnavailableView
-        }
+        contentUnavailableView
+            .buttonStyle(.accessoryBarAction)
     }
 }

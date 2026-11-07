@@ -16,10 +16,12 @@ extension LSPService {
             return
         }
 
-        // Create a new Task to listen to the events
-        let task = Task.detached { [weak self] in
-            for await event in languageClient.lspInstance.eventSequence {
-                await self?.handleEvent(event, for: key)
+        let events = languageClient.lspInstance.eventSequence
+        eventListeningTasks[key]?.cancel()
+        let task = Task { [weak self] in
+            for await event in events {
+                guard !Task.isCancelled else { return }
+                self?.handleEvent(event, for: key)
             }
         }
         eventListeningTasks[key] = task
@@ -34,12 +36,16 @@ extension LSPService {
 
     private func handleEvent(_ event: ServerEvent, for key: ClientKey) {
         guard let client = languageClient(for: key.languageId, workspacePath: key.workspacePath) else {
+            if case let .request(_, request) = event {
+                let message = "The \(key.languageId.rawValue) language client is not running"
+                Task { await LSPClientRequestHandler.reject(request, message: message) }
+            }
             return
         }
 
         switch event {
         case let .request(_, request):
-            handleRequest(request, client: client)
+            handleRequest(request, client: client, key: key)
         case let .notification(notification):
             handleNotification(notification, client: client, key: key)
         case let .error(error):
@@ -47,32 +53,9 @@ extension LSPService {
         }
     }
 
-    private func handleRequest(_ request: ServerRequest, client: LanguageServerType) {
-        // TODO: Handle Requests
-        switch request {
-            //        case let .workspaceConfiguration(params, _):
-            //            print("workspaceConfiguration: \(params)")
-            //        case let .workspaceFolders(handler):
-            //            print("workspaceFolders: \(String(describing: handler))")
-            //        case let .workspaceApplyEdit(params, _):
-            //            print("workspaceApplyEdit: \(params)")
-//        case let .clientRegisterCapability(params, _):
-//            print("clientRegisterCapability: \(params)")
-//        case let .clientUnregisterCapability(params, _):
-//            print("clientUnregisterCapability: \(params)")
-            //        case let .workspaceCodeLensRefresh(handler):
-            //            print("workspaceCodeLensRefresh: \(String(describing: handler))")
-//        case let .workspaceSemanticTokenRefresh(handler):
-//            print("Refresh semantic tokens!", handler)
-            //        case let .windowShowMessageRequest(params, _):
-            //            print("windowShowMessageRequest: \(params)")
-            //        case let .windowShowDocument(params, _):
-            //            print("windowShowDocument: \(params)")
-            //        case let .windowWorkDoneProgressCreate(params, _):
-            //            print("windowWorkDoneProgressCreate: \(params)")
-        default:
-            return
-        }
+    private func handleRequest(_ request: ServerRequest, client: LanguageServerType, key: ClientKey) {
+        let handler = makeClientRequestHandler(for: key, client: client)
+        Task { await handler.handle(request) }
     }
 
     private func handleNotification(
@@ -89,6 +72,8 @@ extension LSPService {
                 forDocument: params.uri,
                 workspacePath: key.workspacePath
             )
+        case let .protocolProgress(params):
+            client.workDoneProgress.apply(params)
         default:
             return
         }

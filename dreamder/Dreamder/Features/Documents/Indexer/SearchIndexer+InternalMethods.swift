@@ -42,10 +42,10 @@ extension SearchIndexer {
 
     /// Returns the number of terms of the specified document
     private func termCount(for document: SKDocumentID) -> Int {
-        guard self.index != nil else {
+        guard let index = self.index else {
             return 0
         }
-        return SKIndexGetDocumentTermCount(self.index!, document)
+        return SKIndexGetDocumentTermCount(index, document)
     }
 
     /// Is the specified document empty (ie. it has no terms)
@@ -69,7 +69,7 @@ extension SearchIndexer {
             isLeaf = false
             self.addLeafURLs(index: index, inParentDocument: skDocument.takeRetainedValue(), docs: &docs)
         }
-        if isLeaf, inParentDocument != nil,
+        if isLeaf, let inParentDocument,
            kSKDocumentStateNotIndexed != SKIndexGetDocumentState(index, inParentDocument) {
             let url = SKDocumentCopyURL(inParentDocument).takeRetainedValue()
 
@@ -77,7 +77,7 @@ extension SearchIndexer {
             docs.append(
                 DocumentID(
                     url: url as URL,
-                    document: inParentDocument!,
+                    document: inParentDocument,
                     documentID: documentID
                 )
             )

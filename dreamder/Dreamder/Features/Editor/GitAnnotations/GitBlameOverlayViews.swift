@@ -75,7 +75,7 @@ final class GitBlameAnnotationView: NSView, NSViewToolTipOwner {
     }
 
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+        nil
     }
 
     override var isFlipped: Bool {

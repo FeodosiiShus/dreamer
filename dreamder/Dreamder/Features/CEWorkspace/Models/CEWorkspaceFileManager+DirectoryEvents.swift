@@ -14,7 +14,8 @@ extension CEWorkspaceFileManager {
     /// This method may be called on a background thread, but all work done by this function will be queued on the main
     /// thread.
     /// - Parameter events: An array of events that occurred.
-    func fileSystemEventReceived(events: [DirectoryEventStream.Event]) {
+    func fileSystemEventReceived(events rawEvents: [DirectoryEventStream.Event]) {
+        let events = rawEvents.map(eventRelocatedToFolderUrl)
         DispatchQueue.main.async {
             var files: Set<CEWorkspaceFile> = []
             for event in events {
@@ -50,6 +51,16 @@ extension CEWorkspaceFileManager {
                 self.handleGitEvents(events: events)
             }
         }
+    }
+
+    private func eventRelocatedToFolderUrl(_ event: DirectoryEventStream.Event) -> DirectoryEventStream.Event {
+        let canonicalRoot = folderUrl.resolvingSymlinksInPath().path
+        let canonicalPath = URL(fileURLWithPath: event.path).resolvingSymlinksInPath().path
+        guard canonicalPath == canonicalRoot || canonicalPath.hasPrefix(canonicalRoot + "/") else {
+            return event
+        }
+        let relocatedPath = folderUrl.path + canonicalPath.dropFirst(canonicalRoot.count)
+        return DirectoryEventStream.Event(path: relocatedPath, eventType: event.eventType)
     }
 
     func handleGitEvents(events: [DirectoryEventStream.Event]) {

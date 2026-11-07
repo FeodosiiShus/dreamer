@@ -179,8 +179,10 @@ final class FindModeMenu: NSMenu, NSMenuDelegate {
     }
 
     @available(*, unavailable)
-    required init(coder _: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    required init(coder: NSCoder) {
+        self.modes = []
+        self.onSelect = { _ in }
+        super.init(coder: coder)
     }
 }
 
@@ -200,8 +202,10 @@ final class FindModeMenuItem: NSMenuItem {
     }
 
     @available(*, unavailable)
-    required init(coder _: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    required init(coder: NSCoder) {
+        self.mode = .Find
+        self.onSelect = { _ in }
+        super.init(coder: coder)
     }
 
     @objc

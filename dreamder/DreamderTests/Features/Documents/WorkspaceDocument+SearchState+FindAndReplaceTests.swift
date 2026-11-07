@@ -23,16 +23,7 @@ final class FindAndReplaceTests: XCTestCase { // swiftlint:disable:this type_bod
     /// 3 mock files are added to the index
     /// which will be removed in the teardown function
     override func setUp() async throws {
-        directory = try FileManager.default.url(
-            for: .developerApplicationDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        .appending(path: "Dreamder", directoryHint: .isDirectory)
-        .appending(path: "WorkspaceClientTests", directoryHint: .isDirectory)
-        try? FileManager.default.removeItem(at: directory)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        directory = try makeTempDirectory()
 
         mockWorkspace = try WorkspaceDocument(for: directory, withContentsOf: directory, ofType: "")
         searchState = mockWorkspace.searchState

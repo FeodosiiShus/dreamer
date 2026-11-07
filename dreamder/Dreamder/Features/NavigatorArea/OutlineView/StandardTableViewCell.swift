@@ -110,12 +110,6 @@ class StandardTableViewCell: NSTableCellView {
     override func resizeSubviews(withOldSize oldSize: NSSize) {
         super.resizeSubviews(withOldSize: oldSize)
         guard let imageView, textField != nil, secondaryLabel != nil else {
-            assertionFailure(
-                "Missing child view:"
-                + " imageView \(imageView == nil)"
-                + ", textField: \(textField == nil)"
-                + ", label: \(secondaryLabel == nil)"
-            )
             return
         }
 
@@ -180,10 +174,7 @@ class StandardTableViewCell: NSTableCellView {
 
     /// *Not Implemented*
     required init?(coder: NSCoder) {
-        fatalError("""
-            init?(coder: NSCoder) isn't implemented on `StandardTableViewCell`.
-            Please use `.init(frame: NSRect, isEditable: Bool)
-            """)
+        nil
     }
 
     /// Returns the font size for the current row height. Defaults to `13.0`

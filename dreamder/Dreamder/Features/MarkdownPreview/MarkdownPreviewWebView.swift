@@ -45,7 +45,7 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
             apply(body, in: webView)
         }
 
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
             isPageLoaded = true
             guard let currentBody, currentBody != loadedBody else { return }
             apply(currentBody, in: webView)

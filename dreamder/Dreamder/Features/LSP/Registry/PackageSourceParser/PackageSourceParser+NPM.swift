@@ -13,10 +13,12 @@ extension PackageSourceParser {
         guard sourceId.hasPrefix(pkgPrefix) else { return .unknown }
 
         let pkgString = sourceId.dropFirst(pkgPrefix.count)
+        guard let firstCharacter = pkgString.first, firstCharacter != "?" else { return .unknown }
 
         // Split into package@version and parameters
         let components = pkgString.split(separator: "?", maxSplits: 1)
-        let packageVersion = String(components[0])
+        guard let packageVersionString = components.first else { return .unknown }
+        let packageVersion = String(packageVersionString)
         let parameters = components.count > 1 ? String(components[1]) : ""
 
         let (packageName, version) = parseNPMPackageNameAndVersion(packageVersion)
@@ -65,7 +67,7 @@ extension PackageSourceParser {
         if packageVersion.contains("@") && !packageVersion.hasPrefix("@") {
             // Regular package with version: package@1.0.0
             let parts = packageVersion.split(separator: "@", maxSplits: 1)
-            packageName = String(parts[0])
+            packageName = parts.first.map(String.init) ?? packageVersion
             if parts.count > 1 {
                 version = String(parts[1])
             }

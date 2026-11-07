@@ -10,11 +10,12 @@ import SwiftUI
 /// A `NSTableCellView` showing an icon and label
 final class FindNavigatorListMatchCell: NSTableCellView {
 
-    private var label: NSTextField!
+    private let label: NSTextField
     private var matchItem: SearchResultMatchModel
 
     init(frame: CGRect, matchItem: SearchResultMatchModel) {
         self.matchItem = matchItem
+        self.label = Self.makeLabel(for: matchItem)
         super.init(frame: CGRect(
             x: frame.origin.x,
             y: frame.origin.y,
@@ -22,7 +23,6 @@ final class FindNavigatorListMatchCell: NSTableCellView {
             height: frame.height
         ))
 
-        setUpLabel()
         self.addSubview(label)
 
         NSLayoutConstraint.activate([
@@ -33,19 +33,19 @@ final class FindNavigatorListMatchCell: NSTableCellView {
         ])
     }
 
-    /// Sets up the `NSTextField` used as a label in the cell.
-    private func setUpLabel() {
-        self.label = NSTextField(wrappingLabelWithString: matchItem.lineContent)
-        self.label.translatesAutoresizingMaskIntoConstraints = false
-        self.label.drawsBackground = false
-        self.label.isEditable = false
-        self.label.isSelectable = false
-        self.label.font = Islands.codeNSFont
-        self.label.allowsDefaultTighteningForTruncation = false
-        self.label.cell?.truncatesLastVisibleLine = true
-        self.label.cell?.wraps = true
-        self.label.maximumNumberOfLines = Settings.shared.preferences.general.findNavigatorDetail.rawValue
-        self.label.attributedStringValue = Self.attributedString(for: matchItem)
+    private static func makeLabel(for matchItem: SearchResultMatchModel) -> NSTextField {
+        let label = NSTextField(wrappingLabelWithString: matchItem.lineContent)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.drawsBackground = false
+        label.isEditable = false
+        label.isSelectable = false
+        label.font = Islands.codeNSFont
+        label.allowsDefaultTighteningForTruncation = false
+        label.cell?.truncatesLastVisibleLine = true
+        label.cell?.wraps = true
+        label.maximumNumberOfLines = Settings.shared.preferences.general.findNavigatorDetail.rawValue
+        label.attributedStringValue = attributedString(for: matchItem)
+        return label
     }
 
     static func attributedString(for matchItem: SearchResultMatchModel) -> NSAttributedString {
@@ -67,6 +67,6 @@ final class FindNavigatorListMatchCell: NSTableCellView {
     }
 
     required init?(coder: NSCoder) {
-        fatalError()
+        nil
     }
 }

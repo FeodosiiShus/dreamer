@@ -65,12 +65,15 @@ enum RegistryItemTemplateParser {
             guard Range(match.range, in: template) != nil else { continue }
 
             // Extract the content between {{ and }}
-            let expressionRange = Range(match.range(at: 1), in: template)!
+            guard let expressionRange = Range(match.range(at: 1), in: template) else { continue }
             let expression = String(template[expressionRange])
 
             // Split by pipe to separate variable path from filters
             let components = expression.components(separatedBy: "|").filter { !$0.isEmpty }
-            let pathExpression = components[0].trimmingCharacters(in: .whitespaces)
+            guard let pathComponent = components.first else {
+                throw TemplateError.invalidPath("Empty expression")
+            }
+            let pathExpression = pathComponent.trimmingCharacters(in: .whitespaces)
             let value = try getValueFromPath(pathExpression, in: context)
 
             // Apply filters

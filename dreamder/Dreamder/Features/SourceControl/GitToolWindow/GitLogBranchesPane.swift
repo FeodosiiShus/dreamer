@@ -2,7 +2,7 @@ import SwiftUI
 
 struct GitLogBranchesPane: View {
     @EnvironmentObject private var sourceControlManager: SourceControlManager
-    @ObservedObject var viewModel: GitLogViewModel
+    let viewModel: GitLogViewModel
 
     private var localBranches: [GitBranch] {
         sourceControlManager.orderedLocalBranches

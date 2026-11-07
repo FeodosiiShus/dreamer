@@ -7,9 +7,9 @@
 
 import Foundation
 
-extension GitClient {
+nonisolated extension GitClient {
     /// Initiate Git repository
     func initiate() async throws {
-        _ = try await run("init")
+        _ = try await run(arguments: ["init"])
     }
 }

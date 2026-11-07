@@ -81,10 +81,9 @@ enum BranchesPopupMatcher {
                 candidateIndex += 1
                 continue
             }
-            if let match = greedyMatch(pattern: pattern, characters: characters, start: candidateIndex) {
-                if best == nil || match.score < best!.score {
-                    best = match
-                }
+            if let match = greedyMatch(pattern: pattern, characters: characters, start: candidateIndex),
+               match.score < (best?.score ?? .max) {
+                best = match
             }
             candidateIndex += 1
         }
@@ -112,11 +111,12 @@ enum BranchesPopupMatcher {
             indices.append(found)
             index = found
         }
-        var score = (indices.first ?? 0) * 4 + (indices.last! - indices.first!)
+        guard let first = indices.first, let last = indices.last else { return nil }
+        var score = first * 4 + (last - first)
         for position in indices where !isWordStart(characters, at: position) {
             score += 6
         }
-        return Match(indices: indices, score: score, end: (indices.last ?? start) + 1)
+        return Match(indices: indices, score: score, end: last + 1)
     }
 
     private static func contiguousRanges(_ indices: [Int]) -> [Range<Int>] {

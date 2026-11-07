@@ -7,18 +7,17 @@
 
 import Foundation
 
-extension GitClient {
+nonisolated extension GitClient {
     /// Determines if the current directory is a valid git repository.
     ///
     /// Runs `git rev-parse --is-inside-work-tree`.
     ///
     /// - Returns: True, if git finds a valid repository.
     func validate() async -> Bool {
-        do {
-            let output = try await run("rev-parse --is-inside-work-tree")
-            return output.trimmingCharacters(in: .whitespacesAndNewlines) == "true"
-        } catch {
+        guard let result = try? await runResult(arguments: ["rev-parse", "--is-inside-work-tree"]),
+              result.success else {
             return false
         }
+        return result.outputText.trimmingCharacters(in: .whitespacesAndNewlines) == "true"
     }
 }

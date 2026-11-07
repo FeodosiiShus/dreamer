@@ -24,12 +24,13 @@ struct EditorAreaFileView: View {
                     editorInstance: editorInstance,
                     codeFile: codeFile
                 )
-                .id(ObjectIdentifier(codeFile))
+                .id(CodeFileViewIdentity(editorInstance: editorInstance, codeFile: codeFile))
             } else {
                 CodeFileView(
                     editorInstance: editorInstance,
                     codeFile: codeFile
                 )
+                .id(CodeFileViewIdentity(editorInstance: editorInstance, codeFile: codeFile))
             }
         } else {
             NonTextFileView(fileDocument: codeFile)

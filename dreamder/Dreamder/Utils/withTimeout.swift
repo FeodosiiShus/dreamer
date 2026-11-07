@@ -41,7 +41,7 @@ public func withTimeout<R>(
         // First finished child task wins, cancel the other task.
         defer { group.cancelAll() }
         do {
-            let result = try await group.next()!
+            guard let result = try await group.next() else { throw CancellationError() }
             return result
         } catch {
             throw error

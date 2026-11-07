@@ -27,8 +27,9 @@ final class ProjectNavigatorMenu: NSMenu {
     }
 
     @available(*, unavailable)
-    required init(coder _: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    required init(coder: NSCoder) {
+        self.sender = ProjectNavigatorViewController()
+        super.init(coder: coder)
     }
 
     /// Creates a `NSMenuItem` depending on the given arguments
@@ -159,13 +160,13 @@ final class ProjectNavigatorMenu: NSMenu {
             if type.conforms(to: .propertyList) {
                 primaryItems.append(.propertyList())
             }
-            if type.conforms(to: UTType(filenameExtension: "xcassets")!) {
+            if let xcassets = UTType(filenameExtension: "xcassets"), type.conforms(to: xcassets) {
                 primaryItems.append(NSMenuItem(title: "Asset Catalog Document", action: nil, keyEquivalent: ""))
             }
-            if type.conforms(to: UTType(filenameExtension: "xib")!) {
+            if let xib = UTType(filenameExtension: "xib"), type.conforms(to: xib) {
                 primaryItems.append(NSMenuItem(title: "Interface Builder XIB Document", action: nil, keyEquivalent: ""))
             }
-            if type.conforms(to: UTType(filenameExtension: "xcodeproj")!) {
+            if let xcodeproj = UTType(filenameExtension: "xcodeproj"), type.conforms(to: xcodeproj) {
                 primaryItems.append(NSMenuItem(title: "Xcode Project", action: nil, keyEquivalent: ""))
             }
             var secondaryItems = [NSMenuItem]()

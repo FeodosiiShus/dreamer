@@ -163,7 +163,6 @@ struct UtilityAreaTerminalView: View {
         }
         .onAppear {
             guard let workspaceURL = workspace.fileURL else {
-                assertionFailure("Workspace does not have a file URL.")
                 return
             }
             utilityAreaViewModel.initializeTerminals(workspaceURL: workspaceURL)

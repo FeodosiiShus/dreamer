@@ -69,9 +69,9 @@ struct EditorTabs: View {
                         previousTabLocation.minX + currentTabWidth * 0.9
                     ) {
                         let changing = previousTabWidth + Self.tabSpacing
-                        draggingStartLocation! -= changing
+                        draggingStartLocation = startLocation - changing
                         withAnimation {
-                            tabOffsets[id]! += changing
+                            tabOffsets[id, default: 0] += changing
                             openedTabs.move(
                                 fromOffsets: IndexSet(integer: previousTabIndex),
                                 toOffset: currentIndex + 1
@@ -90,9 +90,9 @@ struct EditorTabs: View {
                         nextTabLocation.maxX - currentTabWidth * 0.9
                     ) {
                         let changing = nextTabWidth + Self.tabSpacing
-                        draggingStartLocation! += changing
+                        draggingStartLocation = startLocation + changing
                         withAnimation {
-                            tabOffsets[id]! -= changing
+                            tabOffsets[id, default: 0] -= changing
                             openedTabs.move(
                                 fromOffsets: IndexSet(integer: nextTabIndex),
                                 toOffset: currentIndex
@@ -101,7 +101,7 @@ struct EditorTabs: View {
                         return
                     }
                 }
-                if draggingLastLocation == nil || abs(value.location.x - draggingLastLocation!) >= 10 {
+                if draggingLastLocation.map({ abs(value.location.x - $0) >= 10 }) ?? true {
                     draggingLastLocation = value.location.x
                 }
             })

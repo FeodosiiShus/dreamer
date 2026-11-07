@@ -1,94 +1,115 @@
 import Foundation
+import Synchronization
 
-final class ShellEnvironment {
-    static let shared = ShellEnvironment()
+nonisolated final class ShellEnvironment: Sendable {
+    nonisolated static let shared = ShellEnvironment()
 
-    private static let loadTimeout: TimeInterval = 10
-    private static let waitTimeout: TimeInterval = 5
+    struct Resolution: Sendable, Equatable {
+        var environment: [String: String]
+        var isLoginEnvironment: Bool
+    }
 
-    private let condition = NSCondition()
-    private var cached: [String: String]?
-    private var isLoading = false
+    private enum Step {
+        case resolved(Resolution)
+        case loading(Task<Resolution, Never>)
+    }
+
+    private struct State {
+        var resolution: Resolution?
+        var loading: Task<Resolution, Never>?
+    }
+
+    private let runner: any ProcessRunning
+    private let loadTimeout: Duration
+    private let baseEnvironment: @Sendable () -> [String: String]
+    private let shellExecutable: URL
+    private let shellArguments: [String]
+    private let state = Mutex(State())
+
+    init(
+        runner: any ProcessRunning = ProcessRunner(),
+        loadTimeout: Duration = .seconds(10),
+        baseEnvironment: @escaping @Sendable () -> [String: String] = { ProcessInfo.processInfo.environment },
+        shellExecutable: URL = URL(fileURLWithPath: "/bin/zsh"),
+        shellArguments: [String] = ["-lic", "env -0"]
+    ) {
+        self.runner = runner
+        self.loadTimeout = loadTimeout
+        self.baseEnvironment = baseEnvironment
+        self.shellExecutable = shellExecutable
+        self.shellArguments = shellArguments
+    }
+
+    var cachedEnvironment: [String: String]? {
+        state.withLock { $0.resolution?.environment }
+    }
 
     var environment: [String: String] {
-        condition.lock()
-        if let cached {
-            condition.unlock()
-            return cached
+        if let cachedEnvironment {
+            return cachedEnvironment
         }
-        if Thread.isMainThread {
-            condition.unlock()
-            prepare()
-            return Self.fallbackEnvironment
-        }
-        if isLoading {
-            let deadline = Date(timeIntervalSinceNow: Self.waitTimeout)
-            while cached == nil && isLoading {
-                if !condition.wait(until: deadline) {
-                    break
-                }
-            }
-            let value = cached ?? Self.fallbackEnvironment
-            condition.unlock()
-            return value
-        }
-        isLoading = true
-        condition.unlock()
-        return finishLoading()
+        prepare()
+        return Self.fallbackEnvironment(base: baseEnvironment())
     }
 
     func prepare() {
-        condition.lock()
-        guard cached == nil, !isLoading else {
-            condition.unlock()
-            return
-        }
-        isLoading = true
-        condition.unlock()
-        DispatchQueue.global(qos: .utility).async {
-            _ = self.finishLoading()
+        _ = loadingTask()
+    }
+
+    func load() async -> [String: String] {
+        await resolve().environment
+    }
+
+    func resolve() async -> Resolution {
+        switch loadingTask() {
+        case .resolved(let resolution):
+            return resolution
+        case .loading(let task):
+            return await task.value
         }
     }
 
-    @discardableResult
-    private func finishLoading() -> [String: String] {
-        let value = Self.loadLoginEnvironment() ?? Self.fallbackEnvironment
-        condition.lock()
-        cached = value
-        isLoading = false
-        condition.broadcast()
-        condition.unlock()
-        return value
+    private func loadingTask() -> Step {
+        state.withLock { state in
+            if let resolution = state.resolution {
+                return .resolved(resolution)
+            }
+            if let loading = state.loading {
+                return .loading(loading)
+            }
+            let task = Task { await self.performLoad() }
+            state.loading = task
+            return .loading(task)
+        }
     }
 
-    private static func loadLoginEnvironment() -> [String: String]? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        process.arguments = ["-lic", "env -0"]
-        process.standardInput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        let pipe = Pipe.closingOnExec()
-        process.standardOutput = pipe
-        do {
-            try process.run()
-        } catch {
+    private func performLoad() async -> Resolution {
+        let resolution = await loadLoginEnvironment()
+            ?? Resolution(environment: Self.fallbackEnvironment(base: baseEnvironment()), isLoginEnvironment: false)
+        state.withLock { state in
+            state.resolution = resolution
+            state.loading = nil
+        }
+        return resolution
+    }
+
+    private func loadLoginEnvironment() async -> Resolution? {
+        let base = baseEnvironment()
+        let invocation = ProcessInvocation(
+            executable: shellExecutable,
+            arguments: shellArguments,
+            environment: ProcessEnvironment.sanitized(base),
+            timeout: loadTimeout
+        )
+        guard let output = try? await runner.run(invocation),
+              let environment = Self.parse(output.standardOutput, base: base) else {
             return nil
         }
-        let watchdog = DispatchWorkItem {
-            if process.isRunning {
-                process.terminate()
-            }
-        }
-        DispatchQueue.global(qos: .utility)
-            .asyncAfter(deadline: .now() + loadTimeout, execute: watchdog)
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        watchdog.cancel()
-        process.waitUntilExit()
-        return parse(data)
+        return Resolution(environment: environment, isLoginEnvironment: true)
     }
 
-    private static func parse(_ data: Data) -> [String: String]? {
-        var environment = ProcessInfo.processInfo.environment
+    static func parse(_ data: Data, base: [String: String]) -> [String: String]? {
+        var environment = base
         var parsedEntries = 0
         for entry in data.split(separator: 0) {
             guard let string = String(bytes: entry, encoding: .utf8),
@@ -108,6 +129,14 @@ final class ShellEnvironment {
         for name in sessionVariables {
             environment.removeValue(forKey: name)
         }
+        return ProcessEnvironment.sanitized(environment)
+    }
+
+    static func fallbackEnvironment(base: [String: String]) -> [String: String] {
+        var environment = ProcessEnvironment.sanitized(base)
+        let existing = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
+        let additions = fallbackDirectories.filter { !existing.contains($0) }
+        environment["PATH"] = (existing + additions).joined(separator: ":")
         return environment
     }
 
@@ -121,14 +150,6 @@ final class ShellEnvironment {
     private static let sessionVariables = [
         "_", "SHLVL", "PWD", "OLDPWD", "ZDOTDIR", "ZSH_EXECUTION_STRING", "ZSH_SUBSHELL", "ZSH_ARGZERO"
     ]
-
-    private static var fallbackEnvironment: [String: String] {
-        var environment = ProcessInfo.processInfo.environment
-        let existing = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
-        let additions = fallbackDirectories.filter { !existing.contains($0) }
-        environment["PATH"] = (existing + additions).joined(separator: ":")
-        return environment
-    }
 
     private static let fallbackDirectories = [
         "/opt/homebrew/bin",

@@ -50,6 +50,7 @@ struct ThreeWayMerge: Equatable {
         case left
         case right
         case ignored
+        case merged
     }
 
     enum NonConflictingMode: Equatable {
@@ -68,8 +69,10 @@ struct ThreeWayMerge: Equatable {
         let rightRange: Range<Int>
         let rightLines: [String]
         var resolution: Resolution
+        var autoResolvedLines: [String]? = nil
 
         var inserted: Bool { baseRange.isEmpty }
+        var canBeResolved: Bool { autoResolvedLines != nil }
     }
 
     let baseText: String
@@ -80,22 +83,18 @@ struct ThreeWayMerge: Equatable {
     let rightLines: [String]
     private(set) var blocks: [Block]
 
-    init(base: String, ours: String, theirs: String) {
+    init(base: String, ours: String, theirs: String, policy: ComparisonPolicy = .default) {
         baseText = base
         leftText = ours
         rightText = theirs
         baseLines = TextDiff.lines(in: base)
         leftLines = TextDiff.lines(in: ours)
         rightLines = TextDiff.lines(in: theirs)
-
-        let leftDiff = TextDiff(leftLines: baseLines, rightLines: leftLines)
-        let rightDiff = TextDiff(leftLines: baseLines, rightLines: rightLines)
         blocks = Self.buildBlocks(
             baseLines: baseLines,
             leftLines: leftLines,
             rightLines: rightLines,
-            leftHunks: leftDiff.hunks,
-            rightHunks: rightDiff.hunks
+            policy: policy
         )
     }
 
@@ -129,6 +128,7 @@ struct ThreeWayMerge: Equatable {
 
     mutating func resolve(_ blockID: Int, with resolution: Resolution) {
         guard let index = blocks.firstIndex(where: { $0.id == blockID }) else { return }
+        if resolution == .merged && !blocks[index].canBeResolved { return }
         blocks[index].resolution = resolution
     }
 
@@ -144,6 +144,20 @@ struct ThreeWayMerge: Equatable {
             case .conflict:
                 continue
             }
+        }
+    }
+
+    var resolvableConflictCount: Int {
+        blocks.filter { $0.kind == .conflict && $0.resolution == .unresolved && $0.canBeResolved }.count
+    }
+
+    var hasResolvableConflicts: Bool { resolvableConflictCount > 0 }
+
+    mutating func resolveSimpleConflicts() {
+        for index in blocks.indices where blocks[index].kind == .conflict
+            && blocks[index].resolution == .unresolved
+            && blocks[index].canBeResolved {
+            blocks[index].resolution = .merged
         }
     }
 
@@ -167,6 +181,8 @@ struct ThreeWayMerge: Equatable {
             return block.leftLines
         case .right:
             return block.rightLines
+        case .merged:
+            return block.autoResolvedLines ?? block.baseLines
         case .unresolved, .ignored:
             return block.baseLines
         }
@@ -317,14 +333,14 @@ struct ThreeWayMerge: Equatable {
                 return .conflict
             case .ignored:
                 return .unchanged
-            case .left, .right:
+            case .left, .right, .merged:
                 return .resolved
             }
         }
         switch block.resolution {
         case .unresolved, .ignored:
             return .unchanged
-        case .left, .right:
+        case .left, .right, .merged:
             return block.inserted ? .inserted : .changed
         }
     }
@@ -342,128 +358,45 @@ struct ThreeWayMerge: Equatable {
         return chips
     }
 
-    private static func sideRanges(
-        hunks: [DiffHunk],
-        regions: [Range<Int>],
-        members: [[Int]]
-    ) -> [Range<Int>] {
-        var ranges: [Range<Int>] = []
-        var delta = 0
-        var hunkIndex = 0
-        for (index, baseRange) in regions.enumerated() {
-            let memberSet = Set(members[index])
-            while hunkIndex < hunks.count,
-                  !memberSet.contains(hunkIndex),
-                  hunks[hunkIndex].leftLines.upperBound <= baseRange.lowerBound {
-                delta += hunks[hunkIndex].rightLines.count - hunks[hunkIndex].leftLines.count
-                hunkIndex += 1
-            }
-            var regionDelta = 0
-            while hunkIndex < hunks.count && memberSet.contains(hunkIndex) {
-                regionDelta += hunks[hunkIndex].rightLines.count - hunks[hunkIndex].leftLines.count
-                hunkIndex += 1
-            }
-            let start = baseRange.lowerBound + delta
-            let length = (baseRange.upperBound - baseRange.lowerBound) + regionDelta
-            ranges.append(start..<(start + max(length, 0)))
-            delta += regionDelta
-        }
-        return ranges
-    }
-
-    private struct Region {
-        var baseRange: Range<Int>
-        var leftHunks: [Int] = []
-        var rightHunks: [Int] = []
-    }
-
-    private static func interacts(_ lhs: Range<Int>, _ rhs: Range<Int>) -> Bool {
-        if lhs.isEmpty && rhs.isEmpty {
-            return lhs.lowerBound == rhs.lowerBound
-        }
-        if lhs.isEmpty {
-            return rhs.lowerBound < lhs.lowerBound && lhs.lowerBound < rhs.upperBound
-        }
-        if rhs.isEmpty {
-            return lhs.lowerBound < rhs.lowerBound && rhs.lowerBound < lhs.upperBound
-        }
-        return lhs.lowerBound < rhs.upperBound && rhs.lowerBound < lhs.upperBound
-    }
-
     private static func buildBlocks(
         baseLines: [String],
         leftLines: [String],
         rightLines: [String],
-        leftHunks: [DiffHunk],
-        rightHunks: [DiffHunk]
+        policy: ComparisonPolicy
     ) -> [Block] {
-        struct HunkEntry {
-            let range: Range<Int>
-            let isLeft: Bool
-            let index: Int
+        let mergeBlocks: [LineMergeBlock]
+        do {
+            mergeBlocks = try ComparisonManager.mergeBlocks(
+                left: leftLines,
+                base: baseLines,
+                right: rightLines,
+                policy: policy
+            )
+        } catch {
+            mergeBlocks = coarseMergeBlocks(baseLines: baseLines, leftLines: leftLines, rightLines: rightLines, policy: policy)
         }
-
-        var regions: [Region] = []
-        let entries = leftHunks.enumerated().map {
-            HunkEntry(range: $0.element.leftLines, isLeft: true, index: $0.offset)
-        } + rightHunks.enumerated().map {
-            HunkEntry(range: $0.element.leftLines, isLeft: false, index: $0.offset)
-        }
-
-        let sorted = entries.sorted { lhs, rhs in
-            if lhs.range.lowerBound != rhs.range.lowerBound {
-                return lhs.range.lowerBound < rhs.range.lowerBound
-            }
-            return lhs.range.upperBound < rhs.range.upperBound
-        }
-
-        for entry in sorted {
-            if let index = regions.indices.last, interacts(regions[index].baseRange, entry.range) {
-                regions[index].baseRange = min(regions[index].baseRange.lowerBound, entry.range.lowerBound)
-                    ..< max(regions[index].baseRange.upperBound, entry.range.upperBound)
-                if entry.isLeft {
-                    regions[index].leftHunks.append(entry.index)
-                } else {
-                    regions[index].rightHunks.append(entry.index)
-                }
-            } else {
-                var region = Region(baseRange: entry.range)
-                if entry.isLeft {
-                    region.leftHunks = [entry.index]
-                } else {
-                    region.rightHunks = [entry.index]
-                }
-                regions.append(region)
-            }
-        }
-
-        let leftRanges = sideRanges(
-            hunks: leftHunks,
-            regions: regions.map(\.baseRange),
-            members: regions.map(\.leftHunks)
-        )
-        let rightRanges = sideRanges(
-            hunks: rightHunks,
-            regions: regions.map(\.baseRange),
-            members: regions.map(\.rightHunks)
-        )
 
         var blocks: [Block] = []
-        for (regionIndex, region) in regions.enumerated() {
-            let range = region.baseRange
-            let leftRange = leftRanges[regionIndex]
-            let rightRange = rightRanges[regionIndex]
-            let baseSlice = Array(baseLines[range])
-            let leftSlice = leftRange.upperBound <= leftLines.count ? Array(leftLines[leftRange]) : []
-            let rightSlice = rightRange.upperBound <= rightLines.count ? Array(rightLines[rightRange]) : []
+        blocks.reserveCapacity(mergeBlocks.count)
+        for mergeBlock in mergeBlocks {
+            let range = mergeBlock.range
+            let baseRange = range.range(.base)
+            let leftRange = range.range(.left)
+            let rightRange = range.range(.right)
+            guard baseRange.upperBound <= baseLines.count,
+                  leftRange.upperBound <= leftLines.count,
+                  rightRange.upperBound <= rightLines.count else { continue }
 
+            let type = mergeBlock.type
             let kind: BlockKind
-            if !region.leftHunks.isEmpty && !region.rightHunks.isEmpty {
-                kind = leftSlice == rightSlice ? .both : .conflict
-            } else if !region.leftHunks.isEmpty {
-                kind = .ours
-            } else {
+            if type.kind == .conflict {
+                kind = .conflict
+            } else if type.isLeftChange && type.isRightChange {
+                kind = .both
+            } else if type.isRightChange {
                 kind = .theirs
+            } else {
+                kind = .ours
             }
 
             let resolution: Resolution
@@ -479,15 +412,46 @@ struct ThreeWayMerge: Equatable {
             blocks.append(Block(
                 id: blocks.count,
                 kind: kind,
-                baseRange: range,
-                baseLines: baseSlice,
+                baseRange: baseRange,
+                baseLines: Array(baseLines[baseRange]),
                 leftRange: leftRange,
-                leftLines: leftSlice,
+                leftLines: Array(leftLines[leftRange]),
                 rightRange: rightRange,
-                rightLines: rightSlice,
-                resolution: resolution
+                rightLines: Array(rightLines[rightRange]),
+                resolution: resolution,
+                autoResolvedLines: mergeBlock.resolvedLines
             ))
         }
         return blocks
+    }
+
+    private static func coarseMergeBlocks(
+        baseLines: [String],
+        leftLines: [String],
+        rightLines: [String],
+        policy: ComparisonPolicy
+    ) -> [LineMergeBlock] {
+        let minCount = min(baseLines.count, min(leftLines.count, rightLines.count))
+        var prefix = 0
+        while prefix < minCount && baseLines[prefix] == leftLines[prefix] && baseLines[prefix] == rightLines[prefix] {
+            prefix += 1
+        }
+        var suffix = 0
+        while suffix < minCount - prefix
+            && baseLines[baseLines.count - 1 - suffix] == leftLines[leftLines.count - 1 - suffix]
+            && baseLines[baseLines.count - 1 - suffix] == rightLines[rightLines.count - 1 - suffix] {
+            suffix += 1
+        }
+        let range = MergeRange(
+            prefix,
+            leftLines.count - suffix,
+            prefix,
+            baseLines.count - suffix,
+            prefix,
+            rightLines.count - suffix
+        )
+        if range.isEmpty { return [] }
+        let type = MergeConflictType(.conflict, leftChange: true, rightChange: true, resolutionStrategy: nil)
+        return [LineMergeBlock(range: range, type: type, resolvedLines: nil)]
     }
 }

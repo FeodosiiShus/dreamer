@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension GitClient {
+nonisolated extension GitClient {
     /// Push changes to remote
     func pushToRemote(
         remote: String? = nil,
@@ -16,24 +16,20 @@ extension GitClient {
         force: Bool? = false,
         tags: Bool? = false
     ) async throws {
-        var command = "push"
+        var arguments = ["push"]
         if let remote, let branch {
             if setUpstream == true {
-                command += " --set-upstream"
+                arguments.append("--set-upstream")
             }
             if force == true {
-                command += " --force"
+                arguments.append("--force")
             }
             if tags == true {
-                command += " --tags"
+                arguments.append("--tags")
             }
-            command += " \(remote) \(branch)"
+            arguments += [remote, branch]
         }
 
-        let output = try await self.run(command)
-
-        if output.contains("rejected") {
-            throw GitClientError.outputError(output)
-        }
+        _ = try await self.run(arguments: arguments)
     }
 }

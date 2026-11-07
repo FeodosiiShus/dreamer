@@ -9,11 +9,14 @@
     }
   ],
   "defaultOptions" : {
+    "defaultTestExecutionTimeAllowance" : 120,
+    "maximumTestExecutionTimeAllowance" : 600,
     "targetForVariableExpansion" : {
       "containerPath" : "container:Dreamder.xcodeproj",
       "identifier" : "B658FB2B27DA9E0F00EA4DBD",
       "name" : "Dreamder"
-    }
+    },
+    "testTimeoutsEnabled" : true
   },
   "testTargets" : [
     {
@@ -23,22 +26,12 @@
         "DreamderUIUnitTests\/testBranchPickerLight()",
         "DreamderUIUnitTests\/testEffectViewDark()",
         "DreamderUIUnitTests\/testEffectViewLight()",
-        "DreamderUIUnitTests\/testFontPickerViewDark()",
-        "DreamderUIUnitTests\/testFontPickerViewLight()",
         "DreamderUIUnitTests\/testHelpButtonDark()",
         "DreamderUIUnitTests\/testHelpButtonLight()",
         "DreamderUIUnitTests\/testSegmentedControlDark()",
         "DreamderUIUnitTests\/testSegmentedControlLight()",
         "DreamderUIUnitTests\/testSegmentedControlProminentDark()",
-        "DreamderUIUnitTests\/testSegmentedControlProminentLight()",
-        "RegistryTests",
-        "WelcomeModuleUnitTests",
-        "WelcomeModuleUnitTests\/testRecentJSFileDarkSnapshot()",
-        "WelcomeModuleUnitTests\/testRecentJSFileLightSnapshot()",
-        "WelcomeModuleUnitTests\/testRecentProjectItemDarkSnapshot()",
-        "WelcomeModuleUnitTests\/testRecentProjectItemLightSnapshot()",
-        "WelcomeModuleUnitTests\/testWelcomeActionViewDarkSnapshot()",
-        "WelcomeModuleUnitTests\/testWelcomeActionViewLightSnapshot()"
+        "DreamderUIUnitTests\/testSegmentedControlProminentLight()"
       ],
       "target" : {
         "containerPath" : "container:Dreamder.xcodeproj",

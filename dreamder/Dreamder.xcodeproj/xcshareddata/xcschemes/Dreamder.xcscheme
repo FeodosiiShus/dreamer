@@ -60,12 +60,6 @@
                   Identifier = "DreamderUIUnitTests/testEffectViewLight()">
                </Test>
                <Test
-                  Identifier = "DreamderUIUnitTests/testFontPickerViewDark()">
-               </Test>
-               <Test
-                  Identifier = "DreamderUIUnitTests/testFontPickerViewLight()">
-               </Test>
-               <Test
                   Identifier = "DreamderUIUnitTests/testHelpButtonDark()">
                </Test>
                <Test
@@ -82,27 +76,6 @@
                </Test>
                <Test
                   Identifier = "DreamderUIUnitTests/testSegmentedControlProminentLight()">
-               </Test>
-               <Test
-                  Identifier = "WelcomeModuleUnitTests">
-               </Test>
-               <Test
-                  Identifier = "WelcomeModuleUnitTests/testRecentJSFileDarkSnapshot()">
-               </Test>
-               <Test
-                  Identifier = "WelcomeModuleUnitTests/testRecentJSFileLightSnapshot()">
-               </Test>
-               <Test
-                  Identifier = "WelcomeModuleUnitTests/testRecentProjectItemDarkSnapshot()">
-               </Test>
-               <Test
-                  Identifier = "WelcomeModuleUnitTests/testRecentProjectItemLightSnapshot()">
-               </Test>
-               <Test
-                  Identifier = "WelcomeModuleUnitTests/testWelcomeActionViewDarkSnapshot()">
-               </Test>
-               <Test
-                  Identifier = "WelcomeModuleUnitTests/testWelcomeActionViewLightSnapshot()">
                </Test>
             </SkippedTests>
          </TestableReference>

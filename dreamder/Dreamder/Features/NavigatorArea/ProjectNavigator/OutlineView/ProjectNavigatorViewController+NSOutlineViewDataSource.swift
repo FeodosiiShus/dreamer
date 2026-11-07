@@ -127,7 +127,8 @@ extension ProjectNavigatorViewController: NSOutlineViewDataSource {
                 do {
                     try CEWorkspaceFile.fileManager.removeItem(at: destURL)
                 } catch {
-                    fatalError(error.localizedDescription)
+                    Self.logger.error("Failed to remove existing file: \(error.localizedDescription)")
+                    return false
                 }
             }
             if info.draggingSourceOperationMask == .copy {

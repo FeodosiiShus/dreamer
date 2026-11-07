@@ -127,18 +127,24 @@ extension GitMergeFixture {
 extension GitMergeFixture {
     static func mergeConflict(in root: URL) throws -> GitMergeFixture {
         let fixture = try GitMergeFixture(root: root)
-        try fixture.write("app/config.txt", "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta\n")
+        try fixture.write(
+            "app/config.txt",
+            "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta\neta\ntheta\niota\nkappa\nlambda\n"
+        )
         try fixture.write("docs/notes.txt", "one\ntwo\nthree\n")
         try fixture.commit("base")
         try fixture.run("checkout", "-q", "-b", "feature")
         try fixture.write(
             "app/config.txt",
-            "alpha\nBETA-feature\ngamma\ndelta\nepsilon\nzeta\nfeature-added\n"
+            "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta-feature\neta\ntheta\niota\nkappa\nfeature-added\nlambda\n"
         )
         try fixture.write("docs/notes.txt", "one\nnotes-feature\nthree\n")
         try fixture.commit("feature changes")
         try fixture.run("checkout", "-q", "main")
-        try fixture.write("app/config.txt", "alpha\nBETA-main\ngamma\ndelta\nepsilon\nzeta-main\n")
+        try fixture.write(
+            "app/config.txt",
+            "alpha\nbeta-main\ngamma\ndelta\nepsilon\nzeta-main\neta\ntheta\niota\nkappa\nlambda\n"
+        )
         try fixture.write("docs/notes.txt", "one\nnotes-main\nthree\n")
         try fixture.commit("main changes")
         _ = try fixture.runIgnoringFailure("merge", "feature")

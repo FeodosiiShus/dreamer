@@ -86,7 +86,7 @@ final class Editor: ObservableObject, Identifiable {
         } else {
             self.tabs = OrderedSet(files.map { EditorInstance(workspace: workspace, file: $0) })
         }
-        self.selectedTab = selectedTab ?? (files.isEmpty ? nil : Tab(workspace: workspace, file: files.first!))
+        self.selectedTab = selectedTab ?? files.first.map { Tab(workspace: workspace, file: $0) }
         self.temporaryTab = temporaryTab
     }
 

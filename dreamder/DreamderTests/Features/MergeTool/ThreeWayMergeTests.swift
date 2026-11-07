@@ -154,15 +154,27 @@ struct ThreeWayMergeTests {
     }
 
     @Test
-    func insertionNextToModifiedLineIsNotAConflict() {
-        let merge = ThreeWayMerge(
+    func insertionNextToModifiedLineIsAConflict() {
+        var merge = ThreeWayMerge(
             baseLines: ["a", "b", "c"],
             leftLines: ["a", "x", "b", "c"],
             rightLines: ["a", "B", "c"]
         )
-        #expect(merge.conflictCount == 0)
-        #expect(merge.changeCount == 2)
-        #expect(merge.resultLines == ["a", "x", "B", "c"])
+        #expect(merge.blocks.count == 1)
+        #expect(merge.blocks.first?.kind == .conflict)
+        #expect(merge.blocks.first?.baseRange == 1..<2)
+        #expect(merge.blocks.first?.leftLines == ["x", "b"])
+        #expect(merge.blocks.first?.rightLines == ["B"])
+        #expect(merge.blocks.first?.canBeResolved == false)
+        #expect(merge.conflictCount == 1)
+        #expect(merge.resultLines == ["a", "b", "c"])
+
+        var right = merge
+        right.resolve(0, with: .right)
+        #expect(right.resultLines == ["a", "B", "c"])
+
+        merge.resolve(0, with: .left)
+        #expect(merge.resultLines == ["a", "x", "b", "c"])
     }
 
     @Test
@@ -265,5 +277,123 @@ struct ThreeWayMergeTests {
             right.resolve(block.id, with: .right)
         }
         #expect(right.resultLines == ["a", "R", "c", "D"])
+    }
+
+    @Test
+    func modificationAndAppendedLineOfOppositeSidesFormOneConflict() {
+        let merge = ThreeWayMerge(
+            baseLines: ["a", "b"],
+            leftLines: ["a", "B"],
+            rightLines: ["a", "b", "c"]
+        )
+
+        #expect(merge.blocks.count == 1)
+        #expect(merge.blocks.first?.kind == .conflict)
+        #expect(merge.blocks.first?.baseRange == 1..<2)
+        #expect(merge.blocks.first?.leftLines == ["B"])
+        #expect(merge.blocks.first?.rightLines == ["b", "c"])
+        #expect(merge.blocks.first?.canBeResolved == false)
+    }
+
+    @Test
+    func changesSeparatedByUnchangedLineStayIndependent() {
+        let merge = ThreeWayMerge(
+            baseLines: ["a", "b", "c", "d"],
+            leftLines: ["a", "B", "c", "d"],
+            rightLines: ["a", "b", "c", "D"]
+        )
+
+        #expect(merge.blocks.map(\.kind) == [.ours, .theirs])
+        #expect(merge.blocks.map(\.baseRange) == [1..<2, 3..<4])
+    }
+
+    @Test
+    func resolvesChangesToDifferentWordsOfTheSameLine() {
+        var merge = ThreeWayMerge(
+            baseLines: ["a", "foo bar baz", "c"],
+            leftLines: ["a", "FOO bar baz", "c"],
+            rightLines: ["a", "foo bar BAZ", "c"]
+        )
+
+        #expect(merge.blocks.count == 1)
+        #expect(merge.blocks.first?.kind == .conflict)
+        #expect(merge.blocks.first?.canBeResolved == true)
+        #expect(merge.blocks.first?.autoResolvedLines == ["FOO bar BAZ"])
+        #expect(merge.conflictCount == 1)
+        #expect(merge.resolvableConflictCount == 1)
+        #expect(merge.hasResolvableConflicts)
+        #expect(merge.resultLines == ["a", "foo bar baz", "c"])
+
+        merge.resolveSimpleConflicts()
+
+        #expect(merge.blocks.first?.resolution == .merged)
+        #expect(merge.conflictCount == 0)
+        #expect(merge.isFullyResolved)
+        #expect(merge.resolvableConflictCount == 0)
+        #expect(merge.resultLines == ["a", "FOO bar BAZ", "c"])
+        #expect(merge.resultPane.lines == ["a", "FOO bar BAZ", "c"])
+        #expect(merge.resultPane.styles == [.unchanged, .resolved, .unchanged])
+    }
+
+    @Test
+    func resolveSimpleConflictsLeavesRealConflictsUntouched() {
+        var merge = ThreeWayMerge(
+            baseLines: ["x", "foo bar baz", "y", "one", "z"],
+            leftLines: ["x", "FOO bar baz", "y", "two", "z"],
+            rightLines: ["x", "foo bar BAZ", "y", "three", "z"]
+        )
+
+        #expect(merge.blocks.count == 2)
+        #expect(merge.blocks.map(\.canBeResolved) == [true, false])
+        #expect(merge.conflictCount == 2)
+
+        merge.resolveSimpleConflicts()
+
+        #expect(merge.blocks.map(\.resolution) == [.merged, .unresolved])
+        #expect(merge.conflictCount == 1)
+        #expect(merge.resultLines == ["x", "FOO bar BAZ", "y", "one", "z"])
+    }
+
+    @Test
+    func mergedResolutionIsRejectedForConflictsThatCannotBeResolved() {
+        var merge = ThreeWayMerge(
+            baseLines: ["a", "b", "c"],
+            leftLines: ["a", "L", "c"],
+            rightLines: ["a", "R", "c"]
+        )
+
+        merge.resolve(0, with: .merged)
+
+        #expect(merge.blocks.first?.resolution == .unresolved)
+        #expect(merge.conflictCount == 1)
+    }
+
+    @Test
+    func choosingASideAfterMergedResolutionReplacesIt() {
+        var merge = ThreeWayMerge(
+            baseLines: ["a", "foo bar baz", "c"],
+            leftLines: ["a", "FOO bar baz", "c"],
+            rightLines: ["a", "foo bar BAZ", "c"]
+        )
+        merge.resolveSimpleConflicts()
+        merge.resolve(0, with: .right)
+
+        #expect(merge.blocks.first?.resolution == .right)
+        #expect(merge.resultLines == ["a", "foo bar BAZ", "c"])
+    }
+
+    @Test
+    func whitespaceOnlyChangeOnOneSideIsKeptAsOneSidedChangeWhenIgnoringWhitespaces() {
+        let merge = ThreeWayMerge(
+            base: "a\nb b\nc\n",
+            ours: "a\nb  b\nc\n",
+            theirs: "a\nb b\nc\n",
+            policy: .ignoreWhitespaces
+        )
+
+        #expect(merge.blocks.count == 1)
+        #expect(merge.blocks.first?.kind == .ours)
+        #expect(merge.blocks.first?.leftLines == ["b  b"])
+        #expect(merge.conflictCount == 0)
     }
 }

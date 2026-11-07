@@ -3,7 +3,7 @@ import CodeEditSourceEditor
 import CodeEditTextView
 
 final class EditorContextMenuCoordinator: NSObject, TextViewCoordinator {
-    private static let f7KeyEquivalent = String(UnicodeScalar(NSF7FunctionKey) ?? UnicodeScalar(0x7F)!)
+    private static let f7KeyEquivalent = String(UnicodeScalar(NSF7FunctionKey) ?? "\u{7F}")
 
     private weak var controller: TextViewController?
     private let editorInstance: EditorInstance
@@ -271,6 +271,7 @@ final class EditorContextMenuCoordinator: NSObject, TextViewCoordinator {
         copyToPasteboard(url.path(percentEncoded: false))
     }
 
+    @MainActor
     @objc private func copyProjectRelativePath(_ sender: Any?) {
         guard let url = fileURL,
               let root = codeFile.findWorkspace()?.workspaceFileManager?.folderUrl else { return }
@@ -304,6 +305,7 @@ final class EditorContextMenuCoordinator: NSObject, TextViewCoordinator {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
+    @MainActor
     @objc private func openInTerminal(_ sender: Any?) {
         guard let url = fileURL, let workspace = codeFile.findWorkspace() else { return }
         workspace.utilityAreaModel?.addTerminal(rootURL: url.deletingLastPathComponent())
@@ -320,10 +322,12 @@ final class EditorContextMenuCoordinator: NSObject, TextViewCoordinator {
         DiffViewerPresenter.showFileDiff(workspace: workspace, fileURL: url)
     }
 
+    @MainActor
     @objc private func showHistory(_ sender: Any?) {
         codeFile.findWorkspace()?.toolWindowManager.show(.git)
     }
 
+    @MainActor
     @objc private func rollbackFile(_ sender: Any?) {
         guard let url = fileURL, let workspace = codeFile.findWorkspace() else { return }
         let alert = NSAlert()

@@ -400,8 +400,9 @@ struct BranchesPopupViewModelTests {
             harness.model.promptRename(obsolete)
 
             #expect(request?.showsUnsetUpstream == true)
-            try await eventually { (try? harness.branches())?.contains("renamed") == true }
-            #expect(harness.upstream(of: "renamed") == nil)
+            try await eventually {
+                (try? harness.branches())?.contains("renamed") == true && harness.upstream(of: "renamed") == nil
+            }
             #expect(try harness.branches().contains("obsolete") == false)
         }
     }

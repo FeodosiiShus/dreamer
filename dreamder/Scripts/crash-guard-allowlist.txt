@@ -1,0 +1,3 @@
+# path|kind|source line. Each entry is a deliberate trap for a programming error, never for runtime input.
+Dreamder/Utils/DependencyInjection/LazyServiceWrapper.swift|fatalError|fatalError("No service of type \(serviceName) registered!")
+Dreamder/Utils/DependencyInjection/ServiceWrapper.swift|fatalError|fatalError("No service of type \(serviceName) registered!")

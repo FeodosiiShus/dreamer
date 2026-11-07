@@ -21,6 +21,7 @@ extension NSSplitViewItem {
         let originalMethodSet = class_getInstanceMethod(self as AnyClass, origSelector)
         let swizzledMethodSet = class_getInstanceMethod(self as AnyClass, swizzledSelector)
 
-        method_exchangeImplementations(originalMethodSet!, swizzledMethodSet!)
+        guard let originalMethodSet, let swizzledMethodSet else { return }
+        method_exchangeImplementations(originalMethodSet, swizzledMethodSet)
     }
 }

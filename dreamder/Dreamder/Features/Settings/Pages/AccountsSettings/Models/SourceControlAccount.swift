@@ -70,15 +70,15 @@ struct SourceControlAccount: Codable, Identifiable, Hashable {
         var baseURL: URL? {
             switch self {
             case .bitbucketCloud:
-                return URL(string: "https://www.bitbucket.com/")!
+                return URL(string: "https://www.bitbucket.com/")
             case .bitbucketServer:
                 return nil
             case .github:
-                return URL(string: "https://www.github.com/")!
+                return URL(string: "https://www.github.com/")
             case .githubEnterprise:
                 return nil
             case .gitlab:
-                return URL(string: "https://www.gitlab.com/")!
+                return URL(string: "https://www.gitlab.com/")
             case .gitlabSelfHosted:
                 return nil
             }
@@ -87,15 +87,15 @@ struct SourceControlAccount: Codable, Identifiable, Hashable {
         var apiURL: URL? {
             switch self {
             case .bitbucketCloud:
-                return URL(string: "https://api.bitbucket.org/2.0/")!
+                return URL(string: "https://api.bitbucket.org/2.0/")
             case .bitbucketServer:
                 return nil
             case .github:
-                return URL(string: "https://api.github.com/")!
+                return URL(string: "https://api.github.com/")
             case .githubEnterprise:
                 return nil
             case .gitlab:
-                return URL(string: "https://gitlab.com/api/v4/")!
+                return URL(string: "https://gitlab.com/api/v4/")
             case .gitlabSelfHosted:
                 return nil
             }
@@ -112,21 +112,21 @@ struct SourceControlAccount: Codable, Identifiable, Hashable {
             }
         }
 
-        var authHelpURL: URL {
+        var authHelpURL: URL? {
             switch self {
             case .bitbucketCloud:
-                return URL(string: "https://support.atlassian.com/bitbucket-cloud/docs/app-passwords/")!
+                return URL(string: "https://support.atlassian.com/bitbucket-cloud/docs/app-passwords/")
             case .bitbucketServer:
                 return URL(string:
-                    "https://confluence.atlassian.com/bitbucketserver/personal-access-tokens-939515499.html")!
+                    "https://confluence.atlassian.com/bitbucketserver/personal-access-tokens-939515499.html")
             case .github:
-                return URL(string: "https://github.com/settings/tokens/new")!
+                return URL(string: "https://github.com/settings/tokens/new")
             case .githubEnterprise:
-                return URL(string: "https://github.com/settings/tokens/new")!
+                return URL(string: "https://github.com/settings/tokens/new")
             case .gitlab:
-                return URL(string: "https://gitlab.com/-/profile/personal_access_tokens")!
+                return URL(string: "https://gitlab.com/-/profile/personal_access_tokens")
             case .gitlabSelfHosted:
-                return URL(string: "https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html")!
+                return URL(string: "https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html")
             }
         }
 

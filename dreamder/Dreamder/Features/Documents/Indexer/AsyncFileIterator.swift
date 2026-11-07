@@ -25,21 +25,14 @@ struct AsyncFileIterator: AsyncSequence, AsyncIteratorProtocol {
             currentIdx += 1
         }
 
-        // Loop until we either find a loadable file or run out of URLs
-        var foundContent: TextFile?
-        while foundContent == nil {
-            guard currentIdx < fileURLs.count else {
-                return nil
-            }
-
+        while currentIdx < fileURLs.count {
             let fileURL = fileURLs[currentIdx]
             if let content = try? String(contentsOf: fileURL) {
-                foundContent = TextFile(url: fileURL.standardizedFileURL, text: content)
-            } else {
-                currentIdx += 1
+                return (TextFile(url: fileURL.standardizedFileURL, text: content), currentIdx)
             }
+            currentIdx += 1
         }
-        return (foundContent!, currentIdx)
+        return nil
     }
 
     func makeAsyncIterator() -> AsyncFileIterator {

@@ -1,10 +1,13 @@
 import Foundation
 
-extension Pipe {
+nonisolated extension Pipe {
     static func closingOnExec() -> Pipe {
         let pipe = Pipe()
         for descriptor in [pipe.fileHandleForReading.fileDescriptor, pipe.fileHandleForWriting.fileDescriptor] {
-            _ = fcntl(descriptor, F_SETFD, fcntl(descriptor, F_GETFD) | FD_CLOEXEC)
+            let flags = fcntl(descriptor, F_GETFD)
+            if flags >= 0 {
+                _ = fcntl(descriptor, F_SETFD, flags | FD_CLOEXEC)
+            }
         }
         return pipe
     }

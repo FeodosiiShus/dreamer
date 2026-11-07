@@ -21,7 +21,9 @@ struct ExtensionManagerWindow: Scene {
                 case 0:
                     Text("Select an extension")
                 case 1:
-                    ExtensionDetailView(ext: selection.first!)
+                    if let ext = selection.first {
+                        ExtensionDetailView(ext: ext)
+                    }
                 default:
                     Text("\(selection.count) selected")
                 }

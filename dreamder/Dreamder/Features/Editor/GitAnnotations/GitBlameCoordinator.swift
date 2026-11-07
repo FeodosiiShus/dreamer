@@ -2,9 +2,10 @@ import AppKit
 import Combine
 import CodeEditSourceEditor
 import CodeEditTextView
+import Synchronization
 
 final class GitBlameCoordinator: TextViewCoordinator {
-    private final class WeakBox {
+    private final class WeakBox: @unchecked Sendable {
         weak var coordinator: GitBlameCoordinator?
 
         init(_ coordinator: GitBlameCoordinator) {
@@ -12,10 +13,12 @@ final class GitBlameCoordinator: TextViewCoordinator {
         }
     }
 
-    private static var coordinators: [ObjectIdentifier: WeakBox] = [:]
+    private static let registry = Mutex<[ObjectIdentifier: WeakBox]>([:])
 
     static func coordinator(for editorInstance: EditorInstance) -> GitBlameCoordinator? {
-        coordinators[ObjectIdentifier(editorInstance)]?.coordinator
+        let box = registry.withLock { entries in entries[ObjectIdentifier(editorInstance)] }
+        guard let coordinator = box?.coordinator, coordinator.editorInstance === editorInstance else { return nil }
+        return coordinator
     }
 
     private weak var editorInstance: EditorInstance?
@@ -26,6 +29,7 @@ final class GitBlameCoordinator: TextViewCoordinator {
 
     private var inlineView: GitBlameInlineView?
     private var annotationView: GitBlameAnnotationView?
+    private var displayedInlineText: String?
     private var cancellables = Set<AnyCancellable>()
     private var observers: [NSObjectProtocol] = []
     private var blameLines: [Int: GitBlameLine] = [:]
@@ -33,19 +37,27 @@ final class GitBlameCoordinator: TextViewCoordinator {
     private var generation = 0
     private var isSubscribed = false
 
+    private lazy var refreshCoalescer = MainTurnCoalescer { [weak self] in
+        self?.refreshViews()
+    }
+
     private(set) var isAnnotating = false
 
     init(editorInstance: EditorInstance, codeFile: CodeFileDocument) {
         self.editorInstance = editorInstance
         self.codeFile = codeFile
-        Self.coordinators = Self.coordinators.filter { $0.value.coordinator != nil }
-        Self.coordinators[ObjectIdentifier(editorInstance)] = WeakBox(self)
+        register()
+    }
+
+    deinit {
+        observers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
     func prepareCoordinator(controller: TextViewController) {
         self.controller = controller
         self.textView = controller.textView
         caretLine = max(controller.cursorPositions.first?.start.line ?? 1, 1)
+        register()
     }
 
     func controllerDidAppear(controller: TextViewController) {
@@ -61,31 +73,28 @@ final class GitBlameCoordinator: TextViewCoordinator {
     func textViewDidChangeText(controller: TextViewController) {
         blameLines = [:]
         annotationView?.update(lines: [:])
-        refreshInlineBlame()
+        refreshCoalescer.request()
     }
 
     func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition]) {
         if let line = newPositions.first?.start.line, line > 0 {
             caretLine = line
         }
-        refreshInlineBlame()
+        refreshCoalescer.request()
     }
 
     func destroy() {
         generation += 1
+        isSubscribed = false
         cancellables.removeAll()
         observers.forEach { NotificationCenter.default.removeObserver($0) }
         observers.removeAll()
         inlineView?.removeFromSuperview()
         inlineView = nil
+        displayedInlineText = nil
         annotationView?.removeFromSuperview()
         annotationView = nil
-        if let editorInstance {
-            let identifier = ObjectIdentifier(editorInstance)
-            if Self.coordinators[identifier]?.coordinator === self {
-                Self.coordinators.removeValue(forKey: identifier)
-            }
-        }
+        unregister()
         controller = nil
         textView = nil
     }
@@ -100,6 +109,25 @@ final class GitBlameCoordinator: TextViewCoordinator {
         editorInstance?.file.url ?? codeFile.fileURL
     }
 
+    private func register() {
+        guard let editorInstance else { return }
+        let identifier = ObjectIdentifier(editorInstance)
+        Self.registry.withLock { entries in
+            entries = entries.filter { $0.value.coordinator != nil }
+            entries[identifier] = WeakBox(self)
+        }
+    }
+
+    private func unregister() {
+        guard let editorInstance else { return }
+        let identifier = ObjectIdentifier(editorInstance)
+        Self.registry.withLock { entries in
+            if entries[identifier]?.coordinator === self {
+                entries.removeValue(forKey: identifier)
+            }
+        }
+    }
+
     private func installViews(controller: TextViewController) {
         guard let textView = controller.textView,
               let scrollView = controller.scrollView else { return }
@@ -109,6 +137,7 @@ final class GitBlameCoordinator: TextViewCoordinator {
             view.isHidden = true
             textView.addSubview(view)
             inlineView = view
+            displayedInlineText = nil
         }
 
         if annotationView == nil {
@@ -124,32 +153,20 @@ final class GitBlameCoordinator: TextViewCoordinator {
         }
 
         annotationView?.update(lines: blameLines)
-        refreshInlineBlame()
+        refreshCoalescer.request()
     }
 
     private func observeEditor(controller: TextViewController) {
         guard observers.isEmpty else { return }
-        let center = NotificationCenter.default
         observers.append(
-            center.addObserver(
+            NotificationCenter.default.addObserver(
                 forName: TextViewController.scrollPositionDidUpdateNotification,
                 object: controller,
                 queue: .main
             ) { [weak self] _ in
-                self?.refreshViews()
+                self?.refreshCoalescer.request()
             }
         )
-        if let textView = controller.textView {
-            observers.append(
-                center.addObserver(
-                    forName: NSView.frameDidChangeNotification,
-                    object: textView,
-                    queue: .main
-                ) { [weak self] _ in
-                    self?.refreshViews()
-                }
-            )
-        }
     }
 
     private func subscribeToDocument() {
@@ -194,22 +211,15 @@ final class GitBlameCoordinator: TextViewCoordinator {
         }
         generation += 1
         let generation = generation
-        let directory = repositoryDirectory(for: url)
+        let client = workspace?.sourceControlManager?.gitClient
 
         Task {
-            let parsed = await Self.blame(for: url, in: directory)
+            let parsed = await Self.blame(for: url, using: client)
             await MainActor.run { [weak self] in
                 guard let self, self.generation == generation else { return }
                 self.apply(lines: parsed)
             }
         }
-    }
-
-    private func repositoryDirectory(for url: URL) -> URL {
-        if let repository = workspace?.sourceControlManager?.repositoryURL {
-            return repository
-        }
-        return url.deletingLastPathComponent()
     }
 
     private func apply(lines: [GitBlameLine]) {
@@ -219,10 +229,11 @@ final class GitBlameCoordinator: TextViewCoordinator {
         }
         blameLines = byLine
         annotationView?.update(lines: byLine)
-        refreshInlineBlame()
+        refreshCoalescer.request()
     }
 
     private func refreshViews() {
+        guard controller != nil else { return }
         syncAnnotationFrame()
         inlineView?.needsDisplay = true
         annotationView?.needsDisplay = true
@@ -237,19 +248,24 @@ final class GitBlameCoordinator: TextViewCoordinator {
         }
     }
 
+    private func hideInlineView() {
+        guard let inlineView, !inlineView.isHidden else { return }
+        inlineView.isHidden = true
+    }
+
     private func refreshInlineBlame() {
         guard let inlineView, let textView = textView else { return }
         guard let blame = blameLines[caretLine] else {
-            inlineView.isHidden = true
+            hideInlineView()
             return
         }
         guard let layoutManager = textView.layoutManager else {
-            inlineView.isHidden = true
+            hideInlineView()
             return
         }
         guard caretLine <= layoutManager.lineCount,
               let position = layoutManager.textLineForIndex(caretLine - 1) else {
-            inlineView.isHidden = true
+            hideInlineView()
             return
         }
 
@@ -259,16 +275,25 @@ final class GitBlameCoordinator: TextViewCoordinator {
             layoutManager.rectForOffset(position.range.location)
         }
         guard let anchor else {
-            inlineView.isHidden = true
+            hideInlineView()
             return
         }
 
-        inlineView.setText(Self.inlineText(for: blame))
-        inlineView.frame.origin = NSPoint(
+        let text = Self.inlineText(for: blame)
+        if displayedInlineText != text {
+            inlineView.setText(text)
+            displayedInlineText = text
+        }
+        let origin = NSPoint(
             x: anchor.maxX + Islands.smallFontSize * 3,
             y: anchor.minY + max((anchor.height - inlineView.frame.height) / 2, 0)
         )
-        inlineView.isHidden = false
+        if inlineView.frame.origin != origin {
+            inlineView.frame.origin = origin
+        }
+        if inlineView.isHidden {
+            inlineView.isHidden = false
+        }
     }
 
     private func showGitToolWindow() {
@@ -282,11 +307,11 @@ final class GitBlameCoordinator: TextViewCoordinator {
         return "\(line.author), \(date) • \(line.summary)"
     }
 
-    private static func blame(for url: URL, in directory: URL) async -> [GitBlameLine] {
-        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { return [] }
-        let client = GitClient(directoryURL: directory, shellClient: ShellClient.live())
-        let path = GitClient.logGraphQuote(url.path(percentEncoded: false))
-        guard let output = try? await client.run("blame --porcelain -- \(path)") else { return [] }
+    private static func blame(for url: URL, using client: GitClient?) async -> [GitBlameLine] {
+        guard let client,
+              FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { return [] }
+        let path = url.path(percentEncoded: false)
+        guard let output = try? await client.run(arguments: ["blame", "--porcelain", "--", path]) else { return [] }
         return GitBlameParser.parse(output)
     }
 }

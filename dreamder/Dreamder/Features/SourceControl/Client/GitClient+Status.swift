@@ -24,7 +24,7 @@ import Foundation
 /// In the future, this method should return information about push/pull status and stash status, as that
 /// information can be included in the same call.
 
-extension GitClient {
+nonisolated extension GitClient {
     struct Status {
         var changedFiles: [GitChangedFile]
         var unmergedChanges: [GitChangedFile]
@@ -34,139 +34,68 @@ extension GitClient {
     /// Fetches and parses the git repository's status.
     /// - Returns: A ``GitClient/Status`` struct with information about the changed files in the repository.
     /// - Throws: Can throw ``GitClient/GitClientError`` errors if it finds unexpected output.
+    @concurrent
     func getStatus() async throws -> Status {
-        let output = try await run("status -z --porcelain=2 -u" + scopePathspec)
+        let output = try await run(arguments: ["status", "-z", "--porcelain=2", "-u"] + scopePathspecArguments)
         return try parseStatusString(output)
     }
 
     /// Parses a status string from ``getStatus()`` and returns a ``Status`` object if possible.
     /// - Parameter output: The git output from running `status`. Expects a porcelain v2 string.
     /// - Returns: A status object if parseable.
-    func parseStatusString(_ output: borrowing String) throws -> Status {
-        let endsInNull = output.last == Character(UnicodeScalar(0))
-        let endIndex: String.Index
-        if endsInNull && output.count > 1 {
-            endIndex = output.index(before: output.endIndex)
-        } else {
-            endIndex = output.endIndex
+    func parseStatusString(_ output: String) throws -> Status {
+        if let status = try output.utf8.withContiguousStorageIfAvailable({ try parseStatus(bytes: $0) }) {
+            return status
         }
-
-        var status = Status(changedFiles: [], unmergedChanges: [], untrackedFiles: [])
-
-        var index = output.startIndex
-        while index < endIndex {
-            let typeIndex = index
-
-            // Move ahead no matter what.
-            guard let nextIndex = output.safeOffset(index, offsetBy: 2) else {
-                throw GitClientError.statusParseEarlyEnd
-            }
-            index = nextIndex
-
-            switch output[typeIndex] {
-            case "1": // Ordinary changes
-                status.changedFiles.append(try parseOrdinary(index: &index, output: output))
-            case "2": // Renamed or copied changes
-                status.changedFiles.append(try parseRenamed(index: &index, output: output))
-            case "u": // Unmerged changes
-                status.unmergedChanges.append(try parseUnmerged(index: &index, output: output))
-            case "?": // Untracked files
-                status.untrackedFiles.append(try parseUntracked(index: &index, output: output))
-            case "!", "#": // Ignored files or Header
-                try substringToNextNull(from: &index, output: output) // move the index to the next line.
-            default:
-                throw GitClientError.statusInvalidChangeType(output[typeIndex])
-            }
-        }
-
-        return status
+        return try Array(output.utf8).withUnsafeBufferPointer { try parseStatus(bytes: $0) }
     }
 
     /// Discard changes for file
     func discardChanges(for file: URL) async throws {
-        _ = try await run("restore '\(file.path(percentEncoded: false))'")
+        _ = try await run(arguments: ["restore", "--", file.path(percentEncoded: false)])
     }
 
     /// Discard unstaged changes
     func discardAllChanges() async throws {
-        _ = try await run("restore .")
+        _ = try await run(arguments: ["restore", "."])
     }
 
-    // MARK: - Parsing Helpers
+    private func parseStatus(bytes: UnsafeBufferPointer<UInt8>) throws -> Status {
+        var status = Status(changedFiles: [], unmergedChanges: [], untrackedFiles: [])
+        var scanner = StatusScanner(bytes: bytes)
 
-    // Note for the following methods we make extensive use of the `borrowing` parameter modifier to avoid
-    // ever copying the output. If changes are made to these methods, ensure this invariant is maintained for
-    // performance.
+        while scanner.cursor < bytes.count {
+            let type = bytes[scanner.cursor]
+            try scanner.skip(2)
 
-    /// Finds the substring up until the next null character. Does not include the null char.
-    /// - Parameters:
-    ///   - index: The current index. Modified to be after the null char.
-    ///   - output: The string from the git command, borrowed.
-    /// - Returns: A substring with the contents of the string up until a null char.
-    /// - Throws: Throws a `GitClientError` if the end of the string is found early.
-    @discardableResult
-    fileprivate func substringToNextNull(from index: inout String.Index, output: borrowing String) throws -> Substring {
-        let startIndex = index
-        while output[index] != Character(UnicodeScalar(0)) {
-            let newIndex = output.index(after: index)
-            guard newIndex < output.endIndex else {
-                throw GitClientError.statusParseEarlyEnd
-            }
-            index = newIndex
-        }
-        defer {
-            if index < output.index(before: output.endIndex) {
-                index = output.index(after: index)
+            switch type {
+            case UInt8(ascii: "1"):
+                status.changedFiles.append(try parseOrdinary(&scanner))
+            case UInt8(ascii: "2"):
+                status.changedFiles.append(try parseRenamed(&scanner))
+            case UInt8(ascii: "u"):
+                status.unmergedChanges.append(try parseUnmerged(&scanner))
+            case UInt8(ascii: "?"):
+                status.untrackedFiles.append(try parseUntracked(&scanner))
+            case UInt8(ascii: "!"), UInt8(ascii: "#"):
+                _ = try scanner.readField()
+            default:
+                throw GitClientError.statusInvalidChangeType(Character(Unicode.Scalar(type)))
             }
         }
-        return output[startIndex..<index]
-    }
 
-    /// Move the index to the next space char.
-    /// - Throws: Throws a `GitClientError` if the end of the string is found early.
-    fileprivate func moveToNextSpace(from index: inout String.Index, output: borrowing String) throws {
-        repeat {
-            try moveOneChar(from: &index, output: output)
-        }
-        while output[index] != " "
-    }
-
-    /// Move the index one character.
-    /// - Throws: Throws a `GitClientError` if the end of the string is found early.
-    fileprivate func moveOneChar(from index: inout String.Index, output: borrowing String) throws {
-        index = output.index(after: index)
-        guard index != output.endIndex else {
-            throw GitClientError.statusParseEarlyEnd
-        }
-    }
-
-    /// Parse a status character at the current index.
-    /// - Returns: The status, if any.
-    /// - Throws: Throws a `GitClientError` if an invalid status character is found.
-    fileprivate func parseStatus(index: inout String.Index, output: borrowing String) throws -> GitStatus {
-        guard let status = GitStatus(rawValue: String(output[index])) else {
-            throw GitClientError.invalidStatus(output[index])
-        }
-        index = output.index(after: index)
         return status
     }
-
-    // MARK: - Change Type Parsers
 
     /// Parses an ordinary change.
     /// ```
     /// 1 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>
     /// ```
-    fileprivate func parseOrdinary(index: inout String.Index, output: borrowing String) throws -> GitChangedFile {
-        let stagedStatus = try parseStatus(index: &index, output: output)
-        let status = try parseStatus(index: &index, output: output)
-        // don't care about fields
-        for _ in 0..<6 {
-            try moveToNextSpace(from: &index, output: output)
-        }
-        try moveOneChar(from: &index, output: output)
-        let substring = try substringToNextNull(from: &index, output: output)
-        let filename = String(substring)
+    private func parseOrdinary(_ scanner: inout StatusScanner) throws -> GitChangedFile {
+        let stagedStatus = try scanner.readStatus()
+        let status = try scanner.readStatus()
+        try scanner.skipFields(6)
+        let filename = try scanner.readField()
         return GitChangedFile(
             status: status,
             stagedStatus: stagedStatus,
@@ -179,16 +108,12 @@ extension GitClient {
     /// ```
     /// 2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <X><score> <path><sep><origPath>
     /// ```
-    fileprivate func parseRenamed(index: inout String.Index, output: borrowing String) throws -> GitChangedFile {
-        let stagedStatus = try parseStatus(index: &index, output: output)
-        let status = try parseStatus(index: &index, output: output)
-        // don't care about fields
-        for _ in 0..<7 {
-            try moveToNextSpace(from: &index, output: output)
-        }
-        try moveOneChar(from: &index, output: output)
-        let filename = String(try substringToNextNull(from: &index, output: output))
-        let originalFilename = String(try substringToNextNull(from: &index, output: output))
+    private func parseRenamed(_ scanner: inout StatusScanner) throws -> GitChangedFile {
+        let stagedStatus = try scanner.readStatus()
+        let status = try scanner.readStatus()
+        try scanner.skipFields(7)
+        let filename = try scanner.readField()
+        let originalFilename = try scanner.readField()
         return GitChangedFile(
             status: status,
             stagedStatus: stagedStatus,
@@ -201,15 +126,11 @@ extension GitClient {
     /// ```
     /// u <XY> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>
     /// ```
-    fileprivate func parseUnmerged(index: inout String.Index, output: borrowing String) throws -> GitChangedFile {
-        let stagedStatus = try parseStatus(index: &index, output: output)
-        let status = try parseStatus(index: &index, output: output)
-        // don't care about fields
-        for _ in 0..<8 {
-            try moveToNextSpace(from: &index, output: output)
-        }
-        try moveOneChar(from: &index, output: output)
-        let filename = String(try substringToNextNull(from: &index, output: output))
+    private func parseUnmerged(_ scanner: inout StatusScanner) throws -> GitChangedFile {
+        let stagedStatus = try scanner.readStatus()
+        let status = try scanner.readStatus()
+        try scanner.skipFields(8)
+        let filename = try scanner.readField()
         return GitChangedFile(
             status: status,
             stagedStatus: stagedStatus,
@@ -222,13 +143,66 @@ extension GitClient {
     /// ```
     /// ? <path>
     /// ```
-    fileprivate func parseUntracked(index: inout String.Index, output: borrowing String) throws -> GitChangedFile {
-        let filename = String(try substringToNextNull(from: &index, output: output))
+    private func parseUntracked(_ scanner: inout StatusScanner) throws -> GitChangedFile {
+        let filename = try scanner.readField()
         return GitChangedFile(
             status: .untracked,
             stagedStatus: .none,
             fileURL: URL(filePath: filename, relativeTo: directoryURL),
             originalFilename: nil
         )
+    }
+}
+
+nonisolated private struct StatusScanner {
+    private static let space = UInt8(ascii: " ")
+    private static let separator: UInt8 = 0
+
+    let bytes: UnsafeBufferPointer<UInt8>
+    var cursor = 0
+
+    init(bytes: UnsafeBufferPointer<UInt8>) {
+        self.bytes = bytes
+    }
+
+    mutating func skip(_ count: Int) throws {
+        guard cursor + count <= bytes.count else {
+            throw GitClient.GitClientError.statusParseEarlyEnd
+        }
+        cursor += count
+    }
+
+    mutating func readStatus() throws -> GitStatus {
+        guard cursor < bytes.count else {
+            throw GitClient.GitClientError.statusParseEarlyEnd
+        }
+        let scalar = Unicode.Scalar(bytes[cursor])
+        guard let status = GitStatus(rawValue: String(scalar)) else {
+            throw GitClient.GitClientError.invalidStatus(Character(scalar))
+        }
+        cursor += 1
+        return status
+    }
+
+    mutating func skipFields(_ count: Int) throws {
+        for _ in 0..<count {
+            repeat {
+                try skip(1)
+                guard cursor < bytes.count else {
+                    throw GitClient.GitClientError.statusParseEarlyEnd
+                }
+            } while bytes[cursor] != Self.space
+        }
+        try skip(1)
+    }
+
+    mutating func readField() throws -> String {
+        guard cursor <= bytes.count,
+              let terminator = bytes[cursor...].firstIndex(of: Self.separator) else {
+            throw GitClient.GitClientError.statusParseEarlyEnd
+        }
+        let field = String(decoding: bytes[cursor..<terminator], as: UTF8.self)
+        cursor = terminator + 1
+        return field
     }
 }

@@ -13,7 +13,10 @@ XCODEBUILD := xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration $(
 	CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
 	ENABLE_HARDENED_RUNTIME=NO
 
-.PHONY: build release run headless test coverage ui-test screenshot action open toolwindow contextmenu annotate menuitem merge clean
+.PHONY: build release run headless test coverage coverage-baseline check ui-test screenshot action open toolwindow contextmenu annotate menuitem merge clean
+
+check:
+	@python3 Scripts/crash-guard.py
 
 build:
 	@mkdir -p $(LOGS)
@@ -26,6 +29,9 @@ release:
 	@rm -f .build/Dreamder.zip
 	@ditto -c -k --keepParent $(DERIVED)/Build/Products/Release/Dreamder.app .build/Dreamder.zip
 	@echo .build/Dreamder.zip
+	@rm -f .build/Dreamder-dSYM.zip
+	@ditto -c -k --keepParent $(DERIVED)/Build/Products/Release/Dreamder.app.dSYM .build/Dreamder-dSYM.zip
+	@echo .build/Dreamder-dSYM.zip
 
 run: build
 	@pkill -x Dreamder || true
@@ -45,7 +51,11 @@ coverage:
 	@mkdir -p $(LOGS)
 	@rm -rf .build/coverage.xcresult
 	@set -o pipefail; TEST_RUNNER_DREAMDER_HEADLESS=1 $(XCODEBUILD) test -only-testing:DreamderTests -enableCodeCoverage YES -resultBundlePath .build/coverage.xcresult 2>&1 | tee $(LOGS)/coverage.log | grep -E "error:|Test run with|Executed [0-9]+ tests|TEST (SUCCEEDED|FAILED)" | sort -u
-	@python3 Scripts/coverage-report.py .build/coverage.xcresult | tee $(LOGS)/coverage.txt | tail -$(if $(TOP),$(TOP),40)
+	@set -o pipefail; python3 Scripts/coverage-report.py .build/coverage.xcresult --json .build/coverage.json | tee $(LOGS)/coverage.txt | tail -$(if $(TOP),$(TOP),40)
+	@$(if $(filter 1,$(COVERAGE_CHECK)),python3 Scripts/coverage-report.py .build/coverage.xcresult --check $(if $(GITHUB_STEP_SUMMARY),--summary),:)
+
+coverage-baseline:
+	@python3 Scripts/coverage-report.py .build/coverage.xcresult --write-baseline
 
 ui-test:
 	@mkdir -p $(LOGS)

@@ -101,7 +101,7 @@ extension ExtensionInfo {
     }
 
     var lastPathOfBundleIdentifier: String {
-        String(endpoint.bundleIdentifier.split(separator: ".").last!)
+        endpoint.bundleIdentifier.split(separator: ".").last.map(String.init) ?? endpoint.bundleIdentifier
     }
 
     /// Icon of appex folder

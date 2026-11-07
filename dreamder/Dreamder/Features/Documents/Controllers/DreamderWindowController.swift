@@ -43,7 +43,7 @@ final class DreamderWindowController: NSWindowController, NSToolbarDelegate, Obs
         self.toolbarCollapsed = workspace.getFromWorkspaceState(.toolbarCollapsed) as? Bool ?? false
         self.listenToDocumentEdited(workspace: workspace)
         guard let splitViewController = setupSplitView(with: workspace) else {
-            fatalError("Failed to set up content view.")
+            return
         }
 
         contentViewController = splitViewController
@@ -60,7 +60,7 @@ final class DreamderWindowController: NSWindowController, NSToolbarDelegate, Obs
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+        nil
     }
 
     private func configureWindowTabbing() {
@@ -71,7 +71,6 @@ final class DreamderWindowController: NSWindowController, NSToolbarDelegate, Obs
 
     private func setupSplitView(with workspace: WorkspaceDocument) -> DreamderSplitViewController? {
         guard let window else {
-            assertionFailure("No window found for this controller. Cannot set up content.")
             return nil
         }
 

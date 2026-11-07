@@ -5,7 +5,7 @@ struct GitToolWindow: View {
     @EnvironmentObject private var workspace: WorkspaceDocument
     @EnvironmentObject private var sourceControlManager: SourceControlManager
 
-    @StateObject private var viewModel = GitLogViewModel()
+    @State private var viewModel = GitLogViewModel()
     @State private var branchesWidth: CGFloat = 210
     @State private var detailsWidth: CGFloat = 320
     @State private var showsConsole = false

@@ -35,7 +35,8 @@ extension WorkspaceDocument.SearchState {
 
     func stripSpecialCharacters(from string: String) -> String {
         let regex = try? NSRegularExpression(pattern: "[^a-zA-Z0-9]+", options: .caseInsensitive)
-        return regex!.stringByReplacingMatches(
+        guard let regex else { return string }
+        return regex.stringByReplacingMatches(
             in: string,
             options: [],
             range: NSRange(location: 0, length: string.utf16.count),

@@ -189,7 +189,7 @@ enum MergeTextPaneRenderer {
         case .acceptRight: host = "right"
         case .ignore: host = "ignore"
         }
-        return NSURL(string: "merge-block://\(host)/\(chip.blockID)") ?? NSURL(string: "merge-block://none/0")!
+        return NSURL(string: "merge-block://\(host)/\(chip.blockID)") ?? NSURL(fileURLWithPath: "/")
     }
 
     private static func background(for style: MergeLineStyle) -> NSColor? {

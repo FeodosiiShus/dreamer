@@ -11,11 +11,13 @@ import LanguageClient
 import LanguageServerProtocol
 import OSLog
 
+nonisolated private let languageServerLogger = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "",
+    category: "LanguageServer"
+)
+
 /// A client for language servers.
 class LanguageServer<DocumentType: LanguageServerDocument> {
-    static var logger: Logger { // types with associated types cannot have constant static properties
-        Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "LanguageServer")
-    }
     let logger: Logger
 
     /// Identifies which language the server belongs to
@@ -24,6 +26,9 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
     let binary: LanguageServerBinary
     /// A cache to hold responses from the server, to minimize duplicate server requests
     let lspCache = LSPCache()
+
+    let dynamicCapabilities = LSPDynamicCapabilityRegistry()
+    let workDoneProgress = LSPWorkDoneProgressTracker()
 
     /// Tracks documents and their associated objects.
     /// Use this property when adding new objects that need to track file data, or have a state associated with the
@@ -98,7 +103,7 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
             logContainer: logContainer
         )
         let gate = InitializationGatedConnection(connection)
-        let initializationOptions = LanguageServerDiscovery.initializationOptions(
+        let initializationOptions = await LanguageServerDiscovery.resolvedInitializationOptions(
             for: languageId,
             workspacePath: workspacePath,
             searchPaths: LSPProcessEnvironment.shared.searchPaths
@@ -142,7 +147,7 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
             let (channel, process) = try DataChannel.localProcessChannel(
                 parameters: executionParams,
                 terminationHandler: { [weak logContainer] in
-                    logger.debug("Terminated data channel for \(languageId.rawValue)")
+                    languageServerLogger.debug("Terminated data channel for \(languageId.rawValue)")
                     logContainer?.appendLog(
                         LogMessageParams(type: .error, message: "Data Channel Terminated Unexpectedly")
                     )
@@ -150,7 +155,7 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
             )
             return (JSONRPCServerConnection(dataChannel: channel), process)
         } catch {
-            logger.warning("Failed to initialize data channel for \(languageId.rawValue)")
+            languageServerLogger.warning("Failed to initialize data channel for \(languageId.rawValue)")
             throw error
         }
     }
@@ -275,7 +280,22 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
     /// Shuts down the language server and exits it.
     public func shutdown() async throws {
         self.logger.info("Shutting down language server")
+        workDoneProgress.shutDown()
+        dynamicCapabilities.removeAll()
         try await self.lspInstance.shutdownAndExit()
+    }
+
+    @discardableResult
+    func cancelWorkDoneProgress(_ token: ProgressToken) async -> Bool {
+        guard workDoneProgress.takeCancellation(for: token) else { return false }
+        do {
+            try await lspInstance.sendNotification(
+                .windowWorkDoneProgressCancel(WorkDoneProgressCancelParams(token: token))
+            )
+        } catch {
+            logger.warning("Failed to cancel work done progress: \(error)")
+        }
+        return true
     }
 }
 

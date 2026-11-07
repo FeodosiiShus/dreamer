@@ -8,7 +8,7 @@
 import Foundation
 import Combine
 
-extension GitClient {
+nonisolated extension GitClient {
     struct CloneProgress {
         let progress: Double
         let state: GitCloneProgressState
@@ -41,9 +41,9 @@ extension GitClient {
         remoteUrl: URL,
         localPath: URL
     ) -> AsyncThrowingMapSequence<LiveCommandStream, CloneProgress> {
-        let command = "clone \(remoteUrl.absoluteString) \(localPath.relativePath.escapedDirectory()) --progress"
+        let arguments = ["clone", "--progress", "--", remoteUrl.absoluteString, localPath.path(percentEncoded: false)]
 
-        return self.runLive(command)
+        return self.runLive(arguments: arguments)
             .map { line in
                 // Inspired by VS Code https://github.com/microsoft/vscode/blob/main/extensions/git/src/git.ts
                 // Parsing git clone output (for patterns look at cloneMatchTypes) and calculating total progress

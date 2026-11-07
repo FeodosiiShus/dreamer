@@ -170,22 +170,24 @@ extension SearchIndexer {
                 includingPropertiesForKeys: [.isRegularFileKey],
                 options: [.skipsHiddenFiles],
                 errorHandler: nil
-            )!
+            )
 
-            for case let fileURL as URL in enumerator {
-                dispatchGroup.enter()
+            if let enumerator {
+                for case let fileURL as URL in enumerator {
+                    dispatchGroup.enter()
 
-                if FileHelper.urlIsFolder(url) {
-                    addQueue.async { [weak self] in
-                        guard let self = self else { return }
-                        self.addFolder(url: url)
-                        dispatchGroup.leave()
-                    }
-                } else {
-                    addQueue.async { [weak self] in
-                        guard let self = self else { return }
-                        _ = self.index.addFile(fileURL: fileURL, canReplace: true)
-                        dispatchGroup.leave()
+                    if FileHelper.urlIsFolder(url) {
+                        addQueue.async { [weak self] in
+                            guard let self = self else { return }
+                            self.addFolder(url: url)
+                            dispatchGroup.leave()
+                        }
+                    } else {
+                        addQueue.async { [weak self] in
+                            guard let self = self else { return }
+                            _ = self.index.addFile(fileURL: fileURL, canReplace: true)
+                            dispatchGroup.leave()
+                        }
                     }
                 }
             }

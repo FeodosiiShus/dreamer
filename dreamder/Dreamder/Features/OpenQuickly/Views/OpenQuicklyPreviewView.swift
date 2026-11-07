@@ -13,7 +13,7 @@ struct OpenQuicklyPreviewView: View {
     private let item: CEWorkspaceFile
 
     @StateObject var editorInstance: EditorInstance
-    @StateObject var document: CodeFileDocument
+    @State var document: CodeFileDocument
 
     @StateObject var undoRegistration: UndoManagerRegistration = UndoManagerRegistration()
 
@@ -25,7 +25,7 @@ struct OpenQuicklyPreviewView: View {
             ofType: item.contentType?.identifier ?? "public.source-code"
         )
         self._editorInstance = .init(wrappedValue: EditorInstance(workspace: nil, file: item))
-        self._document = .init(wrappedValue: doc ?? .init())
+        self._document = State(wrappedValue: doc ?? .init())
     }
 
     var body: some View {

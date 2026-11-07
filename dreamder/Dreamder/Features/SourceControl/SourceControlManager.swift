@@ -140,29 +140,19 @@ final class SourceControlManager: ObservableObject {
     }
 
     static func repositoryLocation(of workspaceURL: URL) -> RepositoryLocation? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = [
-            "git", "-C", workspaceURL.path(percentEncoded: false),
-            "rev-parse", "--is-inside-work-tree", "--show-prefix"
-        ]
-        process.environment = ShellEnvironment.shared.environment
-        let pipe = Pipe.closingOnExec()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-        } catch {
-            return nil
+        var directory = workspaceURL.standardizedFileURL
+        var components: [String] = []
+        while directory.pathComponents.count > 1 {
+            guard directory.lastPathComponent != ".git" else { return nil }
+            let gitEntry = directory.appending(path: ".git", directoryHint: .notDirectory)
+            if FileManager.default.fileExists(atPath: gitEntry.path(percentEncoded: false)) {
+                let prefix = components.reversed().joined(separator: "/")
+                return RepositoryLocation(prefix: prefix.isEmpty ? nil : prefix)
+            }
+            components.append(directory.lastPathComponent)
+            directory = directory.deletingLastPathComponent()
         }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        let lines = String(decoding: data, as: UTF8.self).components(separatedBy: "\n")
-        guard process.terminationStatus == 0, lines.first == "true" else { return nil }
-        let prefix = (lines.count > 1 ? lines[1] : "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        return RepositoryLocation(prefix: prefix.isEmpty ? nil : prefix)
+        return nil
     }
 
     /// Show alert for error

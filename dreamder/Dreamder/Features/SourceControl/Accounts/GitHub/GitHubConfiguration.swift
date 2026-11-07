@@ -30,7 +30,7 @@ struct GitHubTokenConfiguration: GitRouterConfiguration {
 
     init(_ token: String? = nil, url: String? = nil, previewHeaders: [GitHubPreviewHeader] = []) {
         apiEndpoint = url ?? provider.apiURL?.absoluteString
-        accessToken = token?.data(using: .utf8)!.base64EncodedString()
+        accessToken = token.map { Data($0.utf8).base64EncodedString() }
         previewCustomHeaders = previewHeaders.map { $0.header }
     }
 }
@@ -180,15 +180,14 @@ enum GitHubOAuthRouter: GitRouter {
     #endif
 
     var URLRequest: FoundationURLRequestType? {
+        let config: GitHubOAuthConfiguration
         switch self {
-        case let .authorize(config):
-            let url = URL(string: path, relativeTo: URL(string: config.webEndpoint!)!)
-            let components = URLComponents(url: url!, resolvingAgainstBaseURL: true)
-            return request(components!, parameters: params)
-        case let .accessToken(config, _):
-            let url = URL(string: path, relativeTo: URL(string: config.webEndpoint!)!)
-            let components = URLComponents(url: url!, resolvingAgainstBaseURL: true)
-            return request(components!, parameters: params)
+        case let .authorize(value): config = value
+        case let .accessToken(value, _): config = value
         }
+        guard let base = config.webEndpoint.flatMap({ URL(string: $0) }),
+              let url = URL(string: path, relativeTo: base),
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: true) else { return nil }
+        return request(components, parameters: params)
     }
 }

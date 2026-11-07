@@ -124,12 +124,13 @@ final class ExtensionDiscovery: ObservableObject {
 
     private func activateUnapprovedExtensions(with identifiers: [(bundleID: String, devID: String)]) async throws {
         let dbQueue = try DatabaseQueue(path: Self.dbURL.path())
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier else { return }
 
         return try await dbQueue.write { table in
             try identifiers.map { identifier in
                 SettingsStoreRecord(
                     // swiftlint:disable:next line_length
-                    identifier: "\(Bundle.main.bundleIdentifier!)::\(Self.endPointIdentifier):\(identifier.bundleID):\(identifier.devID)",
+                    identifier: "\(bundleIdentifier)::\(Self.endPointIdentifier):\(identifier.bundleID):\(identifier.devID)",
                     timestamp: String(Date.now.description.dropLast(6)),
                     userElection: 1
                 )

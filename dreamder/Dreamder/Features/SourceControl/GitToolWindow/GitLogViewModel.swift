@@ -1,19 +1,21 @@
-import Combine
 import Foundation
+import Observation
 
-final class GitLogViewModel: ObservableObject {
-    @Published private(set) var commits: [GitLogCommit] = []
-    @Published private(set) var graphRows: [String: GitLogGraphRow] = [:]
-    @Published private(set) var laneCount = 1
-    @Published private(set) var selectedHash: String?
-    @Published private(set) var selectedFiles: [GitChangedFile] = []
-    @Published private(set) var selectedMessage = ""
-    @Published private(set) var isLoading = false
-    @Published private(set) var errorMessage: String?
-    @Published var searchText = ""
-    @Published private(set) var branchFilter = GitLogBranchFilter.all
+@Observable
+@MainActor
+final class GitLogViewModel {
+    private(set) var commits: [GitLogCommit] = []
+    private(set) var graphRows: [String: GitLogGraphRow] = [:]
+    private(set) var laneCount = 1
+    private(set) var selectedHash: String?
+    private(set) var selectedFiles: [GitChangedFile] = []
+    private(set) var selectedMessage = ""
+    private(set) var isLoading = false
+    private(set) var errorMessage: String?
+    var searchText = ""
+    private(set) var branchFilter = GitLogBranchFilter.all
 
-    weak var manager: SourceControlManager?
+    @ObservationIgnored weak var manager: SourceControlManager?
 
     var tabTitle: String {
         branchFilter.ref == nil ? "Log" : "Log: \(branchFilter.title)"
@@ -30,7 +32,6 @@ final class GitLogViewModel: ObservableObject {
         return commits.filter { $0.matches(graphText: query) }
     }
 
-    @MainActor
     func load(manager: SourceControlManager) async {
         self.manager = manager
         isLoading = true
@@ -38,13 +39,8 @@ final class GitLogViewModel: ObservableObject {
         do {
             let fetched = try await manager.gitClient.logGraph(ref: branchFilter.ref)
             let rows = GitLogGraphLayout.rows(for: fetched)
-            var mapping: [String: GitLogGraphRow] = [:]
-            mapping.reserveCapacity(rows.count)
-            for row in rows {
-                mapping[row.hash] = row
-            }
             commits = fetched
-            graphRows = mapping
+            graphRows = Dictionary(rows.map { ($0.hash, $0) }, uniquingKeysWith: { first, _ in first })
             laneCount = GitLogGraphLayout.laneCount(rows)
             errorMessage = nil
         } catch {
@@ -63,7 +59,6 @@ final class GitLogViewModel: ObservableObject {
         }
     }
 
-    @MainActor
     func setBranchFilter(_ filter: GitLogBranchFilter) async {
         branchFilter = filter
         selectedHash = nil
@@ -71,7 +66,6 @@ final class GitLogViewModel: ObservableObject {
         await load(manager: manager)
     }
 
-    @MainActor
     func select(hash: String?) async {
         selectedHash = hash
         guard let hash, let manager, let commit = commits.first(where: { $0.hash == hash }) else {

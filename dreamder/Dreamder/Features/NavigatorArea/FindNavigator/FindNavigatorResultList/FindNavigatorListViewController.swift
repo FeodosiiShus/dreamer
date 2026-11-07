@@ -13,24 +13,22 @@ final class FindNavigatorListViewController: NSViewController {
     public var selectedItem: Any?
 
     private var searchItems: [SearchResultModel] = []
-    private var scrollView: NSScrollView!
-    private var outlineView: NSOutlineView!
+    private let scrollView = NSScrollView()
+    private let outlineView = NSOutlineView()
     private var collapsedRows: Set<Int> = []
 
     var rowHeight: Double = Double(Islands.listRowHeight) {
         didSet {
-            outlineView?.reloadData()
+            outlineView.reloadData()
         }
     }
 
     /// Setup the `scrollView` and `outlineView`
     override func loadView() {
-        self.scrollView = NSScrollView()
         self.scrollView.drawsBackground = false
         self.view = scrollView
         self.view.wantsLayer = true
 
-        self.outlineView = NSOutlineView()
         self.outlineView.dataSource = self
         self.outlineView.delegate = self
         self.outlineView.headerView = nil
@@ -61,7 +59,7 @@ final class FindNavigatorListViewController: NSViewController {
     }
 
     required init?(coder: NSCoder) {
-        fatalError("init?(coder: NSCoder) not implemented by FindNavigatorListViewController")
+        nil
     }
 
     override var acceptsFirstResponder: Bool { true }

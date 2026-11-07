@@ -7,25 +7,22 @@
 
 import Foundation
 
-extension GitClient {
+nonisolated extension GitClient {
     /// Add uncommited changes to stash
     func stash(message: String?) async throws {
-        let command = message != nil ? "stash save --message=\"\(message ?? "")\"" : "stash"
+        let arguments = message.map { ["stash", "push", "--message", $0] } ?? ["stash"]
 
-        _ = try await self.run(command)
+        _ = try await self.run(arguments: arguments)
     }
 
     /// Pops the latest entry from stash onto HEAD
     func stashPop() async throws {
-        let command = "stash pop"
-
-        _ = try await self.run(command)
+        _ = try await self.run(arguments: ["stash", "pop"])
     }
 
     /// Lists all of the entries in stash
     func stashList() async throws -> [GitStashEntry] {
-        let command = "stash list --date=local"
-        let output = try await run(command)
+        let output = try await run(arguments: ["stash", "list", "--format=%gd%x1f%ct%x1f%gs"])
         let stashEntries = parseGitStashEntries(output)
 
         return stashEntries
@@ -34,39 +31,34 @@ extension GitClient {
     /// Apply stash
     func applyStashEntry(_ index: Int?) async throws {
         if let idx = index {
-            _ = try await run("stash apply stash@{\(idx)}")
+            _ = try await run(arguments: ["stash", "apply", "stash@{\(idx)}"])
         } else {
-            _ = try await run("stash apply")
+            _ = try await run(arguments: ["stash", "apply"])
         }
     }
 
     /// Delete stash
     func deleteStashEntry(_ index: Int) async throws {
-        _ = try await run("stash drop stash@{\(index)}")
+        _ = try await run(arguments: ["stash", "drop", "stash@{\(index)}"])
     }
 }
 
-func parseGitStashEntries(_ input: String) -> [GitStashEntry] {
+nonisolated func parseGitStashEntries(_ input: String) -> [GitStashEntry] {
     var entries: [GitStashEntry] = []
 
     let trimmedInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
     let lines = trimmedInput.split(separator: "\n", omittingEmptySubsequences: false)
 
-    let dateFormatter = DateFormatter()
-    dateFormatter.locale = Locale.current
-    dateFormatter.dateFormat = "EEE MMM d HH:mm:ss yyyy"
-
     for (index, line) in lines.enumerated() {
-        let components = line.split(separator: ": ", maxSplits: 2, omittingEmptySubsequences: true)
-        guard components.count >= 3 else { continue }
+        let fields = line.split(separator: "\u{1f}", maxSplits: 2, omittingEmptySubsequences: false)
+        guard fields.count == 3, let seconds = TimeInterval(fields[1]) else { continue }
 
-        let dateString = String(components[0].replacingOccurrences(of: "stash@{", with: "").dropLast())
-        guard let date = dateFormatter.date(from: dateString) else { continue }
+        let subject = fields[2].split(separator: ": ", maxSplits: 1, omittingEmptySubsequences: true)
+        guard subject.count == 2 else { continue }
 
-        // Re-join the remaining parts of the message (if there are colons in the message)
-        let message = components[2...].joined(separator: ": ").trimmingCharacters(in: .whitespaces)
+        let message = subject[1].trimmingCharacters(in: .whitespaces)
 
-        let entry = GitStashEntry(index: index, message: message, date: date)
+        let entry = GitStashEntry(index: index, message: message, date: Date(timeIntervalSince1970: seconds))
         entries.append(entry)
     }
 

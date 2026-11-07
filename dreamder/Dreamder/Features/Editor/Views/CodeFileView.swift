@@ -12,16 +12,15 @@ import CodeEditTextView
 import CodeEditLanguages
 import Combine
 
-/// CodeFileView is just a wrapper of the `CodeEditor` dependency
+/// CodeFileView is just a wrapper of the `CodeEditor` dependency
 struct CodeFileView: View {
     @ObservedObject private var editorInstance: EditorInstance
-    @ObservedObject private var codeFile: CodeFileDocument
+    private let codeFile: CodeFileDocument
 
-    @State private var treeSitterClient: TreeSitterClient = TreeSitterClient()
+    @StateObject private var sessionStore = CodeFileViewSessionStore()
 
     /// Any coordinators passed to the view.
     private var textViewCoordinators: [TextViewCoordinator]
-    private var highlightProviders: [any HighlightProviding] = []
 
     @AppSettings(\.textEditing.defaultTabWidth)
     var defaultTabWidth
@@ -64,10 +63,6 @@ struct CodeFileView: View {
 
     @ObservedObject private var themeModel: ThemeModel = .shared
 
-    @State private var treeSitter = TreeSitterClient()
-
-    private var cancellables = Set<AnyCancellable>()
-
     private let isEditable: Bool
 
     init(
@@ -77,52 +72,30 @@ struct CodeFileView: View {
         isEditable: Bool = true
     ) {
         self._editorInstance = .init(wrappedValue: editorInstance)
-        self._codeFile = .init(wrappedValue: codeFile)
+        self.codeFile = codeFile
 
         self.textViewCoordinators = textViewCoordinators
-            + [editorInstance.rangeTranslator]
-            + [codeFile.contentCoordinator]
-            + [codeFile.languageServerObjects.textCoordinator]
-            + [
-                GitBlameCoordinator(editorInstance: editorInstance, codeFile: codeFile),
-                EditorContextMenuCoordinator(editorInstance: editorInstance, codeFile: codeFile),
-                GitGutterCoordinator(codeFile: codeFile),
-                DiagnosticHighlightCoordinator(codeFile: codeFile),
-                InlayHintCoordinator(codeFile: codeFile),
-                IndentGuideCoordinator(),
-                EditorBackgroundCoordinator()
-            ]
         self.isEditable = isEditable
 
         if let openOptions = codeFile.openOptions {
             codeFile.openOptions = nil
             editorInstance.cursorPositions = openOptions.cursorPositions
         }
-
-        highlightProviders = [codeFile.languageServerObjects.highlightProvider] + [treeSitterClient]
-
-        codeFile
-            .contentCoordinator
-            .textUpdatePublisher
-            .sink { [weak codeFile] _ in
-                codeFile?.updateChangeCount(.changeDone)
-            }
-            .store(in: &cancellables)
     }
 
-    private var currentTheme: Theme {
-        themeModel.selectedTheme ?? themeModel.themes.first!
+    private var currentTheme: Theme? {
+        themeModel.selectedTheme ?? themeModel.themes.first
     }
 
     @AppStorage(Islands.BackgroundImageKey.path)
     private var backgroundImagePath = ""
 
-    private var editorTheme: EditorTheme {
-        var theme = currentTheme.editor.editorTheme
+    private func editorTheme(for theme: Theme) -> EditorTheme {
+        var editorTheme = theme.editor.editorTheme
         if !backgroundImagePath.isEmpty {
-            theme.background = NSColor(srgbRed: 25 / 255, green: 26 / 255, blue: 28 / 255, alpha: 0)
+            editorTheme.background = NSColor(srgbRed: 25 / 255, green: 26 / 255, blue: 28 / 255, alpha: 0)
         }
-        return theme
+        return editorTheme
     }
 
     @State private var font: NSFont = Settings[\.textEditing].font.current
@@ -131,12 +104,35 @@ struct CodeFileView: View {
     private var edgeInsets
 
     var body: some View {
-        SourceEditor(
+        if let theme = currentTheme {
+            sourceEditor(
+                theme: theme,
+                session: sessionStore.session(editorInstance: editorInstance, codeFile: codeFile)
+            )
+        } else {
+            Color.clear
+        }
+    }
+
+    private func coordinators(for session: CodeFileViewSession) -> [TextViewCoordinator] {
+        var coordinators = textViewCoordinators
+        coordinators.append(editorInstance.rangeTranslator)
+        coordinators.append(codeFile.contentCoordinator)
+        coordinators.append(codeFile.languageServerObjects.textCoordinator)
+        coordinators.append(contentsOf: session.coordinators)
+        return coordinators
+    }
+
+    private func sourceEditor(theme: Theme, session: CodeFileViewSession) -> some View {
+        let triggerCharacters = session.completionTriggerCharacters(
+            requested: codeFile.languageServerObjects.completionDelegate?.completionTriggerCharacters() ?? []
+        )
+        return SourceEditor(
             codeFile.content ?? NSTextStorage(),
             language: codeFile.getLanguage(),
             configuration: SourceEditorConfiguration(
                 appearance: .init(
-                    theme: editorTheme,
+                    theme: editorTheme(for: theme),
                     useThemeBackground: useThemeBackground,
                     font: font,
                     lineHeightMultiple: lineHeightMultiple,
@@ -144,7 +140,7 @@ struct CodeFileView: View {
                     wrapLines: wrapLinesToEditorWidth,
                     useSystemCursor: useSystemCursor,
                     tabWidth: defaultTabWidth,
-                    bracketPairEmphasis: getBracketPairEmphasis()
+                    bracketPairEmphasis: getBracketPairEmphasis(for: theme)
                 ),
                 behavior: .init(
                     isEditable: isEditable,
@@ -163,8 +159,7 @@ struct CodeFileView: View {
                     showFoldingRibbon: showFoldingRibbon,
                     invisibleCharactersConfiguration: invisibleCharactersConfiguration.textViewOption(),
                     warningCharacters: Set(warningCharacters.characters.keys),
-                    codeSuggestionTriggerCharacters: codeFile.languageServerObjects
-                        .completionDelegate?.completionTriggerCharacters() ?? []
+                    codeSuggestionTriggerCharacters: triggerCharacters
                 )
             ),
             state: Binding(
@@ -177,23 +172,35 @@ struct CodeFileView: View {
                     )
                 },
                 set: { newState in
-                    editorInstance.cursorPositions = newState.cursorPositions ?? []
-                    editorInstance.scrollPosition = newState.scrollPosition
-                    editorInstance.findText = newState.findText
-                    editorInstance.findTextSubject.send(newState.findText)
-                    editorInstance.replaceText = newState.replaceText
-                    editorInstance.replaceTextSubject.send(newState.replaceText)
+                    let cursorPositions = newState.cursorPositions ?? []
+                    if editorInstance.cursorPositions != cursorPositions {
+                        editorInstance.cursorPositions = cursorPositions
+                    }
+                    if editorInstance.scrollPosition != newState.scrollPosition {
+                        editorInstance.scrollPosition = newState.scrollPosition
+                    }
+                    if editorInstance.findText != newState.findText {
+                        editorInstance.findText = newState.findText
+                        editorInstance.findTextSubject.send(newState.findText)
+                    }
+                    if editorInstance.replaceText != newState.replaceText {
+                        editorInstance.replaceText = newState.replaceText
+                        editorInstance.replaceTextSubject.send(newState.replaceText)
+                    }
                 }
             ),
-            highlightProviders: highlightProviders,
+            highlightProviders: [
+                codeFile.languageServerObjects.highlightProvider,
+                session.treeSitterClient
+            ],
             undoManager: undoRegistration.manager(forFile: editorInstance.file),
-            coordinators: textViewCoordinators,
+            coordinators: coordinators(for: session),
             completionDelegate: codeFile.languageServerObjects.completionDelegate,
             jumpToDefinitionDelegate: codeFile.languageServerObjects.jumpToDefinitionDelegate
         )
         // This view needs to refresh when the codefile changes. The file URL is too stable.
-        .id(ObjectIdentifier(codeFile))
-        .colorScheme(currentTheme.appearance == .dark ? .dark : .light)
+        .id(session.identity)
+        .colorScheme(theme.appearance == .dark ? .dark : .light)
         // minHeight zero fixes a bug where the app would freeze if the contents of the file are empty.
         .frame(minHeight: .zero, maxHeight: .infinity)
         .onChange(of: settingsFont) { _, newFontSetting in
@@ -203,11 +210,11 @@ struct CodeFileView: View {
 
     /// Determines the style of bracket emphasis based on the `bracketEmphasis` setting and the current theme.
     /// - Returns: The emphasis style to use for bracket pair emphasis.
-    private func getBracketPairEmphasis() -> BracketPairEmphasis? {
+    private func getBracketPairEmphasis(for theme: Theme) -> BracketPairEmphasis? {
         let color = if Settings[\.textEditing].bracketEmphasis.useCustomColor {
             Settings[\.textEditing].bracketEmphasis.color.nsColor
         } else {
-            currentTheme.editor.text.nsColor.withAlphaComponent(0.8)
+            theme.editor.text.nsColor.withAlphaComponent(0.8)
         }
 
         switch Settings[\.textEditing].bracketEmphasis.highlightType {

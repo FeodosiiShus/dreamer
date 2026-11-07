@@ -162,7 +162,7 @@ final class ThemeModel: ObservableObject {
         }
 
         let savePanel = NSSavePanel()
-        savePanel.allowedContentTypes = [UTType(filenameExtension: "cetheme")!]
+        savePanel.allowedContentTypes = [UTType(filenameExtension: "cetheme") ?? .data]
         savePanel.nameFieldStringValue = theme.displayName
         savePanel.prompt = "Export"
         savePanel.canCreateDirectories = true

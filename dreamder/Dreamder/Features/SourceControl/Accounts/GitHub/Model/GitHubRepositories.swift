@@ -63,9 +63,12 @@ extension GitHubAccount {
         perPage: String = "100",
         completion: @escaping (_ response: Result<[GitHubRepositories], Error>) -> Void
     ) -> GitURLSessionDataTaskProtocol? {
-        let router = (owner != nil)
-            ? GitHubRepositoryRouter.readRepositories(configuration, owner!, page, perPage)
-            : GitHubRepositoryRouter.readAuthenticatedRepositories(configuration, page, perPage)
+        let router: GitHubRepositoryRouter
+        if let owner {
+            router = .readRepositories(configuration, owner, page, perPage)
+        } else {
+            router = .readAuthenticatedRepositories(configuration, page, perPage)
+        }
 
         return router.load(
             session,

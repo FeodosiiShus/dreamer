@@ -1,7 +1,7 @@
 import Foundation
 import LanguageServerProtocol
 
-struct LanguageServerCandidate: Equatable {
+nonisolated struct LanguageServerCandidate: Equatable {
     let executable: String
     let arguments: [String]
 
@@ -11,7 +11,7 @@ struct LanguageServerCandidate: Equatable {
     }
 }
 
-enum LanguageServerDiscovery {
+nonisolated enum LanguageServerDiscovery {
     static func candidates(for language: LanguageIdentifier) -> [LanguageServerCandidate] {
         switch language {
         case .swift, .objc:
@@ -93,32 +93,64 @@ enum LanguageServerDiscovery {
         return nil
     }
 
+    @concurrent
     static func binary(for language: LanguageIdentifier) async -> LanguageServerBinary? {
-        guard !candidates(for: language).isEmpty else { return nil }
+        let serverCandidates = candidates(for: language)
+        guard !serverCandidates.isEmpty else { return nil }
         let environment = LSPProcessEnvironment.shared
-        return await withCheckedContinuation { (continuation: CheckedContinuation<LanguageServerBinary?, Never>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                continuation.resume(returning: LanguageServerDiscovery.binary(
-                    for: language,
-                    searchPaths: environment.searchPaths,
-                    environment: environment.environment,
-                    isExecutable: { FileManager.default.isExecutableFile(atPath: $0) },
-                    xcrunFind: environment.xcrunFind
-                ))
-            }
+        let resolved = await environment.resolve()
+        var sourceKit: String?
+        if serverCandidates.contains(where: { $0.executable == "sourcekit-lsp" }) {
+            sourceKit = await environment.xcrunFind("sourcekit-lsp")
         }
+        let sourceKitPath = sourceKit
+        return binary(
+            for: language,
+            searchPaths: resolved.searchPaths,
+            environment: resolved.environment,
+            isExecutable: { FileManager.default.isExecutableFile(atPath: $0) },
+            xcrunFind: { $0 == "sourcekit-lsp" ? sourceKitPath : nil }
+        )
     }
 
     static let typeScriptLanguages: Set<LanguageIdentifier> = [
         .typescript, .javascript, .typescriptreact, .javascriptreact
     ]
 
+    static func resolvedInitializationOptions(
+        for language: LanguageIdentifier,
+        workspacePath: String,
+        searchPaths: [String],
+        runner: any ProcessRunning = ProcessRunner(),
+        environment: [String: String]? = nil
+    ) async -> LSPAny? {
+        guard typeScriptLanguages.contains(language) else { return nil }
+        var resolvedLaunchers: [String: String] = [:]
+        for directory in searchPaths {
+            let launcher = (directory as NSString).appendingPathComponent("tsserver")
+            guard FileManager.default.fileExists(atPath: launcher) else { continue }
+            resolvedLaunchers[launcher] = await resolveLauncher(
+                launcher,
+                workspacePath: nil,
+                runner: runner,
+                environment: environment
+            )
+        }
+        let launchers = resolvedLaunchers
+        return initializationOptions(
+            for: language,
+            workspacePath: workspacePath,
+            searchPaths: searchPaths,
+            resolveSymlinks: { launchers[$0] ?? symlinkResolved($0) }
+        )
+    }
+
     static func initializationOptions(
         for language: LanguageIdentifier,
         workspacePath: String,
         searchPaths: [String],
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
-        resolveSymlinks: (String) -> String = { resolveLauncher($0, workspacePath: nil) }
+        resolveSymlinks: (String) -> String = { symlinkResolved($0) }
     ) -> LSPAny? {
         guard typeScriptLanguages.contains(language) else { return nil }
         var options: [String: LSPAny] = [
@@ -161,25 +193,34 @@ enum LanguageServerDiscovery {
         return nil
     }
 
-    static func resolveLauncher(_ path: String, workspacePath: String?) -> String {
-        let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+    static func symlinkResolved(_ path: String) -> String {
+        URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+    }
+
+    static func resolveLauncher(
+        _ path: String,
+        workspacePath: String?,
+        runner: any ProcessRunning = ProcessRunner(),
+        environment: [String: String]? = nil
+    ) async -> String {
+        let resolved = symlinkResolved(path)
         guard (resolved as NSString).lastPathComponent == "mise" else { return resolved }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: resolved)
-        process.arguments = ["which", (path as NSString).lastPathComponent]
-        if let workspacePath {
-            process.currentDirectoryURL = URL(fileURLWithPath: workspacePath)
+        let processEnvironment: [String: String]
+        if let environment {
+            processEnvironment = environment
+        } else {
+            processEnvironment = await LSPProcessEnvironment.shared.resolve().environment
         }
-        process.environment = LSPProcessEnvironment.shared.environment
-        let pipe = Pipe.closingOnExec()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        process.standardInput = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return resolved }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        let target = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard process.terminationStatus == 0, !target.isEmpty else { return resolved }
-        return URL(fileURLWithPath: target).resolvingSymlinksInPath().path
+        let invocation = ProcessInvocation(
+            executable: URL(fileURLWithPath: resolved),
+            arguments: ["which", (path as NSString).lastPathComponent],
+            workingDirectory: workspacePath.map { URL(fileURLWithPath: $0) },
+            environment: processEnvironment,
+            timeout: .seconds(10)
+        )
+        guard let output = try? await runner.run(invocation), output.succeeded else { return resolved }
+        let target = output.standardOutputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !target.isEmpty else { return resolved }
+        return symlinkResolved(target)
     }
 }

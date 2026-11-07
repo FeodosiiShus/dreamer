@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct GitLogCommitTable: View {
-    @ObservedObject var viewModel: GitLogViewModel
+    let viewModel: GitLogViewModel
 
     var body: some View {
         let visible = viewModel.visibleCommits

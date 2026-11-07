@@ -23,7 +23,8 @@ enum CodeFileError: Error {
 }
 
 @objc(CodeFileDocument)
-final class CodeFileDocument: NSDocument, ObservableObject {
+@Observable
+final class CodeFileDocument: NSDocument {
     struct OpenOptions {
         let cursorPositions: [CursorPosition]
     }
@@ -42,29 +43,29 @@ final class CodeFileDocument: NSDocument, ObservableObject {
     /// enough.
     ///
     /// To receive notifications for content updates, subscribe to one of the publishers on ``contentCoordinator``.
-    var content: NSTextStorage?
+    @ObservationIgnored var content: NSTextStorage?
 
     /// The string encoding of the original file. Used to save the file back to the encoding it was loaded from.
-    var sourceEncoding: FileEncoding?
+    @ObservationIgnored var sourceEncoding: FileEncoding?
 
     /// The coordinator to use to subscribe to edit events and cursor location events.
     /// See ``CodeEditSourceEditor/CombineCoordinator``.
-    @Published var contentCoordinator: CombineCoordinator = CombineCoordinator()
+    var contentCoordinator: CombineCoordinator = CombineCoordinator()
 
     /// Used to override detected languages.
-    @Published var language: CodeLanguage?
+    var language: CodeLanguage?
 
     /// Document-specific overridden indent option.
-    @Published var indentOption: SettingsData.TextEditingSettings.IndentOption?
+    var indentOption: SettingsData.TextEditingSettings.IndentOption?
 
     /// Document-specific overridden tab width.
-    @Published var defaultTabWidth: Int?
+    var defaultTabWidth: Int?
 
     /// Document-specific overridden line wrap preference.
-    @Published var wrapLines: Bool?
+    var wrapLines: Bool?
 
     /// Set up by ``LanguageServer``, conforms this type to ``LanguageServerDocument``.
-    @Published var languageServerObjects: LanguageServerDocumentObjects<CodeFileDocument> = .init()
+    var languageServerObjects: LanguageServerDocumentObjects<CodeFileDocument> = .init()
 
     /// The type of data this file document contains.
     ///
@@ -86,7 +87,7 @@ final class CodeFileDocument: NSDocument, ObservableObject {
 
     /// Specify options for opening the file such as the initial cursor positions.
     /// Nulled by ``CodeFileView`` on first load.
-    var openOptions: OpenOptions?
+    @ObservationIgnored var openOptions: OpenOptions?
 
     private let isDocumentEditedSubject = PassthroughSubject<Bool, Never>()
 
@@ -95,10 +96,12 @@ final class CodeFileDocument: NSDocument, ObservableObject {
         isDocumentEditedSubject.eraseToAnyPublisher()
     }
 
-    /// A lock that ensures autosave scheduling happens correctly.
-    private var autosaveTimerLock: NSLock = NSLock()
-    /// Timer used to schedule autosave intervals.
-    private var autosaveTimer: Timer?
+    @ObservationIgnored private var autosaveTask: Task<Void, Never>?
+    private static let autosaveDelay: Duration = .seconds(2)
+
+    deinit {
+        autosaveTask?.cancel()
+    }
 
     // MARK: - NSDocument
 
@@ -225,20 +228,17 @@ final class CodeFileDocument: NSDocument, ObservableObject {
     /// All operations are done with the ``autosaveTimerLock`` acquired (including the scheduled autosave) to ensure
     /// correct timing when scheduling or cancelling timers.
     override func scheduleAutosaving() {
-        autosaveTimerLock.withLock {
-            if self.hasUnautosavedChanges {
-                guard autosaveTimer == nil else { return }
-                autosaveTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] timer in
-                    self?.autosaveTimerLock.withLock {
-                        guard timer.isValid else { return }
-                        self?.autosaveTimer = nil
-                        self?.autosave(withDelegate: nil, didAutosave: nil, contextInfo: nil)
-                    }
-                }
-            } else {
-                autosaveTimer?.invalidate()
-                autosaveTimer = nil
-            }
+        guard hasUnautosavedChanges else {
+            autosaveTask?.cancel()
+            autosaveTask = nil
+            return
+        }
+        guard autosaveTask == nil else { return }
+        autosaveTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: CodeFileDocument.autosaveDelay)
+            guard !Task.isCancelled, let self else { return }
+            autosaveTask = nil
+            autosave(withDelegate: nil, didAutosave: nil, contextInfo: nil)
         }
     }
 
@@ -252,25 +252,19 @@ final class CodeFileDocument: NSDocument, ObservableObject {
     /// To determine if we can reload the file, we check if the document has outstanding edits. If not, we reload the
     /// file.
     override func presentedItemDidChange() {
-        if fileModificationDate != getModificationDate() {
-            guard isDocumentEdited else {
-                fileModificationDate = getModificationDate()
-                if let fileURL, let fileType {
-                    // This blocks the presented item thread intentionally. If we don't wait, we'll receive more updates
-                    // that the file has changed and we'll end up dispatching multiple reads.
-                    // The presented item thread expects this operation to by synchronous anyways.
-
-                    // We can't use `.asyncAndWait` on Ventura as it seems the symbol is missing on that platform.
-                    // Could be just for x86 machines.
-                    DispatchQueue.main.sync {
-                        try? self.read(from: fileURL, ofType: fileType)
-                    }
-                }
-                return
+        guard fileModificationDate != getModificationDate(), !isDocumentEdited else {
+            super.presentedItemDidChange()
+            return
+        }
+        fileModificationDate = getModificationDate()
+        guard let fileURL, let fileType else { return }
+        if Thread.isMainThread {
+            try? read(from: fileURL, ofType: fileType)
+        } else {
+            DispatchQueue.main.sync {
+                try? self.read(from: fileURL, ofType: fileType)
             }
         }
-
-        super.presentedItemDidChange()
     }
 
     /// Helper to find the last modified date of the represented file item.
@@ -285,6 +279,8 @@ final class CodeFileDocument: NSDocument, ObservableObject {
     // MARK: - Close
 
     override func close() {
+        autosaveTask?.cancel()
+        autosaveTask = nil
         super.close()
         NotificationCenter.default.post(name: Self.didCloseNotification, object: fileURL)
     }

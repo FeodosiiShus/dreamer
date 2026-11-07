@@ -16,14 +16,17 @@ final class IndentGuideOverlayView: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    override func viewWillDraw() {
-        syncFrameWithSuperview()
-        super.viewWillDraw()
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        guard let superview else { return }
+        autoresizingMask = [.width, .height]
+        if frame != superview.bounds {
+            frame = superview.bounds
+        }
     }
 
-    private func syncFrameWithSuperview() {
-        guard let superview, frame != superview.bounds else { return }
-        frame = superview.bounds
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
         needsDisplay = true
     }
 
@@ -96,7 +99,7 @@ final class IndentGuideOverlayView: NSView {
         var scanned = 0
         while index >= 0, scanned <= Self.inheritScanLimit {
             guard let line = layoutManager.textLineForIndex(index) else { return 0 }
-            let content = lineText(line.range, text: text)
+            let content = Self.lineContent(in: line.range, text: text)
             if !content.trimmingCharacters(in: .whitespaces).isEmpty {
                 return IndentGuides.indentationColumns(of: content, tabWidth: tabWidth) / tabWidth
             }
@@ -107,17 +110,20 @@ final class IndentGuideOverlayView: NSView {
         return 0
     }
 
-    private func lineText(_ range: NSRange, text: NSString) -> String {
+    nonisolated static func lineContent(in range: NSRange, text: NSString) -> String {
+        guard range.location >= 0,
+              range.length > 0,
+              range.location <= text.length,
+              range.length <= text.length - range.location else {
+            return ""
+        }
+        let end = range.location + range.length
         var length = range.length
-        if length > 0 {
-            let last = text.character(at: NSMaxRange(range) - 1)
-            if last == 0x0A || last == 0x0D {
+        let last = text.character(at: end - 1)
+        if last == 0x0A || last == 0x0D {
+            length -= 1
+            if length > 0, last == 0x0A, text.character(at: end - 2) == 0x0D {
                 length -= 1
-                if length > 0,
-                   last == 0x0A,
-                   text.character(at: NSMaxRange(range) - 2) == 0x0D {
-                    length -= 1
-                }
             }
         }
         guard length > 0 else { return "" }

@@ -56,7 +56,7 @@ struct MergeToolIntegrationTests {
             let entry = try #require(entries.first { $0.path == "app/config.txt" })
             try await repo.accept(.yours, entry: entry, context: context)
 
-            #expect(try trimmed(fixture.read("app/config.txt")) == "alpha\nBETA-main\ngamma\ndelta\nepsilon\nzeta-main")
+            #expect(try trimmed(fixture.read("app/config.txt")) == "alpha\nbeta-main\ngamma\ndelta\nepsilon\nzeta-main\neta\ntheta\niota\nkappa\nlambda")
             #expect(try fixture.isFullyStaged("app/config.txt"))
             #expect(try fixture.unmergedPaths() == ["docs/notes.txt"])
             #expect(await repo.entries().map(\.path) == ["docs/notes.txt"])
@@ -164,18 +164,21 @@ struct MergeToolIntegrationTests {
             #expect(model.leftTitle == "Your version, branch main")
             #expect(model.rightTitle == "Theirs, branch feature")
             #expect(lines(model.leftPane.text) == [
-                "alpha", "BETA-main", "gamma", "delta", "epsilon", "zeta-main"
+                "alpha", "beta-main", "gamma", "delta", "epsilon", "zeta-main",
+                "eta", "theta", "iota", "kappa", "lambda"
             ])
             #expect(lines(model.rightPane.text) == [
-                "alpha", "BETA-feature", "gamma", "delta", "epsilon", "zeta", "feature-added"
+                "alpha", "beta", "gamma", "delta", "epsilon", "zeta-feature",
+                "eta", "theta", "iota", "kappa", "feature-added", "lambda"
             ])
-            #expect(merge.blocks.count == 3)
-            #expect(merge.blocks[0].kind == .conflict)
-            #expect(merge.blocks[1].kind == .ours)
+            try #require(merge.blocks.count == 3)
+            #expect(merge.blocks[0].kind == .ours)
+            #expect(merge.blocks[1].kind == .conflict)
             #expect(merge.blocks[2].kind == .theirs)
             #expect(merge.conflictCount == 1)
             #expect(merge.changeCount == 2)
-            #expect(model.resultText == "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta-main\nfeature-added\n")
+            #expect(model.resultText ==
+                    "alpha\nbeta-main\ngamma\ndelta\nepsilon\nzeta\neta\ntheta\niota\nkappa\nfeature-added\nlambda\n")
             #expect(model.hasNonConflictingChanges(.left))
             #expect(model.hasNonConflictingChanges(.right))
             #expect(model.hasNonConflictingChanges(.all))
@@ -192,8 +195,8 @@ struct MergeToolIntegrationTests {
             let conflict = try #require(merge.blocks.first { $0.kind == .conflict })
 
             model.resolve(conflict.id, with: .left)
-            #expect(model.resultText.contains("BETA-main\n"))
-            #expect(model.resultText.contains("BETA-feature") == false)
+            #expect(model.resultText.contains("zeta-main\n"))
+            #expect(model.resultText.contains("zeta-feature") == false)
             #expect(model.merge?.conflictCount == 0)
             #expect(model.isResultEdited == false)
         }
@@ -209,7 +212,8 @@ struct MergeToolIntegrationTests {
             let conflict = try #require(merge.blocks.first { $0.kind == .conflict })
 
             model.resolve(conflict.id, with: .right)
-            #expect(model.resultText.contains("BETA-feature\n"))
+            #expect(model.resultText.contains("zeta-feature\n"))
+            #expect(model.resultText.contains("zeta-main") == false)
             #expect(model.merge?.conflictCount == 0)
         }
     }
@@ -224,7 +228,7 @@ struct MergeToolIntegrationTests {
             let conflict = try #require(merge.blocks.first { $0.kind == .conflict })
 
             model.resolve(conflict.id, with: .ignored)
-            #expect(model.resultText.contains("alpha\nbeta\ngamma"))
+            #expect(model.resultText.contains("epsilon\nzeta\neta"))
             #expect(model.merge?.conflictCount == 0)
         }
     }
@@ -238,7 +242,8 @@ struct MergeToolIntegrationTests {
 
             model.applyNonConflicting(.left)
             #expect(lines(model.resultText) == [
-                "alpha", "beta", "gamma", "delta", "epsilon", "zeta-main"
+                "alpha", "beta-main", "gamma", "delta", "epsilon", "zeta",
+                "eta", "theta", "iota", "kappa", "lambda"
             ])
         }
     }
@@ -252,7 +257,8 @@ struct MergeToolIntegrationTests {
 
             model.applyNonConflicting(.right)
             #expect(lines(model.resultText) == [
-                "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "feature-added"
+                "alpha", "beta", "gamma", "delta", "epsilon", "zeta",
+                "eta", "theta", "iota", "kappa", "feature-added", "lambda"
             ])
         }
     }
@@ -266,7 +272,8 @@ struct MergeToolIntegrationTests {
 
             model.applyNonConflicting(.all)
             #expect(lines(model.resultText) == [
-                "alpha", "beta", "gamma", "delta", "epsilon", "zeta-main", "feature-added"
+                "alpha", "beta-main", "gamma", "delta", "epsilon", "zeta",
+                "eta", "theta", "iota", "kappa", "feature-added", "lambda"
             ])
         }
     }
@@ -281,7 +288,7 @@ struct MergeToolIntegrationTests {
             let finished = await model.requestAcceptSide(.yours, window: nil)
             #expect(finished)
             #expect(try trimmed(fixture.read("app/config.txt")) ==
-                    "alpha\nBETA-main\ngamma\ndelta\nepsilon\nzeta-main")
+                    "alpha\nbeta-main\ngamma\ndelta\nepsilon\nzeta-main\neta\ntheta\niota\nkappa\nlambda")
             #expect(try fixture.isFullyStaged("app/config.txt"))
             #expect(try fixture.unmergedPaths() == ["docs/notes.txt"])
         }
@@ -297,7 +304,7 @@ struct MergeToolIntegrationTests {
             let finished = await model.requestAcceptSide(.theirs, window: nil)
             #expect(finished)
             #expect(try trimmed(fixture.read("app/config.txt")) ==
-                    "alpha\nBETA-feature\ngamma\ndelta\nepsilon\nzeta\nfeature-added")
+                    "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta-feature\neta\ntheta\niota\nkappa\nfeature-added\nlambda")
             #expect(try fixture.unmergedPaths() == ["docs/notes.txt"])
         }
     }
@@ -313,7 +320,7 @@ struct MergeToolIntegrationTests {
             let finished = await answering(true) { await model.requestApply(window: nil) }
             #expect(finished)
             #expect(try trimmed(fixture.read("app/config.txt")) ==
-                    "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta-main\nfeature-added")
+                    "alpha\nbeta-main\ngamma\ndelta\nepsilon\nzeta\neta\ntheta\niota\nkappa\nfeature-added\nlambda")
             #expect(fixture.hasConflictMarkers("app/config.txt") == false)
             #expect(try fixture.unmergedPaths() == ["docs/notes.txt"])
             #expect(await repo.entries().map(\.path) == ["docs/notes.txt"])
@@ -396,7 +403,7 @@ struct MergeToolIntegrationTests {
 
             #expect(await answering(true) { await model.requestAcceptSide(.yours, window: nil) })
             #expect(try trimmed(fixture.read("app/config.txt")) ==
-                    "alpha\nBETA-main\ngamma\ndelta\nepsilon\nzeta-main")
+                    "alpha\nbeta-main\ngamma\ndelta\nepsilon\nzeta-main\neta\ntheta\niota\nkappa\nlambda")
         }
     }
 

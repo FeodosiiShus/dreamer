@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Combine
 
 extension NSWindow {
     var isSettingsWindow: Bool {
@@ -31,8 +32,13 @@ struct ConstrainHeightToWindowViewModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .frame(height: height-100)
-            .onReceive(NSApp.settingsWindow!.publisher(for: \.frame)) { newValue in
+            .onReceive(frameChanges) { newValue in
                 height = newValue.height
             }
+    }
+
+    private var frameChanges: AnyPublisher<NSRect, Never> {
+        guard let window = NSApp.settingsWindow else { return Empty().eraseToAnyPublisher() }
+        return window.publisher(for: \.frame).eraseToAnyPublisher()
     }
 }

@@ -21,9 +21,14 @@ final class Settings: ObservableObject {
     /// The publicly available singleton instance of ``SettingsModel``
     static let shared: Settings = .init()
 
-    private var storeTask: AnyCancellable!
+    private var storeTask: AnyCancellable?
 
-    private init() {
+    private convenience init() {
+        self.init(baseURL: Self.defaultBaseURL)
+    }
+
+    init(baseURL: URL) {
+        self.baseURL = baseURL
         self.preferences = .init()
         self.preferences = loadSettings()
 
@@ -50,7 +55,7 @@ final class Settings: ObservableObject {
     /// `~/Library/Application Support/Dreamder/settings.json`
     private func loadSettings() -> SettingsData {
         if !filemanager.fileExists(atPath: settingsURL.path) {
-            try? filemanager.createDirectory(at: baseURL, withIntermediateDirectories: false)
+            try? filemanager.createDirectory(at: baseURL, withIntermediateDirectories: true)
             return .init()
         }
 
@@ -76,8 +81,11 @@ final class Settings: ObservableObject {
 
     /// The base URL of settings.
     ///
-    /// Points to `~/Library/Application Support/Dreamder/`
-    internal var baseURL: URL {
+    /// Points to `~/Library/Application Support/Dreamder/` unless the instance was created with a custom location.
+    let baseURL: URL
+
+    private static var defaultBaseURL: URL {
+        let filemanager = FileManager.default
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
             return filemanager.temporaryDirectory.appending(path: "DreamderTests", directoryHint: .isDirectory)
         }

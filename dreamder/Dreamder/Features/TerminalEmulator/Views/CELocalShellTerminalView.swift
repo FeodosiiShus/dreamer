@@ -49,7 +49,7 @@ protocol CELocalShellTerminalViewDelegate: AnyObject {
 // MARK: - CELocalShellTerminalView
 
 class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProcessDelegate {
-    var process: LocalProcess!
+    lazy var process: LocalProcess = LocalProcess(delegate: self)
 
     override public init(frame: CGRect) {
         super.init(frame: frame)
@@ -67,7 +67,6 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
     func setup() {
         terminal = Terminal(delegate: self, options: TerminalOptions(scrollback: 2000))
         terminalDelegate = self
-        process = LocalProcess(delegate: self)
     }
 
     /// Launches a child process inside a pseudo-terminal.

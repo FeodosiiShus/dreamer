@@ -55,15 +55,15 @@ struct MergeResolutionTests {
     @Test
     func applyNonConflictingLeftKeepsOnlyLeftChanges() {
         var merge = ThreeWayMerge(
-            base: "one\ntwo\nthree\n",
-            ours: "one\nLEFT\nthree\n",
-            theirs: "one\ntwo\nTHREE\n"
+            base: "one\ntwo\nthree\nfour\nfive\nsix\n",
+            ours: "one\nLEFT\nthree\nfour\nfive\nsix\n",
+            theirs: "one\ntwo\nthree\nfour\nfive\nSIX\n"
         )
         merge.applyNonConflicting(.left)
-        #expect(merge.resultText == "one\nLEFT\nthree\n")
+        #expect(merge.resultText == "one\nLEFT\nthree\nfour\nfive\nsix\n")
 
         var right = merge
         right.applyNonConflicting(.right)
-        #expect(right.resultText == "one\ntwo\nTHREE\n")
+        #expect(right.resultText == "one\ntwo\nthree\nfour\nfive\nSIX\n")
     }
 }

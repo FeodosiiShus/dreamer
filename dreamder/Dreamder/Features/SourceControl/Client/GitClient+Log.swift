@@ -1,33 +1,30 @@
 import Foundation
 
-extension GitClient {
+nonisolated extension GitClient {
     static let logGraphFormat = "%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%D%x1f%s"
 
+    @concurrent
     func logGraph(ref: String?, limit: Int = 2000) async throws -> [GitLogCommit] {
-        var command = "log --date-order -z --format=\(Self.logGraphFormat) -n \(limit)"
+        var arguments = ["log", "--date-order", "-z", "--format=\(Self.logGraphFormat)", "-n", "\(limit)"]
         if let ref, !ref.isEmpty {
-            command += " \(Self.logGraphQuote(ref))"
+            arguments.append(ref)
         } else {
-            command += " --all"
+            arguments.append("--all")
         }
-        return Self.logGraphParse(try await run(command))
+        return Self.logGraphParse(try await run(arguments: arguments))
     }
 
     func logGraphMessage(hash: String) async throws -> String {
-        let output = try await run("log -1 --format=%B \(Self.logGraphQuote(hash))")
+        let output = try await run(arguments: ["log", "-1", "--format=%B", hash])
         return output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func logGraphChangedFiles(commit: GitLogCommit) async throws -> [GitChangedFile] {
         let output: String
         if let firstParent = commit.parents.first {
-            output = try await run(
-                "diff --name-status \(Self.logGraphQuote(firstParent)) \(Self.logGraphQuote(commit.hash))"
-            )
+            output = try await run(arguments: ["diff", "--name-status", firstParent, commit.hash])
         } else {
-            output = try await run(
-                "diff-tree --root --no-commit-id --name-status -r \(Self.logGraphQuote(commit.hash))"
-            )
+            output = try await run(arguments: ["diff-tree", "--root", "--no-commit-id", "--name-status", "-r", commit.hash])
         }
         return Self.logGraphParseChangedFiles(output, root: directoryURL)
     }

@@ -258,7 +258,7 @@ extension Theme {
                 case "strings": return self.strings
                 case "characters": return self.characters
                 case "comments": return self.comments
-                default: fatalError("Invalid key")
+                default: return Attributes(color: "#000000")
                 }
             }
             set {
@@ -279,7 +279,7 @@ extension Theme {
                 case "strings": self.strings = newValue
                 case "characters": self.characters = newValue
                 case "comments": self.comments = newValue
-                default: fatalError("Invalid key")
+                default: break
                 }
             }
         }
@@ -400,7 +400,7 @@ extension Theme {
                 case "brightMagenta": return self.brightMagenta
                 case "brightCyan": return self.brightCyan
                 case "brightWhite": return self.brightWhite
-                default: fatalError("Invalid key")
+                default: return Attributes(color: "#000000")
                 }
             }
             set {
@@ -426,7 +426,7 @@ extension Theme {
                 case "brightMagenta": self.brightMagenta = newValue
                 case "brightCyan": self.brightCyan = newValue
                 case "brightWhite": self.brightWhite = newValue
-                default: fatalError("Invalid key")
+                default: break
                 }
             }
         }

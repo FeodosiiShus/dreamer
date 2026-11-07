@@ -37,7 +37,7 @@ extension WorkspaceDocument {
 
         @Published var shouldFocusSearchField: Bool = false
 
-        unowned var workspace: WorkspaceDocument
+        weak var workspace: WorkspaceDocument?
         var tempSearchResults = [SearchResultModel]()
         var caseSensitive: Bool = false
         var indexer: SearchIndexer?

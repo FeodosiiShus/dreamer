@@ -26,16 +26,7 @@ final class CEWorkspaceFileManagerUnitTests: XCTestCase {
     }
 
     override func setUp() async throws {
-        directory = try FileManager.default.url(
-            for: .developerApplicationDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        .appending(path: "Dreamder", directoryHint: .isDirectory)
-        .appending(path: "WorkspaceClientTests", directoryHint: .isDirectory)
-        try? FileManager.default.removeItem(at: directory)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        directory = try makeTempDirectory()
     }
 
     override func tearDown() async throws {

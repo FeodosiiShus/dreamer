@@ -74,7 +74,7 @@ struct ExtensionSceneView: NSViewControllerRepresentable {
 
             Task {
                 do {
-                    try await connection!.withService { (service: EnvironmentPublisherObjc) in
+                    try await connection?.withService { (service: EnvironmentPublisherObjc) in
                         service.publishEnvironment(data: newEnvironmentData)
                     }
                 } catch {

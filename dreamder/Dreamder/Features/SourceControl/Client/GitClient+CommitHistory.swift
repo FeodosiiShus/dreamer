@@ -7,43 +7,44 @@
 
 import Foundation
 
-extension GitClient {
+nonisolated extension GitClient {
     /// Gets the commit history log for the specified branch or file
     /// - Parameters:
     ///   - branchName: Name of the branch
     ///   - maxCount: Maximum amount of entries to get
     ///   - fileLocalPath: Optional path of file to get history for
     /// - Returns: Array of git commits
+    @concurrent
     func getCommitHistory(
         branchName: String? = nil,
         maxCount: Int? = nil,
         fileLocalPath: String? = nil,
         showMergeCommits: Bool = false
     ) async throws -> [GitCommit] {
-        let branchString = branchName != nil ? "\"\(branchName ?? "")\"" : ""
-        let fileString = fileLocalPath != nil ? "\"\(fileLocalPath ?? "")\"" : ""
-        let countString = maxCount != nil ? "-n \(maxCount ?? 0)" : ""
+        var arguments = ["log"]
+        if !showMergeCommits {
+            arguments.append("--no-merges")
+        }
+        arguments += ["-z", "--pretty=%h¦%H¦%s¦%aN¦%ae¦%cn¦%ce¦%at¦%b¦%D¦"]
+        if let maxCount {
+            arguments += ["-n", "\(maxCount)"]
+        }
+        if let branchName {
+            arguments.append(branchName)
+        }
+        arguments.append("--")
+        if let fileLocalPath {
+            arguments.append(fileLocalPath)
+        }
 
-        let dateFormatter = DateFormatter()
-
-        // Can't use `Locale.current`, since it'd give a nil date outside the US
-        dateFormatter.locale = Locale(identifier: Locale.current.identifier)
-        dateFormatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
-
-        let output = try await run(
-            """
-            log \(showMergeCommits ? "" : "--no-merges") -z \
-            --pretty=%h¦%H¦%s¦%aN¦%ae¦%cn¦%ce¦%aD¦%b¦%D¦ \
-            \(countString) \(branchString) -- \(fileString)
-            """.trimmingCharacters(in: .whitespacesAndNewlines)
-        )
+        let output = try await run(arguments: arguments)
         let remoteURL = try await getRemoteURL()
 
         return output
             .split(separator: "\0")
             .map { line -> GitCommit in
                 let parameters = String(line).components(separatedBy: "¦")
-                let infoRef = parameters[safe: 9]
+                let infoRef = Self.field(at: 9, in: parameters)
                 var refs: [String] = []
                 var tag = ""
                 if let infoRef = infoRef {
@@ -62,18 +63,19 @@ extension GitClient {
                 }
 
                 return GitCommit(
-                    hash: parameters[safe: 0] ?? "",
-                    commitHash: parameters[safe: 1] ?? "",
-                    message: parameters[safe: 2] ?? "",
-                    author: parameters[safe: 3] ?? "",
-                    authorEmail: parameters[safe: 4] ?? "",
-                    committer: parameters[safe: 5] ?? "",
-                    committerEmail: parameters[safe: 6] ?? "",
-                    body: parameters[safe: 8] ?? "",
+                    hash: Self.field(at: 0, in: parameters) ?? "",
+                    commitHash: Self.field(at: 1, in: parameters) ?? "",
+                    message: Self.field(at: 2, in: parameters) ?? "",
+                    author: Self.field(at: 3, in: parameters) ?? "",
+                    authorEmail: Self.field(at: 4, in: parameters) ?? "",
+                    committer: Self.field(at: 5, in: parameters) ?? "",
+                    committerEmail: Self.field(at: 6, in: parameters) ?? "",
+                    body: Self.field(at: 8, in: parameters) ?? "",
                     refs: refs,
                     tag: tag,
                     remoteURL: remoteURL,
-                    date: dateFormatter.date(from: parameters[safe: 7] ?? "") ?? Date()
+                    date: Self.field(at: 7, in: parameters).flatMap { TimeInterval($0) }
+                        .map { Date(timeIntervalSince1970: $0) } ?? Date()
                 )
             }
     }

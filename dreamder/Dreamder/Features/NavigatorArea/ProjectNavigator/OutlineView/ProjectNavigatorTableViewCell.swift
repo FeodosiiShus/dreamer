@@ -55,7 +55,21 @@ final class ProjectNavigatorTableViewCell: FileSystemTableViewCell {
         super.init(frame: frameRect, item: item, isEditable: isEditable, navigatorFilter: navigatorFilter)
         self.textField?.setAccessibilityIdentifier("ProjectNavigatorTableViewCell-\(item?.name ?? "")")
         self.delegate = delegate
+        configureDisclosure()
+    }
 
+    /// *Not Implemented*
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect, item: nil)
+        configureDisclosure()
+    }
+
+    /// *Not Implemented*
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    private func configureDisclosure() {
         disclosureButton.isBordered = false
         disclosureButton.imagePosition = .imageOnly
         disclosureButton.setButtonType(.momentaryChange)
@@ -67,23 +81,6 @@ final class ProjectNavigatorTableViewCell: FileSystemTableViewCell {
 
         updateDisclosureImage()
         resizeSubviews(withOldSize: .zero)
-    }
-
-    /// *Not Implemented*
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        fatalError("""
-        init(frame: ) isn't implemented on `OutlineTableViewCell`.
-        Please use `.init(frame: NSRect, item: WorkspaceClient.FileItem?)
-        """)
-    }
-
-    /// *Not Implemented*
-    required init?(coder: NSCoder) {
-        fatalError("""
-        init?(coder: NSCoder) isn't implemented on `OutlineTableViewCell`.
-        Please use `.init(frame: NSRect, item: WorkspaceClient.FileItem?)
-        """)
     }
 
     override func resizeSubviews(withOldSize oldSize: NSSize) {

@@ -9,7 +9,7 @@ import SwiftUI
 
 class TextTableViewCell: NSTableCellView {
 
-    var label: NSTextField!
+    var label = NSTextField(frame: .zero)
 
     init(frame frameRect: NSRect, isEditable: Bool = true, startingText: String = "") {
         super.init(frame: frameRect)
@@ -76,10 +76,7 @@ class TextTableViewCell: NSTableCellView {
     }
 
     /// *Not Implemented*
-    required init(coder: NSCoder) {
-        fatalError("""
-            init?(coder: NSCoder) isn't implemented on `TextTableViewCell`.
-            Please use `.init(frame: NSRect, isEditable: Bool)
-            """)
+    required init?(coder: NSCoder) {
+        nil
     }
 }

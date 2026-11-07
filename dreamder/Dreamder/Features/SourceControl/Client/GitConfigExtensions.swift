@@ -11,7 +11,7 @@ import Foundation
 ///
 /// This enables `Bool` values to be represented in Git configuration as
 /// `true` or `false`.
-extension Bool: GitConfigRepresentable {
+nonisolated extension Bool: GitConfigRepresentable {
     public init?(configValue: String) {
         switch configValue.lowercased() {
         case "true": self = true
@@ -29,12 +29,12 @@ extension Bool: GitConfigRepresentable {
 ///
 /// This enables `String` values to be represented in Git configuration,
 /// automatically escaping them with quotes.
-extension String: GitConfigRepresentable {
+nonisolated extension String: GitConfigRepresentable {
     public init?(configValue: String) {
         self = configValue
     }
 
     public var asConfigValue: String {
-        "\"\(self)\""
+        self
     }
 }

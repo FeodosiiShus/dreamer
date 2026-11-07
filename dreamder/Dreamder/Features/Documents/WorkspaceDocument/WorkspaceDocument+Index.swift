@@ -27,7 +27,7 @@ extension WorkspaceDocument.SearchState {
         let runIndexer = SearchIndexer.Memory.create()
         indexer = runIndexer
 
-        guard let url = workspace.fileURL, let runIndexer else {
+        guard let url = workspace?.fileURL, let runIndexer else {
             indexStatus = .done
             return
         }

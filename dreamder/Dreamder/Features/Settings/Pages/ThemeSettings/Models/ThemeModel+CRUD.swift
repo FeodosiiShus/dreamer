@@ -133,7 +133,7 @@ extension ThemeModel {
 
     func importTheme() {
         let openPanel = NSOpenPanel()
-        let allowedTypes = [UTType(filenameExtension: "cetheme")!]
+        let allowedTypes = [UTType(filenameExtension: "cetheme") ?? .data]
 
         openPanel.prompt = "Import"
         openPanel.allowedContentTypes = allowedTypes

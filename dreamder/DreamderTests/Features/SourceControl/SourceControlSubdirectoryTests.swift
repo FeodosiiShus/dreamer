@@ -30,6 +30,34 @@ struct SourceControlSubdirectoryTests {
     }
 
     @Test
+    func repositoryLocationFindsNestedPrefixesAndGitfilesWithoutGit() throws {
+        try withTempDir { dir in
+            let gitfile = dir.appending(path: ".git", directoryHint: .notDirectory)
+            try "gitdir: /elsewhere/.git/worktrees/one\n".write(to: gitfile, atomically: true, encoding: .utf8)
+            let nested = dir.appending(path: "packages/core/src", directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+
+            #expect(SourceControlManager.repositoryLocation(of: nested) == .init(prefix: "packages/core/src"))
+            #expect(SourceControlManager.repositoryLocation(of: dir) == .init(prefix: nil))
+        }
+    }
+
+    @Test
+    func repositoryLocationIsNilInsideTheGitDirectoryAndOutsideAnyRepository() throws {
+        try withTempDir { dir in
+            let hooks = dir.appending(path: ".git/hooks", directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: hooks, withIntermediateDirectories: true)
+            let plain = dir.appending(path: "plain", directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: plain, withIntermediateDirectories: true)
+
+            #expect(SourceControlManager.repositoryLocation(of: hooks) == nil)
+            #expect(SourceControlManager.repositoryLocation(of: dir.appending(path: ".git")) == nil)
+            #expect(SourceControlManager.repositoryLocation(of: plain) == .init(prefix: "plain"))
+            #expect(SourceControlManager.repositoryLocation(of: URL(filePath: "/")) == nil)
+        }
+    }
+
+    @Test
     func statusOnlyListsWorkspaceFilesWithCorrectPaths() async throws {
         try await withTempDir { dir in
             let (fixture, workspace) = try makeNestedWorkspace(dir)

@@ -36,7 +36,7 @@ final class KeybindingManager {
     private func loadKeybindings() {
 
         let bindingsURL = Bundle.main.url(forResource: "default_keybindings.json", withExtension: nil)
-        if let json = try? Data(contentsOf: bindingsURL!) {
+        if let bindingsURL, let json = try? Data(contentsOf: bindingsURL) {
             do {
                 let prefs = try JSONDecoder().decode([KeyboardShortcutWrapper].self, from: json)
                 for pref in prefs {
@@ -54,7 +54,7 @@ final class KeybindingManager {
     /// - Returns: KeyboardShortcutWrapper
     func named(with name: String) -> KeyboardShortcutWrapper {
         let foundElement = keyboardShortcuts[name]
-        return foundElement != nil ? foundElement! : fallbackShortcut
+        return foundElement ?? fallbackShortcut
     }
 
 }

@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import SwiftUI
 
+@MainActor
 final class MarkdownPreviewModel: ObservableObject {
     @Published private(set) var bodyHTML: String
 
@@ -10,7 +11,7 @@ final class MarkdownPreviewModel: ObservableObject {
     private let codeFile: CodeFileDocument
     private var cancellables: Set<AnyCancellable> = []
     private var renderGeneration = 0
-    private let renderQueue = DispatchQueue(label: "dev.dreamer.markdownPreview.render", qos: .userInitiated)
+    private var renderTask: Task<Void, Never>?
 
     init(codeFile: CodeFileDocument) {
         self.codeFile = codeFile
@@ -18,6 +19,10 @@ final class MarkdownPreviewModel: ObservableObject {
         self.bodyHTML = ""
         observeText()
         scheduleRender()
+    }
+
+    deinit {
+        renderTask?.cancel()
     }
 
     private func observeText() {
@@ -35,21 +40,23 @@ final class MarkdownPreviewModel: ObservableObject {
         renderGeneration += 1
         let generation = renderGeneration
         let text = codeFile.content?.string ?? ""
-        let model = self
-
-        renderQueue.async {
+        renderTask?.cancel()
+        renderTask = Task.detached(priority: .userInitiated) { [weak self] in
             let html = MarkdownHTMLRenderer.bodyHTML(from: text)
-            DispatchQueue.main.async {
-                guard generation == model.renderGeneration, html != model.bodyHTML else { return }
-                model.bodyHTML = html
-            }
+            guard !Task.isCancelled else { return }
+            await self?.apply(html, generation: generation)
         }
+    }
+
+    private func apply(_ html: String, generation: Int) {
+        guard generation == renderGeneration, html != bodyHTML else { return }
+        bodyHTML = html
     }
 }
 
 struct MarkdownEditorWithPreview: View {
     @ObservedObject private var editorInstance: EditorInstance
-    @ObservedObject private var codeFile: CodeFileDocument
+    private let codeFile: CodeFileDocument
     @ObservedObject private var layouts = MarkdownPreviewLayoutStore.shared
 
     @StateObject private var model: MarkdownPreviewModel
@@ -62,7 +69,7 @@ struct MarkdownEditorWithPreview: View {
 
     init(editorInstance: EditorInstance, codeFile: CodeFileDocument) {
         self._editorInstance = .init(wrappedValue: editorInstance)
-        self._codeFile = .init(wrappedValue: codeFile)
+        self.codeFile = codeFile
         self._model = .init(wrappedValue: MarkdownPreviewModel(codeFile: codeFile))
     }
 
@@ -95,20 +102,18 @@ struct MarkdownEditorWithPreview: View {
         }
     }
 
-    @ViewBuilder
     private func editorPane(availableWidth: CGFloat) -> some View {
-        if layout == .editorAndPreview {
-            CodeFileView(editorInstance: editorInstance, codeFile: codeFile)
-                .frame(
-                    width: max(0, (availableWidth - dividerWidth) * splitFraction),
-                    height: nil,
-                    alignment: .topLeading
-                )
-                .clipped()
-        } else {
-            CodeFileView(editorInstance: editorInstance, codeFile: codeFile)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
+        let splitWidth: CGFloat? = layout == .editorAndPreview
+            ? max(0, (availableWidth - dividerWidth) * splitFraction)
+            : nil
+        return CodeFileView(editorInstance: editorInstance, codeFile: codeFile)
+            .frame(
+                minWidth: splitWidth,
+                maxWidth: splitWidth ?? .infinity,
+                maxHeight: .infinity,
+                alignment: .topLeading
+            )
+            .clipped()
     }
 
     private func divider(availableWidth: CGFloat) -> some View {

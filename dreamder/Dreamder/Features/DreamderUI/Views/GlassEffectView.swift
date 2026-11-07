@@ -16,22 +16,15 @@ struct GlassEffectView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSView {
-#if compiler(>=6.2)
-        if #available(macOS 26, *) {
-            let view = NSGlassEffectView()
-            view.cornerRadius = 0
-            view.tintColor = tintColor
-            return view
-        }
-#endif
-        return NSView()
+        let view = NSGlassEffectView()
+        view.cornerRadius = 0
+        view.tintColor = tintColor
+        return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-#if compiler(>=6.2)
-        if #available(macOS 26, *), let view = nsView as? NSGlassEffectView {
+        if let view = nsView as? NSGlassEffectView {
             view.tintColor = tintColor
         }
-#endif
     }
 }

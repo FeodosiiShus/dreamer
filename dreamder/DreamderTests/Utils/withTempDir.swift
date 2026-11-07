@@ -7,52 +7,45 @@
 
 import Foundation
 import Testing
+import XCTest
 
 func withTempDir(_ test: (URL) async throws -> Void) async throws {
-    guard let currentTest = Test.current else {
-        #expect(Bool(false))
-        return
-    }
-    let tempDirURL = try createAndClearDir(file: currentTest.sourceLocation.fileID + currentTest.name + UUID().uuidString)
-    do {
-        try await test(tempDirURL)
-    } catch {
-        try clearDir(tempDirURL)
-        throw error
-    }
-    try clearDir(tempDirURL)
+    let tempDirURL = try makeTemporaryDirectory(label: currentSwiftTestingLabel())
+    defer { removeTemporaryDirectory(tempDirURL) }
+    try await test(tempDirURL)
 }
 
 func withTempDir(_ test: (URL) throws -> Void) throws {
-    guard let currentTest = Test.current else {
-        #expect(Bool(false))
-        return
-    }
-    let tempDirURL = try createAndClearDir(file: currentTest.sourceLocation.fileID + currentTest.name + UUID().uuidString)
-    do {
-        try test(tempDirURL)
-    } catch {
-        try clearDir(tempDirURL)
-        throw error
-    }
-    try clearDir(tempDirURL)
+    let tempDirURL = try makeTemporaryDirectory(label: currentSwiftTestingLabel())
+    defer { removeTemporaryDirectory(tempDirURL) }
+    try test(tempDirURL)
 }
 
-private func createAndClearDir(file: String) throws -> URL {
-    let file = file.components(separatedBy: CharacterSet(charactersIn: "/:?%*|\"<>")).joined()
+func makeTemporaryDirectory(label: String = "") throws -> URL {
+    let sanitizedLabel = String(
+        label.components(separatedBy: CharacterSet(charactersIn: "/:?%*|\"<>[]- ")).joined().prefix(80)
+    )
     let tempDirURL = FileManager.default.temporaryDirectory
-        .appending(path: "DreamderTestDirectory" + file, directoryHint: .isDirectory)
-
-    // If it exists, delete it before the test
-    try clearDir(tempDirURL)
-
+        .resolvingSymlinksInPath()
+        .appending(path: "DreamderTestDirectory" + sanitizedLabel + UUID().uuidString, directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: tempDirURL, withIntermediateDirectories: true)
-
     return tempDirURL
 }
 
-private func clearDir(_ url: URL) throws {
-    if FileManager.default.fileExists(atPath: url.absoluteURL.path(percentEncoded: false)) {
-        try FileManager.default.removeItem(at: url)
+func removeTemporaryDirectory(_ url: URL) {
+    guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { return }
+    try? FileManager.default.removeItem(at: url)
+}
+
+extension XCTestCase {
+    func makeTempDirectory() throws -> URL {
+        let url = try makeTemporaryDirectory(label: name)
+        addTeardownBlock { removeTemporaryDirectory(url) }
+        return url
     }
+}
+
+private func currentSwiftTestingLabel() -> String {
+    guard let currentTest = Test.current else { return "" }
+    return currentTest.sourceLocation.fileID + currentTest.name
 }
