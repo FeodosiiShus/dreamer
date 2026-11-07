@@ -24,6 +24,18 @@ struct ProcessSlotPoolTests {
         }
     }
 
+    private final class ArrivalOrder: Sendable {
+        private let state = Mutex<[Int]>([])
+
+        func record(_ index: Int) {
+            state.withLock { $0.append(index) }
+        }
+
+        var indexes: [Int] {
+            state.withLock { $0 }
+        }
+    }
+
     @Test
     func zeroLimitClampsToOne() {
         #expect(ProcessSlotPool(limit: 0).limit == 1)
@@ -63,13 +75,13 @@ struct ProcessSlotPoolTests {
     @Test
     func waitersAreServedInOrder() async throws {
         let pool = ProcessSlotPool(limit: 1)
-        let order = Mutex<[Int]>([])
+        let order = ArrivalOrder()
         try await pool.acquire()
         var waiters: [Task<Void, any Error>] = []
         for index in 1...3 {
             waiters.append(Task {
                 try await pool.acquire()
-                order.withLock { $0.append(index) }
+                order.record(index)
                 pool.release()
             })
             try await Task.sleep(for: .milliseconds(20))
@@ -79,7 +91,7 @@ struct ProcessSlotPoolTests {
         for waiter in waiters {
             try await waiter.value
         }
-        #expect(order.withLock { $0 } == [1, 2, 3])
+        #expect(order.indexes == [1, 2, 3])
         #expect(pool.availableSlots == 1)
     }
 
