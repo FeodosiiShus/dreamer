@@ -266,7 +266,7 @@ struct CommitToolWindowPartialCommitTests {
     }
 
     @Test
-    func refreshingDropsSelectionsForHunksThatChangedAndStateForFilesThatLeftTheList() async throws {
+    func refreshingKeepsTheExclusionOfAHunkWhoseContentChangedAndDropsStateForFilesThatLeftTheList() async throws {
         try await withTempDir { directory in
             let (fixture, manager) = try await makeRepo(directory)
             try fixture.write("a.txt", numbered(replacing: [2: "L2", 10: "L10", 19: "L19"]))
@@ -279,7 +279,7 @@ struct CommitToolWindowPartialCommitTests {
             try fixture.write("a.txt", numbered(replacing: [2: "edited", 10: "L10", 19: "L19"]))
             await model.refreshHunks(using: manager)
             #expect(model.hunks(for: changed).map(\.preview) == ["edited", "L10", "L19"])
-            #expect(model.excludedHunkIDs[changed.id]?.count == 1)
+            #expect(model.excludedHunkIDs[changed.id]?.count == 2)
             #expect(model.isPartiallyIncluded(changed))
 
             try fixture.write("a.txt", numbered())

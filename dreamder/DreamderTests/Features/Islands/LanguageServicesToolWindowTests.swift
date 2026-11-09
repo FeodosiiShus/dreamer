@@ -192,9 +192,10 @@ struct LanguageServicesModelTests {
 
     @Test
     func restartStopsTheOldServerAndRecordsAFailedStart() async throws {
-        let service = LSPService()
+        let fixture = LSPServiceFixture()
+        fixture.createFailure = LSPServiceFixtureFailure.creation
+        let service = fixture.makeService()
         let key = LSPService.ClientKey(.swift, "/lsm/restart")
-        service.languageConfigs[.swift] = LanguageServicesFixture.unreachableBinary()
         service.languageClients[key] = LanguageServicesFixture.makeClient(key)
         service.serverStates[key] = .running
         let model = LanguageServicesModel(lspService: service)
@@ -212,9 +213,10 @@ struct LanguageServicesModelTests {
 
     @Test
     func restartActionRestartsASingleServer() async throws {
-        let service = LSPService()
+        let fixture = LSPServiceFixture()
+        fixture.createFailure = LSPServiceFixtureFailure.creation
+        let service = fixture.makeService()
         let key = LSPService.ClientKey(.swift, "/lsm/restart-action")
-        service.languageConfigs[.swift] = LanguageServicesFixture.unreachableBinary()
         let model = LanguageServicesModel(lspService: service)
 
         model.restartAction(key)()
@@ -224,13 +226,12 @@ struct LanguageServicesModelTests {
 
     @Test
     func restartAllActionRestartsEveryServerOfTheWorkspaceOnly() async throws {
-        let service = LSPService()
+        let fixture = LSPServiceFixture()
+        fixture.createFailure = LSPServiceFixtureFailure.creation
+        let service = fixture.makeService()
         let first = LSPService.ClientKey(.swift, "/lsm/restart-all")
         let second = LSPService.ClientKey(.python, "/lsm/restart-all")
         let foreign = LSPService.ClientKey(.go, "/lsm/restart-all-foreign")
-        service.languageConfigs[.swift] = LanguageServicesFixture.unreachableBinary()
-        service.languageConfigs[.python] = LanguageServicesFixture.unreachableBinary()
-        service.languageConfigs[.go] = LanguageServicesFixture.unreachableBinary()
         service.serverStates[first] = .stopped
         service.serverStates[second] = .stopped
         service.serverStates[foreign] = .stopped

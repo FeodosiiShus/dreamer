@@ -72,50 +72,17 @@ extension SettingsData {
         /// Explicit decoder init for setting default values when key is not present in `JSON`
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.appAppearance = try container.decodeIfPresent(
-                Appearances.self,
-                forKey: .appAppearance
-            ) ?? .dark
-            self.dimEditorsWithoutFocus = try container.decodeIfPresent(
-                Bool.self,
-                forKey: .dimEditorsWithoutFocus
-            ) ?? false
-            self.fileExtensionsVisibility = try container.decodeIfPresent(
-                FileExtensionsVisibility.self,
-                forKey: .fileExtensionsVisibility
-            ) ?? .showAll
-            self.shownFileExtensions = try container.decodeIfPresent(
-                FileExtensions.self,
-                forKey: .shownFileExtensions
-            ) ?? .default
-            self.hiddenFileExtensions = try container.decodeIfPresent(
-                FileExtensions.self,
-                forKey: .hiddenFileExtensions
-            ) ?? .default
-            self.fileIconStyle = try container.decodeIfPresent(
-                FileIconStyle.self,
-                forKey: .fileIconStyle
-            ) ?? .color
-            self.reopenBehavior = try container.decodeIfPresent(
-                ReopenBehavior.self,
-                forKey: .reopenBehavior
-            ) ?? .welcome
-            self.reopenWindowAfterClose = try container.decodeIfPresent(
-                ReopenWindowBehavior.self,
-                forKey: .reopenWindowAfterClose
-            ) ?? .doNothing
-            self.findNavigatorDetail = try container.decodeIfPresent(
-                NavigatorDetail.self,
-                forKey: .findNavigatorDetail
-            ) ?? .upTo3
-            self.revealFileOnFocusChange = try container.decodeIfPresent(
-                Bool.self,
-                forKey: .revealFileOnFocusChange
-            ) ?? false
-            self.isAutoSaveOn = try container.decodeIfPresent(
-                Bool.self,
-                forKey: .isAutoSaveOn
-            ) ?? true
+            self.appAppearance = container.lenient(.appAppearance, default: .dark)
+            self.dimEditorsWithoutFocus = container.lenient(.dimEditorsWithoutFocus, default: false)
+            self.fileExtensionsVisibility = container.lenient(.fileExtensionsVisibility, default: .showAll)
+            self.shownFileExtensions = container.lenient(.shownFileExtensions, default: .default)
+            self.hiddenFileExtensions = container.lenient(.hiddenFileExtensions, default: .default)
+            self.fileIconStyle = container.lenient(.fileIconStyle, default: .color)
+            self.reopenBehavior = container.lenient(.reopenBehavior, default: .welcome)
+            self.reopenWindowAfterClose = container.lenient(.reopenWindowAfterClose, default: .doNothing)
+            self.findNavigatorDetail = container.lenient(.findNavigatorDetail, default: .upTo3)
+            self.revealFileOnFocusChange = container.lenient(.revealFileOnFocusChange, default: false)
+            self.isAutoSaveOn = container.lenient(.isAutoSaveOn, default: true)
         }
         // swiftlint:enable function_body_length
     }

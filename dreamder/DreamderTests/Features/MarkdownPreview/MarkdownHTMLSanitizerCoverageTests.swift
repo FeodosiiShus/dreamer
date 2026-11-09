@@ -68,8 +68,8 @@ struct MarkdownHTMLSanitizerCoverageTests {
     @Test
     func eventHandlersWithUnquotedAndSpacedValuesAreRemoved() {
         expectSanitized([
-            ("<div onclick=x() id=a>", "<div id=a>"),
-            ("<div onclick = 'x()' id=a>", "<div id=a>"),
+            ("<div onclick=x() id=a>", "<div id=\"user-content-a\">"),
+            ("<div onclick = 'x()' id=a>", "<div id=\"user-content-a\">"),
             ("<div ONCLICK=\"x\" class=\"c\">", "<div class=\"c\">")
         ])
     }
@@ -137,15 +137,15 @@ struct MarkdownHTMLSanitizerCoverageTests {
             (
                 "<div onclick=\"a()\" onmouseover=b() style=\"background:url(x)\" "
                     + "id=\"k\" class='c' data-x=1 title = \"t\">",
-                "<div id=\"k\" class='c' title = \"t\">"
+                "<div id=\"user-content-k\" class='c' title = \"t\">"
             ),
-            ("<DIV ID=\"k\" CLASS=\"c\">", "<DIV ID=\"k\" CLASS=\"c\">"),
+            ("<DIV ID=\"k\" CLASS=\"c\">", "<DIV id=\"user-content-k\" CLASS=\"c\">"),
             ("<details open>", "<details open>"),
             ("<p hidden>", "<p>"),
             ("<br/>", "<br/>"),
             ("<img src=\"a.png\" onerror=x />", "<img src=\"a.png\" />"),
             ("<p aria-label=\"x\" aria-hidden=true>", "<p aria-label=\"x\" aria-hidden=true>"),
-            ("<div\nid=\"a\"\n>", "<div\nid=\"a\"\n>"),
+            ("<div\nid=\"a\"\n>", "<div\nid=\"user-content-a\"\n>"),
             ("<a href=\"x\" src=\"y\" colspan=\"2\">t</a>", "<a href=\"x\">t</a>"),
             ("<td colspan=\"2\" nowrap>", "<td colspan=\"2\" nowrap>"),
             ("<div colspan=\"2\">", "<div>"),

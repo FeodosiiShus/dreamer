@@ -5,9 +5,10 @@ import Testing
 @Suite
 struct MarkdownHTMLSanitizerTests {
     @Test
-    func generatedElementsAndAttributesPassThroughUntouched() {
+    func allowedElementsPassThroughWhileIdentifiersAreNamespacedAndPositionsDropped() {
         let html = "<h1 id=\"title\" md-src-pos=\"0..7\"><del>a</del> <mark>b</mark></h1>"
-        #expect(MarkdownHTMLSanitizer.sanitize(html) == html)
+        let expected = "<h1 id=\"user-content-title\"><del>a</del> <mark>b</mark></h1>"
+        #expect(MarkdownHTMLSanitizer.sanitize(html) == expected)
     }
 
     @Test
@@ -17,25 +18,25 @@ struct MarkdownHTMLSanitizerTests {
     }
 
     @Test
-    func eventHandlersAreRemovedWhileIdentifiersAndPositionsStay() {
+    func eventHandlersAndPositionsAreRemovedWhileIdentifiersAreNamespaced() {
         let sanitized = MarkdownHTMLSanitizer.sanitize(
             "<h1 id=\"a\" onclick=\"x()\" md-src-pos=\"0..1\">t</h1>"
         )
-        #expect(sanitized == "<h1 id=\"a\" md-src-pos=\"0..1\">t</h1>")
+        #expect(sanitized == "<h1 id=\"user-content-a\">t</h1>")
     }
 
     @Test
-    func scriptElementsAreRemovedEvenNextToGeneratedMarkup() {
+    func scriptElementsAreRemovedAndPositionsOfInjectedMarkupAreDropped() {
         let sanitized = MarkdownHTMLSanitizer.sanitize(
             "<p md-src-pos=\"0..5\">a</p><script>alert(1)</script><mark>b</mark>"
         )
-        #expect(sanitized == "<p md-src-pos=\"0..5\">a</p><mark>b</mark>")
+        #expect(sanitized == "<p>a</p><mark>b</mark>")
     }
 
     @Test
-    func rendererOutputIsStableUnderSanitizing() {
-        let markdown = "# Head\n\n~~gone~~ ==marked== <https://x.y>\n\n- [x] done\n\n```swift\nlet a = 1\n```"
-        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+    func rendererOutputWithoutHeadingsIsStableUnderSanitizing() {
+        let markdown = "~~gone~~ ==marked== <https://x.y>\n\n- [x] done\n\n```swift\nlet a = 1\n```"
+        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown, includesSourcePositions: false)
         #expect(MarkdownHTMLSanitizer.sanitize(html) == html)
     }
 

@@ -9,7 +9,7 @@ private final class SleepGate: Sendable {
     func shouldReturnImmediately() -> Bool {
         calls.withLock { count in
             count += 1
-            return count == 1
+            return count <= 2
         }
     }
 }
@@ -17,8 +17,8 @@ private final class SleepGate: Sendable {
 @MainActor
 @Suite(.serialized, .uiGate)
 struct CEActiveTaskProcessTreeTests {
-    private static let ignoringTermCommand = """
-    trap '' TERM; echo ready-$((40+2)); i=0; while [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done
+    private static let ignoringHangUpAndTermCommand = """
+    trap '' HUP TERM; echo ready-$((40+2)); i=0; while [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done
     """
 
     private let fixture: TasksCoverageFixture
@@ -94,7 +94,8 @@ struct CEActiveTaskProcessTreeTests {
         await activeTask.terminateAndWait()
 
         #expect(!activeTask.isActive)
-        try await fixture.waitForOutput(output, containing: TasksCoverageFixture.terminateMarker)
+        #expect(activeTask.status == .notRunning)
+        try await fixture.waitForOutput(output, containing: "Signal Task cancelled.")
     }
 
     @Test
@@ -109,7 +110,7 @@ struct CEActiveTaskProcessTreeTests {
 
     @Test
     func terminateAndWaitEscalatesToSigkillWhenSigtermIsIgnored() async throws {
-        let activeTask = CEActiveTask(task: fixture.makeTask(command: Self.ignoringTermCommand))
+        let activeTask = CEActiveTask(task: fixture.makeTask(command: Self.ignoringHangUpAndTermCommand))
         let gate = SleepGate()
         activeTask.sleep = { _ in
             if gate.shouldReturnImmediately() { return }
@@ -128,7 +129,7 @@ struct CEActiveTaskProcessTreeTests {
 
     @Test
     func terminateAndWaitUsesTheRealClockToEscalateWhenSigtermIsIgnored() async throws {
-        let activeTask = CEActiveTask(task: fixture.makeTask(command: Self.ignoringTermCommand))
+        let activeTask = CEActiveTask(task: fixture.makeTask(command: Self.ignoringHangUpAndTermCommand))
         activeTask.terminationGrace = .milliseconds(100)
         activeTask.run(workspaceURL: nil, shell: .zsh)
         let output = try #require(activeTask.output)

@@ -13,11 +13,10 @@ extension SettingsData {
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.isVerticalSplit = try container.decodeIfPresent(Bool.self, forKey: .isVerticalSplit) ?? true
-            self.lastLayout = try container.decodeIfPresent(MarkdownPreviewLayout.self, forKey: .lastLayout)
-                ?? .editorAndPreview
-            self.isAutoScrollEnabled = try container.decodeIfPresent(Bool.self, forKey: .isAutoScrollEnabled) ?? true
-            self.fontSize = try container.decodeIfPresent(Int.self, forKey: .fontSize)
+            self.isVerticalSplit = container.lenient(.isVerticalSplit, default: true)
+            self.lastLayout = container.lenient(.lastLayout, default: .editorAndPreview)
+            self.isAutoScrollEnabled = container.lenient(.isAutoScrollEnabled, default: true)
+            self.fontSize = container.lenientOptional(.fontSize)
         }
 
         func resolvedFontSize(editorFontSize: Double) -> Int {

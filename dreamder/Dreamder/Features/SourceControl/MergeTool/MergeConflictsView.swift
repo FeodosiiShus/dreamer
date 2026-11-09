@@ -49,10 +49,10 @@ struct MergeConflictsView: View {
 
     private var emptyState: some View {
         VStack(spacing: 10) {
-            Image("general/greenCheckmark")
+            Image(model.emptyStateIcon)
                 .resizable()
                 .frame(width: 24, height: 24)
-            Text("All conflicts have been resolved")
+            Text(model.emptyStateMessage)
                 .font(Islands.uiFont)
                 .foregroundStyle(Islands.foreground)
         }

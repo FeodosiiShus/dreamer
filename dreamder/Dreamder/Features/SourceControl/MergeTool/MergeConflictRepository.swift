@@ -7,15 +7,22 @@ nonisolated enum MergeToolErrorText {
         }
         return error.localizedDescription
     }
+
+    static func describeStatusFailure(_ error: Error) -> String {
+        "Could not read the Git status: \(describe(error))"
+    }
 }
 
 struct MergeConflictRepository {
     enum StageContent: Equatable {
         case missing
         case binary
+        case notUTF8
         case text(String)
 
         var isBinary: Bool { self == .binary }
+
+        var isNotUTF8: Bool { self == .notUTF8 }
 
         var text: String {
             if case let .text(value) = self {
@@ -31,6 +38,8 @@ struct MergeConflictRepository {
         let theirs: StageContent
 
         var isBinary: Bool { base.isBinary || ours.isBinary || theirs.isBinary }
+
+        var isNotUTF8: Bool { base.isNotUTF8 || ours.isNotUTF8 || theirs.isNotUTF8 }
     }
 
     let gitClient: GitClient
@@ -46,8 +55,8 @@ struct MergeConflictRepository {
         self.init(gitClient: manager.gitClient, rootURL: manager.repositoryURL)
     }
 
-    func entries() async -> [MergeConflictEntry] {
-        guard let output = try? await gitClient.run("status --porcelain=v2 -z") else { return [] }
+    func entries() async throws -> [MergeConflictEntry] {
+        let output = try await gitClient.run("status --porcelain=v2 -z")
         return MergeConflictStatusParser.parse(output).sorted {
             $0.path.localizedStandardCompare($1.path) == .orderedAscending
         }
@@ -134,13 +143,16 @@ struct MergeConflictRepository {
 
     private func stageText(_ stage: Int, path: String) async -> StageContent {
         let object = ":\(stage):\(path)"
-        guard let output = try? await gitClient.run("show \(GitClient.logGraphQuote(object))") else {
+        guard let data = try? await gitClient.runData("show \(GitClient.logGraphQuote(object))") else {
             return .missing
         }
-        if output.contains("\u{0}") {
+        if data.contains(0) {
             return .binary
         }
-        return .text(output)
+        guard let text = String(validating: data, as: UTF8.self) else {
+            return .notUTF8
+        }
+        return .text(text)
     }
 
     private func describe(_ revision: String) async -> String? {

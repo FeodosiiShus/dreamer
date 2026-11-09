@@ -114,6 +114,15 @@ final class CodeFileDocument: NSDocument {
     private(set) var isEdited = false
 
     @ObservationIgnored private var autosaveTask: Task<Void, Never>?
+
+    @ObservationIgnored var reloadTask: Task<Void, Never>?
+
+    @ObservationIgnored var loadTask: Task<Void, Never>?
+
+    var isLoading = false
+
+    @ObservationIgnored var diskLoader: CodeFileDiskLoader.Loader = CodeFileDiskLoader.live
+
     private nonisolated static let autosaveDelay: Duration = .seconds(2)
 
     @ObservationIgnored var autosavingInPlace: @MainActor () -> Bool = { CodeFileDocument.autosavesInPlace }
@@ -122,6 +131,22 @@ final class CodeFileDocument: NSDocument {
 
     deinit {
         autosaveTask?.cancel()
+        reloadTask?.cancel()
+        loadTask?.cancel()
+    }
+
+    nonisolated override var fileURL: URL? {
+        get { super.fileURL }
+        set {
+            super.fileURL = newValue
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { resolveEditorConfig() }
+            } else {
+                Task { @MainActor in
+                    self.resolveEditorConfig()
+                }
+            }
+        }
     }
 
     // MARK: - NSDocument
@@ -181,23 +206,25 @@ final class CodeFileDocument: NSDocument {
     /// This function is used for decoding files.
     /// It should not throw error as unsupported files can still be opened by QLPreviewView.
     nonisolated override func read(from data: Data, ofType typeName: String) throws {
-        let load = CodeFileContentLoad.classify(data: data, fileTypeName: typeName)
-        let detectedIndent = load.state.isReadOnly ? nil : load.text.flatMap { IndentDetector.detect(in: $0) }
+        let loaded = CodeFileDiskLoader.classify(data: data, fileTypeName: typeName)
         MainActor.assumeIsolated {
-            apply(load, detectedIndent: detectedIndent)
+            apply(loaded)
         }
     }
 
-    private func apply(_ load: CodeFileContentLoad, detectedIndent: DetectedIndent?) {
+    func apply(_ loaded: CodeFileLoadedContent) {
+        let load = loaded.content
         sourceEncoding = load.encoding
         contentState = load.state
-        self.detectedIndent = detectedIndent
+        detectedIndent = loaded.detectedIndent
         modifiedLineTracker.reset()
         retainedModifiedLines = IndexSet()
-        editorConfig = fileURL.map { EditorConfigResolver().properties(for: $0) } ?? .empty
+        resolveEditorConfig()
+        if content != nil {
+            registeredUndoManager?.clearStack()
+        }
         if let text = load.text {
             if let content {
-                registerContentChangeUndo(fileURL: fileURL, nsString: text as NSString, content: content)
                 content.mutableString.setString(text)
             } else {
                 content = CodeTextStorage(string: text)
@@ -207,6 +234,10 @@ final class CodeFileDocument: NSDocument {
         }
         guard load.text != nil, !load.state.isReadOnly else { return }
         NotificationCenter.default.post(name: Self.didOpenNotification, object: self)
+    }
+
+    private func resolveEditorConfig() {
+        editorConfig = fileURL.map { EditorConfigResolver().properties(for: $0) } ?? .empty
     }
 
     // MARK: - Autosave
@@ -280,6 +311,11 @@ final class CodeFileDocument: NSDocument {
     override func close() {
         autosaveTask?.cancel()
         autosaveTask = nil
+        reloadTask?.cancel()
+        reloadTask = nil
+        loadTask?.cancel()
+        loadTask = nil
+        discardRegisteredUndoManager()
         super.close()
         NotificationCenter.default.post(name: Self.didCloseNotification, object: fileURL)
     }

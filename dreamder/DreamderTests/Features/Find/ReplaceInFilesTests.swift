@@ -32,11 +32,6 @@ struct ReplaceInFilesTests {
         return try #require((attributes[.posixPermissions] as? NSNumber)?.intValue)
     }
 
-    func inode(_ path: String, in dir: URL) throws -> UInt64 {
-        let attributes = try FileManager.default.attributesOfItem(atPath: dir.appending(path: path).path)
-        return try #require((attributes[.systemFileNumber] as? NSNumber)?.uint64Value)
-    }
-
     func setPermissions(_ mode: Int, _ path: String, in dir: URL) throws {
         try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: dir.appending(path: path).path)
     }
@@ -164,12 +159,11 @@ struct ReplaceInFilesTests {
     }
 
     @Test
-    func replaceAllRewritesFilesInPlaceKeepingPermissionsAndInode() async throws {
+    func replaceAllRewritesFilesKeepingPermissions() async throws {
         try await withTempDir { dir in
             try FindStateSupport.write("needle one\nneedle two\n", "a.txt", in: dir)
             try setPermissions(0o751, "a.txt", in: dir)
             let permissionsBefore = try permissions("a.txt", in: dir)
-            let inodeBefore = try inode("a.txt", in: dir)
             let (workspace, state) = try await FindStateSupport.replaceSession(
                 files: ["b.txt": "needle\n", "c.txt": "untouched\n"],
                 query: "needle",
@@ -187,7 +181,6 @@ struct ReplaceInFilesTests {
             #expect(try FindStateSupport.read("c.txt", in: dir) == "untouched\n")
             #expect(try permissions("a.txt", in: dir) == permissionsBefore)
             #expect(permissionsBefore == 0o751)
-            #expect(try inode("a.txt", in: dir) == inodeBefore)
             #expect(state.findNavigatorStatus == .replaced(updatedFiles: 2))
             #expect(state.searchResult.isEmpty)
             #expect(state.searchResultsCount == 0)

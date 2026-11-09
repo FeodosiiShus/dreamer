@@ -11,6 +11,7 @@ nonisolated enum MarkdownPreviewScripts {
       }
       var FOLLOW_TIME_MS = \#(followTimeMilliseconds);
       var ATTRIBUTE = "\#(positionAttribute)";
+      var USER_IDENTIFIER_PREFIX = "\#(MarkdownHTMLSanitizer.userIdentifierPrefix)";
       var targetOffset = 0;
       var hasTarget = false;
       var isFrameRequested = false;
@@ -151,7 +152,8 @@ nonisolated enum MarkdownPreviewScripts {
       }
 
       function scrollToAnchor(identifier) {
-        var element = document.getElementById(identifier);
+        var element = document.getElementById(identifier)
+          || document.getElementById(USER_IDENTIFIER_PREFIX + identifier);
         if (element) {
           element.scrollIntoView();
         }

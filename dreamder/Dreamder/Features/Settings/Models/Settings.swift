@@ -9,6 +9,7 @@ import Foundation
 import SwiftUI
 import Observation
 import Synchronization
+import os
 
 nonisolated enum AutosavePreference {
     static let isEnabled = Mutex(false)
@@ -32,19 +33,26 @@ final class Settings {
 
     static let saveDebounce: Duration = .seconds(2)
 
+    private static let logger = Logger(subsystem: "dev.dreamder.Dreamder", category: "Settings")
+
     private convenience init() {
         self.init(baseURL: Self.defaultBaseURL(), drivesAutosavePreference: true)
     }
 
-    init(baseURL: URL, drivesAutosavePreference: Bool = false, clock: any Clock<Duration> = ContinuousClock()) {
+    init(
+        baseURL: URL,
+        drivesAutosavePreference: Bool = false,
+        clock: any Clock<Duration> = ContinuousClock(),
+        fileManager: FileManager = .default
+    ) {
         self.baseURL = baseURL
         self.drivesAutosavePreference = drivesAutosavePreference
         self.clock = clock
+        self.filemanager = fileManager
         self.preferences = .init()
         self.preferences = loadSettings()
         self.savedPreferences = preferences
         applyAutosavePreference()
-
         self.storeTask = Task { [weak self] in
             for await _ in Observations({ [weak self] in self?.preferences }) {
                 guard !Task.isCancelled, let self else { return }
@@ -70,7 +78,7 @@ final class Settings {
     func flushPendingSave() {
         pendingSave?.cancel()
         pendingSave = nil
-        guard preferences != savedPreferences else { return }
+        guard !isSavingBlocked, preferences != savedPreferences else { return }
         try? savePreferences(preferences)
     }
 
@@ -107,12 +115,29 @@ final class Settings {
             return .init()
         }
 
-        guard let json = try? Data(contentsOf: settingsURL),
-              let prefs = try? JSONDecoder().decode(SettingsData.self, from: json)
-        else {
+        do {
+            let json = try Data(contentsOf: settingsURL)
+            return try JSONDecoder().decode(SettingsData.self, from: json)
+        } catch {
+            let path = settingsURL.path
+            let reason = error.localizedDescription
+            Self.logger.error("Cannot load \(path, privacy: .public): \(reason, privacy: .public)")
+            preserveUnreadableSettingsFile()
             return .init()
         }
-        return prefs
+    }
+
+    private func preserveUnreadableSettingsFile() {
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let preservedName = "\(settingsURL.lastPathComponent).invalid-\(timestamp)-\(UUID().uuidString)"
+        let path = settingsURL.path
+        do {
+            try filemanager.moveItem(at: settingsURL, to: baseURL.appending(path: preservedName))
+        } catch {
+            let reason = error.localizedDescription
+            Self.logger.error("Cannot preserve \(path, privacy: .public), saving off: \(reason, privacy: .public)")
+            isSavingBlocked = true
+        }
     }
 
     /// Save``Settings`` model to
@@ -125,8 +150,9 @@ final class Settings {
         savedPreferences = data
     }
 
-    /// Default instance of the `FileManager`
-    private let filemanager = FileManager.default
+    private let filemanager: FileManager
+
+    @ObservationIgnored private var isSavingBlocked = false
 
     /// The base URL of settings.
     ///

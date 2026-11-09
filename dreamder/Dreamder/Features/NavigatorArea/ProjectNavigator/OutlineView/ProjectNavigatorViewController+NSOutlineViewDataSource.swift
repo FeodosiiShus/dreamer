@@ -9,30 +9,10 @@ import AppKit
 
 extension ProjectNavigatorViewController: NSOutlineViewDataSource {
     func visibleChildren(of item: CEWorkspaceFile) -> [CEWorkspaceFile] {
+        guard let workspace, let children = workspace.workspaceFileManager?.childrenOfFile(item) else { return [] }
         let hidden = hiddenEntryNames
-        if let cachedChildren = filteredContentChildren[item] {
-            return sorted(cachedChildren.filter { !hidden.contains($0.name) }, in: item)
-        }
-
-        if let workspace, let children = workspace.workspaceFileManager?.childrenOfFile(item) {
-            let visibleChildren = children.filter { !hidden.contains($0.name) }
-            if !workspace.navigatorFilter.isEmpty || workspace.sourceControlFilter {
-                let filteredChildren = visibleChildren.filter {
-                    fileSearchMatches(
-                        workspace.navigatorFilter,
-                        for: $0,
-                        sourceControlFilter: workspace.sourceControlFilter
-                    )
-                }
-
-                filteredContentChildren[item] = filteredChildren
-                return sorted(filteredChildren, in: item)
-            }
-
-            return sorted(visibleChildren, in: item)
-        }
-
-        return []
+        let shown = children.filter { !hidden.contains($0.name) && isShownByFilter($0) }
+        return sorted(shown, in: item, foldersOnTop: workspace.sortFoldersOnTop)
     }
 
     func outlineChildren(of item: CEWorkspaceFile) -> [CEWorkspaceFile] {
@@ -43,9 +23,12 @@ extension ProjectNavigatorViewController: NSOutlineViewDataSource {
         return children
     }
 
-    private func sorted(_ items: [CEWorkspaceFile], in folder: CEWorkspaceFile) -> [CEWorkspaceFile] {
+    private func sorted(
+        _ items: [CEWorkspaceFile],
+        in folder: CEWorkspaceFile,
+        foldersOnTop: Bool
+    ) -> [CEWorkspaceFile] {
         let mode = sortModes.mode(for: folder.url)
-        let foldersOnTop = workspace?.sortFoldersOnTop ?? true
         return items.sorted {
             ProjectNavigatorSorter.areInIncreasingOrder($0, $1, mode: mode, foldersOnTop: foldersOnTop)
         }
@@ -128,39 +111,83 @@ extension ProjectNavigatorViewController: NSOutlineViewDataSource {
         guard let fileItemURLS = droppedURLs else { return false }
 
         guard let fileItemDestination = item as? CEWorkspaceFile else { return false }
+        guard let manager = workspace?.workspaceFileManager else { return false }
         let destParentURL = fileItemDestination.url
+        let copies = sourceOperationMask == .copy
 
         for fileItemURL in fileItemURLS {
             let destURL = destParentURL.appending(path: fileItemURL.lastPathComponent)
-            // cancel dropping file item on self or in parent directory
-            if fileItemURL == destURL || fileItemURL == destParentURL {
+            if Self.url(fileItemURL, isWithin: destURL) || Self.url(destParentURL, isWithin: fileItemURL) {
                 return false
             }
 
-            // Needs to come before call to .removeItem or else race condition occurs
-            let srcFileItem = workspace?.workspaceFileManager?.getFile(fileItemURL.path)
+            let srcFileItem = manager.getFile(fileItemURL.path)
                 ?? CEWorkspaceFile(url: URL(fileURLWithPath: fileItemURL.path))
 
-            if CEWorkspaceFile.fileManager.fileExists(atPath: destURL.path) {
+            if manager.fileManager.fileExists(atPath: destURL.path) {
                 let shouldReplace = confirmReplace?(fileItemURL.lastPathComponent)
                     ?? replaceFileDialog(fileName: fileItemURL.lastPathComponent)
                 guard shouldReplace else {
                     return false
                 }
-                do {
-                    try CEWorkspaceFile.fileManager.removeItem(at: destURL)
-                } catch {
-                    Self.logger.error("Failed to remove existing file: \(error.localizedDescription)")
+                let replacement = DropReplacement(
+                    file: srcFileItem,
+                    source: fileItemURL,
+                    destination: destURL,
+                    copying: copies
+                )
+                guard replaceItem(replacement, manager: manager) else {
                     return false
                 }
-            }
-            if sourceOperationMask == .copy {
+            } else if copies {
                 self.copyFile(file: srcFileItem, to: destURL)
             } else {
                 self.moveFile(file: srcFileItem, to: destURL)
             }
         }
         return true
+    }
+
+    struct DropReplacement {
+        let file: CEWorkspaceFile
+        let source: URL
+        let destination: URL
+        let copying: Bool
+    }
+
+    private func replaceItem(_ replacement: DropReplacement, manager: CEWorkspaceFileManager) -> Bool {
+        let backup: URL
+        do {
+            backup = try ProjectNavigatorItemReplacement.setAside(replacement.destination, using: fileOperations)
+        } catch {
+            Self.logger.error("Failed to set the existing item aside: \(error.localizedDescription)")
+            return false
+        }
+        if replacement.copying {
+            copyFile(file: replacement.file, to: replacement.destination)
+            finishReplacement(replacement, backup: backup, manager: manager)
+        } else {
+            Task.immediate { [self] in
+                await performMove(file: replacement.file, to: replacement.destination, manager: manager)
+                finishReplacement(replacement, backup: backup, manager: manager)
+            }
+        }
+        return true
+    }
+
+    private func finishReplacement(_ replacement: DropReplacement, backup: URL, manager: CEWorkspaceFileManager) {
+        let fileManager = manager.fileManager
+        let transferred = replacement.copying
+            ? fileManager.fileExists(atPath: replacement.destination.path)
+            : !fileManager.fileExists(atPath: replacement.source.path)
+        if transferred {
+            ProjectNavigatorItemReplacement.discard(backup, using: fileOperations)
+        } else {
+            ProjectNavigatorItemReplacement.restore(backup, to: replacement.destination, using: fileOperations)
+        }
+        if let error = refresh(directories: [replacement.destination.deletingLastPathComponent()], in: manager) {
+            showErrorAlert(error)
+        }
     }
 
     func replaceFileDialog(fileName: String) -> Bool {

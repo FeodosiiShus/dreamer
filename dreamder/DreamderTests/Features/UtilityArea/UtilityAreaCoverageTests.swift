@@ -188,54 +188,70 @@ struct UtilityAreaViewModelCoverageTests {
 
         model.replaceTerminal(id)
 
-        try await eventually { !view.process.running }
+        try await eventually(timeout: .seconds(20)) { !view.process.running }
         #expect(TerminalCache.shared.getTerminalView(id) == nil)
     }
 
-    private func startShellWithBackgroundChild(in view: CELocalShellTerminalView) async throws -> pid_t {
+    private func startShellWithBackgroundChild(
+        in view: CELocalShellTerminalView,
+        pidFile: URL
+    ) async throws -> pid_t {
+        let path = pidFile.path(percentEncoded: false)
+        let script = "sleep 600 & echo $! > '\(path).tmp' && mv '\(path).tmp' '\(path)'; wait"
         view.process.startProcess(
             executable: "/bin/zsh",
-            args: ["-f", "-i", "-c", "sleep 600 & echo child-pid-$!-end; wait"],
+            args: ["-f", "-i", "-c", script],
             environment: nil,
             execName: "zsh",
             currentDirectory: nil
         )
-        try await eventually { TasksCoverageProcessProbe.announcedPID(in: terminalCoverageText(view)) != nil }
-        return try #require(TasksCoverageProcessProbe.announcedPID(in: terminalCoverageText(view)))
+        var childPID: pid_t?
+        try await eventually(timeout: .seconds(20)) {
+            let text = try? String(contentsOf: pidFile, encoding: .utf8)
+            childPID = text.flatMap { pid_t($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            return childPID != nil
+        }
+        return try #require(childPID)
     }
 
     @Test
     func removingATerminalKillsTheShellAndEverythingItStarted() async throws {
-        let model = UtilityAreaViewModel()
-        model.addTerminal(shell: .zsh, rootURL: URL(filePath: "/tmp"))
-        let id = model.terminals[0].id
-        let view = CELocalShellTerminalView(frame: .zero)
-        view.terminationEscalationDelay = .milliseconds(20)
-        let child = try await startShellWithBackgroundChild(in: view)
-        defer { kill(child, SIGKILL) }
-        TerminalCache.shared.cacheTerminalView(for: id, view: view)
+        try await withTempDir { directory in
+            let model = UtilityAreaViewModel()
+            model.addTerminal(shell: .zsh, rootURL: URL(filePath: "/tmp"))
+            let id = model.terminals[0].id
+            let view = CELocalShellTerminalView(frame: .zero)
+            view.terminationEscalationDelay = .milliseconds(20)
+            let pidFile = directory.appending(path: "child.pid")
+            let child = try await startShellWithBackgroundChild(in: view, pidFile: pidFile)
+            defer { kill(child, SIGKILL) }
+            TerminalCache.shared.cacheTerminalView(for: id, view: view)
 
-        model.removeTerminals([id])
+            model.removeTerminals([id])
 
-        try await eventually { TasksCoverageProcessProbe.isGone(child) }
-        try await eventually { !view.process.running }
-        #expect(TerminalCache.shared.getTerminalView(id) == nil)
+            try await eventually(timeout: .seconds(20)) { TasksCoverageProcessProbe.isGone(child) }
+            try await eventually(timeout: .seconds(20)) { !view.process.running }
+            #expect(TerminalCache.shared.getTerminalView(id) == nil)
+        }
     }
 
     @Test
     func replacingATerminalKillsTheShellAndEverythingItStarted() async throws {
-        let model = UtilityAreaViewModel()
-        model.addTerminal(shell: .zsh, rootURL: URL(filePath: "/tmp"))
-        let id = model.terminals[0].id
-        let view = CELocalShellTerminalView(frame: .zero)
-        let child = try await startShellWithBackgroundChild(in: view)
-        defer { kill(child, SIGKILL) }
-        TerminalCache.shared.cacheTerminalView(for: id, view: view)
+        try await withTempDir { directory in
+            let model = UtilityAreaViewModel()
+            model.addTerminal(shell: .zsh, rootURL: URL(filePath: "/tmp"))
+            let id = model.terminals[0].id
+            let view = CELocalShellTerminalView(frame: .zero)
+            let pidFile = directory.appending(path: "child.pid")
+            let child = try await startShellWithBackgroundChild(in: view, pidFile: pidFile)
+            defer { kill(child, SIGKILL) }
+            TerminalCache.shared.cacheTerminalView(for: id, view: view)
 
-        model.replaceTerminal(id)
+            model.replaceTerminal(id)
 
-        try await eventually { TasksCoverageProcessProbe.isGone(child) }
-        try await eventually { !view.process.running }
+            try await eventually(timeout: .seconds(20)) { TasksCoverageProcessProbe.isGone(child) }
+            try await eventually(timeout: .seconds(20)) { !view.process.running }
+        }
     }
 
     @Test

@@ -220,6 +220,7 @@ final class WorkspaceDocument: NSDocument, NSToolbarDelegate {
         tearDownFileScope()
         workspaceSettingsManager?.cleanUp()
         workspaceSettingsManager = nil
+        taskManager?.terminateAllTasks()
         taskManager = nil
     }
 

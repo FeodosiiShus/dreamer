@@ -7,9 +7,11 @@ struct RenameBackend {
     var rename: @MainActor (_ documentURI: String, _ position: Position, _ newName: String) async throws
         -> RenameResponse
     var apply: @MainActor (_ edit: WorkspaceEdit) async -> ApplyWorkspaceEditResult
+    var documentText: @MainActor () -> String?
 
     static func make<Document: LanguageServerDocument>(
         client: LanguageServer<Document>,
+        documentText: @escaping @MainActor () -> String?,
         apply: @escaping @MainActor (_ edit: WorkspaceEdit) async -> ApplyWorkspaceEditResult
     ) -> RenameBackend {
         RenameBackend(
@@ -20,7 +22,8 @@ struct RenameBackend {
             rename: { documentURI, position, newName in
                 try await client.requestRename(for: documentURI, position: position, newName: newName)
             },
-            apply: apply
+            apply: apply,
+            documentText: documentText
         )
     }
 }
@@ -41,6 +44,10 @@ enum RenameFlow {
         do {
             guard let edit = try await backend.rename(request.documentURI, request.position, newName) else {
                 presenter.showMessage(RenameMessages.nothingToRename)
+                return
+            }
+            guard backend.documentText() == request.documentText else {
+                presenter.showMessage(RenameMessages.failure(reason: RenameMessages.documentChanged))
                 return
             }
             let result = await backend.apply(edit)

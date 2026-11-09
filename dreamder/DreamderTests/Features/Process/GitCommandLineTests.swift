@@ -125,8 +125,8 @@ struct GitCommandLineTests {
         "/Users/test/`tick`",
         "/Users/test/ünï"
     ])
-    func escapedDirectoryRoundTrips(path: String) throws {
-        #expect(try GitCommandLine.tokenize(path.escapedDirectory()) == [path])
+    func shellQuotedRoundTrips(path: String) throws {
+        #expect(try GitCommandLine.tokenize(path.shellQuoted()) == [path])
     }
 
     @Test

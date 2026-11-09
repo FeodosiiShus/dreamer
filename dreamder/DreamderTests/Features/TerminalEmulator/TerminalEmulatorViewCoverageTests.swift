@@ -376,11 +376,11 @@ struct TerminalEmulatorViewCoverageTests {
             mode: .shell(shellType: .zsh)
         ) { _ in }
 
-        coordinator.processTerminated(source: view, exitCode: nil)
+        coordinator.processTerminated(source: view, exit: nil)
         #expect(TerminalCache.shared.getTerminalView(id) === view)
         #expect(terminalCoverageText(view).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
-        coordinator.processTerminated(source: view, exitCode: 5)
+        coordinator.processTerminated(source: view, exit: .exited(code: 5))
         let text = terminalCoverageText(view)
         #expect(text.contains("Exit code: 5"))
         #expect(text.contains("To open a new session, create a new terminal tab."))
@@ -399,7 +399,7 @@ struct TerminalEmulatorViewCoverageTests {
             mode: .task(activeTask: activeTask)
         ) { _ in }
 
-        coordinator.processTerminated(source: view, exitCode: 0)
+        coordinator.processTerminated(source: view, exit: .exited(code: 0))
 
         #expect(TerminalCache.shared.getTerminalView(task.id) === view)
         #expect(terminalCoverageText(view).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

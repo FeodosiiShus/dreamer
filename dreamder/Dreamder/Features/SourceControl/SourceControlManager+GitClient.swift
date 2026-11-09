@@ -122,15 +122,26 @@ extension SourceControlManager {
         do {
             let status = try await gitClient.getStatus()
 
+            changedFilesFailure = nil
             setChangedFiles(
                 status.unmergedChanges.map(Self.surfacedConflict) + status.changedFiles + status.untrackedFiles
             )
             await refreshStatusInFileManager()
         } catch GitClient.GitClientError.notGitRepository {
+            changedFilesFailure = nil
             setChangedFiles([])
         } catch {
             logger.error("Error fetching git status: \(error)")
-            setChangedFiles([])
+            await reportStatusFailure(error)
+        }
+    }
+
+    private func reportStatusFailure(_ error: Error) async {
+        let message = MergeToolErrorText.describe(error)
+        let isNewFailure = changedFilesFailure != message
+        changedFilesFailure = message
+        if isNewFailure {
+            await showAlertForError(title: "Error reading Git status", error: error)
         }
     }
 

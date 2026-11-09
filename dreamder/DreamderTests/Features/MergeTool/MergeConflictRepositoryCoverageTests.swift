@@ -110,7 +110,9 @@ struct MergeConflictRepositoryCoverageTests {
         try await withTempDir { dir in
             let repo = repository(dir)
 
-            #expect(await repo.entries().isEmpty)
+            await #expect(throws: GitClient.GitClientError.notGitRepository) {
+                try await repo.entries()
+            }
             let context = await repo.context()
             #expect(context.operation == .unknown)
             #expect(context.yoursLabel == "HEAD")
@@ -219,7 +221,7 @@ struct MergeConflictRepositoryCoverageTests {
             #expect(context.operation == .stash(branch: "main"))
             #expect(context.summary == "Conflicts during unstashing")
             #expect(context.swapsSides == false)
-            #expect(await repo.entries().map(\.path) == ["f.txt"])
+            #expect(try await repo.entries().map(\.path) == ["f.txt"])
         }
     }
 
@@ -229,7 +231,7 @@ struct MergeConflictRepositoryCoverageTests {
             let fixture = try await GitMergeFixture.mergeConflict(in: dir)
             let repo = repository(dir)
             let context = await repo.context()
-            let entry = try #require(await repo.entries().first)
+            let entry = try #require(try await repo.entries().first)
             try fixture.write(".git/index.lock", "")
 
             let failure = await capturedError {
@@ -248,7 +250,7 @@ struct MergeConflictRepositoryCoverageTests {
             let fixture = try await GitMergeFixture.deleteModifyConflict(in: dir)
             let repo = repository(dir)
             let context = await repo.context()
-            let entry = try #require(await repo.entries().first)
+            let entry = try #require(try await repo.entries().first)
             try fixture.write(".git/index.lock", "")
 
             let failure = await capturedError {

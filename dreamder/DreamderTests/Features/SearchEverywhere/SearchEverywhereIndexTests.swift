@@ -323,7 +323,7 @@ struct SearchEverywhereSymbolScannerTests {
 @Suite("SearchEverywhereSymbolIndex", .uiGate)
 struct SearchEverywhereSymbolIndexTests {
     private func names(_ index: SearchEverywhereSymbolIndex) -> Set<String> {
-        Set(index.symbols.map(\.name))
+        Set(index.store.symbolsByFile.values.flatMap { $0.map(\.name) })
     }
 
     @Test
@@ -332,7 +332,7 @@ struct SearchEverywhereSymbolIndexTests {
             try touch(root, "A.swift", "struct Alpha {}")
             let scope = WorkspaceFileScope(rootURL: root)
             let index = SearchEverywhereSymbolIndex(scope: scope)
-            #expect(index.symbols.isEmpty)
+            #expect(index.store.symbolsByFile.isEmpty)
             #expect(!index.isBuilding)
 
             index.ensureIndexed()

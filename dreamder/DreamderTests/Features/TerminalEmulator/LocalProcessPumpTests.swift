@@ -6,9 +6,15 @@ import Testing
 
 nonisolated private final class PumpWakeCounter: Sendable {
     private let count = Mutex(0)
+    private let consumerAlive: Bool
 
-    func increment() {
+    init(consumerAlive: Bool = true) {
+        self.consumerAlive = consumerAlive
+    }
+
+    func wake() -> Bool {
         count.withLock { $0 += 1 }
+        return consumerAlive
     }
 
     var value: Int {
@@ -22,7 +28,7 @@ nonisolated private func makePump(
 ) -> LocalProcessPump {
     LocalProcessPump(
         windowSize: { winsize(ws_row: rows, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0) },
-        wake: { counter.increment() }
+        wake: { counter.wake() }
     )
 }
 
@@ -107,24 +113,25 @@ struct LocalProcessPumpTests {
         view.processDelegate = delegate
 
         view.processPump.dataReceived(slice: Array("from-the-pump".utf8)[...])
-        view.processPump.processTerminated(view.process, exitCode: 3)
+        view.processPump.processTerminated(view.process, exitCode: 3 << 8)
         view.drainProcessEvents()
 
         #expect(terminalCoverageText(view).contains("from-the-pump"))
-        #expect(delegate.exitCodes == [3])
+        #expect(delegate.exits == [.exited(code: 3)])
         #expect(view.processPump.takeEvents().isEmpty)
     }
 
     @Test
-    func aPumpOutlivingItsViewReportsAnEmptyWindowAndStillBuffersOutput() async throws {
+    func aPumpOutlivingItsViewReportsAnEmptyWindowAndDropsOutput() async throws {
         let (pump, box) = pumpOutlivingItsView()
-        try await eventually { box.view == nil }
+        try await eventually(timeout: .seconds(20)) { box.view == nil }
 
         let size = pump.getWindowSize()
         pump.dataReceived(slice: [7, 8][...])
 
         #expect(size.ws_row == 0)
         #expect(size.ws_col == 0)
-        #expect(pump.takeEvents() == [.data([7, 8])])
+        #expect(pump.takeEvents().isEmpty)
+        #expect(pump.pendingByteCount == 0)
     }
 }

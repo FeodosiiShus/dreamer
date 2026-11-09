@@ -26,46 +26,106 @@ extension CodeFileDocument {
         contentState.notice
     }
 
-    /// If this file is already open and being tracked by an undo manager, we register an undo mutation
-    /// of the entire contents. This allows the user to undo changes that occurred outside of Dreamder
-    /// while the file was displayed in Dreamder.
-    ///
-    /// - Note: This is inefficient memory-wise. We could do a diff of the file and only register the
-    ///         mutations that would recreate the diff. However, that would instead be CPU intensive.
-    ///         Tradeoffs.
-    func registerContentChangeUndo(fileURL: URL?, nsString: NSString, content: NSTextStorage) {
+    var registeredUndoManager: CEUndoManager? {
+        fileURL.flatMap { findWorkspace()?.undoRegistration.managerIfExists(forFile: $0) }
+    }
+
+    func discardRegisteredUndoManager() {
         guard let fileURL else { return }
-        // If there's an undo manager, register a mutation replacing the entire contents.
-        let mutation = TextMutation(
-            string: nsString as String,
-            range: NSRange(location: 0, length: content.length),
-            limit: content.length
-        )
-        let undoManager = self.findWorkspace()?.undoRegistration.managerIfExists(forFile: fileURL)
-        undoManager?.registerMutation(mutation)
+        findWorkspace()?.undoRegistration.removeManager(forFile: fileURL)
+    }
+
+    static func open(
+        contentsOf url: URL,
+        ofType typeName: String,
+        loader: CodeFileDiskLoader.Loader = CodeFileDiskLoader.live
+    ) async throws -> CodeFileDocument {
+        let modifiedAt = Self.modificationDate(at: url)
+        let loaded = try await loader(url, typeName)
+        let document = CodeFileDocument()
+        document.fileType = typeName
+        document.fileURL = url
+        document.fileModificationDate = modifiedAt
+        document.apply(loaded)
+        return document
+    }
+
+    static func loading(
+        contentsOf url: URL,
+        ofType typeName: String,
+        loader: @escaping CodeFileDiskLoader.Loader,
+        onFailure: @escaping @MainActor (any Error) -> Void
+    ) -> CodeFileDocument {
+        let document = CodeFileDocument()
+        document.fileType = typeName
+        document.fileURL = url
+        document.beginLoading(from: url, ofType: typeName, loader: loader, onFailure: onFailure)
+        return document
+    }
+
+    private func beginLoading(
+        from url: URL,
+        ofType typeName: String,
+        loader: @escaping CodeFileDiskLoader.Loader,
+        onFailure: @escaping @MainActor (any Error) -> Void
+    ) {
+        isLoading = true
+        let modifiedAt = Self.modificationDate(at: url)
+        loadTask = Task { @MainActor [weak self] in
+            let outcome: Result<CodeFileLoadedContent, any Error>
+            do {
+                outcome = .success(try await loader(url, typeName))
+            } catch {
+                outcome = .failure(error)
+            }
+            guard !Task.isCancelled, let self else { return }
+            loadTask = nil
+            switch outcome {
+            case .success(let loaded):
+                finishLoading(loaded, from: url, modifiedAt: modifiedAt)
+            case .failure(let error):
+                Self.logger.error("Error opening file: \(error)")
+                isLoading = false
+                onFailure(error)
+                close()
+            }
+        }
+    }
+
+    private func finishLoading(_ loaded: CodeFileLoadedContent, from url: URL, modifiedAt: Date?) {
+        fileModificationDate = modifiedAt
+        apply(loaded)
+        isLoading = false
+        if Self.modificationDate(at: url) != modifiedAt {
+            handlePresentedItemChange()
+        }
     }
 
     func handlePresentedItemChange() {
-        guard !reloadFromDiskIfUnedited() else { return }
-        super.presentedItemDidChange()
-    }
-
-    private func reloadFromDiskIfUnedited() -> Bool {
-        guard fileModificationDate != getModificationDate(), !isDocumentEdited else { return false }
-        fileModificationDate = getModificationDate()
-        if let fileURL, let fileType {
-            try? read(from: fileURL, ofType: fileType)
+        guard !isLoading else { return }
+        guard let fileURL, let fileType,
+              case let modifiedAt = Self.modificationDate(at: fileURL),
+              fileModificationDate != modifiedAt, !isDocumentEdited else {
+            super.presentedItemDidChange()
+            return
         }
-        return true
+        reloadTask?.cancel()
+        let loader = diskLoader
+        reloadTask = Task { @MainActor [weak self] in
+            guard let loaded = try? await loader(fileURL, fileType) else { return }
+            guard !Task.isCancelled, let self, !isDocumentEdited else { return }
+            reloadTask = nil
+            fileModificationDate = modifiedAt
+            apply(loaded)
+        }
     }
 
     /// Helper to find the last modified date of the represented file item.
     /// 
     /// Different from `NSDocument.fileModificationDate`. This returns the *current* modification date, whereas the
     /// alternative stores the date that existed when we last read the file.
-    private func getModificationDate() -> Date? {
-        guard let path = fileURL?.absolutePath else { return nil }
-        return try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date
+    private static func modificationDate(at url: URL) -> Date? {
+        try? FileManager.default.attributesOfItem(atPath: url.absolutePath)[.modificationDate] as? Date
     }
 
     /// Determines the code language of the document.

@@ -29,7 +29,10 @@ final class ProjectNavigatorViewController: NSViewController {
         return [root]
     }
 
-    var filteredContentChildren: [CEWorkspaceFile: [CEWorkspaceFile]] = [:]
+    var filterMatches: ProjectNavigatorFilterMatches = .inactive
+    var filterTask: Task<Void, Never>?
+    var filterResolutionExpands = false
+    var fileOperations = ProjectNavigatorFileOperations.live
     var expandedItems: Set<CEWorkspaceFile> = []
 
     weak var workspace: WorkspaceDocument?
@@ -96,6 +99,10 @@ final class ProjectNavigatorViewController: NSViewController {
         names.insert(".git")
         return names
     }()
+
+    static func expandedItemsDefaultsKey(forProjectPath path: String) -> String {
+        "NSOutlineView Items \(path)"
+    }
 
     /// Setup the ``scrollView`` and ``outlineView``
     override func loadView() {
@@ -176,6 +183,7 @@ final class ProjectNavigatorViewController: NSViewController {
     }
 
     isolated deinit {
+        filterTask?.cancel()
         outlineView.removeFromSuperview()
         scrollView.removeFromSuperview()
         noResultsLabel.removeFromSuperview()
@@ -274,71 +282,8 @@ final class ProjectNavigatorViewController: NSViewController {
         }
     }
 
-    func handleFilterChange() {
-        filteredContentChildren.removeAll()
-        outlineView.reloadData()
-
-        guard let workspace else { return }
-
-        /// If the filter is empty, show all items and restore the expanded state.
-        if workspace.sourceControlFilter || !filterIsEmpty {
-            outlineView.autosaveExpandedItems = false
-            /// Expand all items for search.
-            content.forEach(expandIncludedFolders)
-        } else {
-            restoreExpandedState()
-            outlineView.autosaveExpandedItems = true
-        }
-
-        let rootChildren = content.first(where: { $0.isRoot }).flatMap { filteredContentChildren[$0] }
-        let hasNoResults = rootChildren?.isEmpty == true
-        noResultsLabel.isHidden = !hasNoResults
-        if hasNoResults {
-            outlineView.hideRows(at: IndexSet(integer: 0))
-        }
-    }
-
-    /// Checks if the given filter matches the name of the item or any of its children.
-    func fileSearchMatches(_ filter: String, for item: CEWorkspaceFile, sourceControlFilter: Bool) -> Bool {
-        guard !hiddenEntryNames.contains(item.name) else { return false }
-        guard !filterIsEmpty || sourceControlFilter else {
-            return true
-        }
-
-        if sourceControlFilter {
-            if item.gitStatus != nil && item.gitStatus != GitStatus.none &&
-                (filterIsEmpty || item.name.localizedCaseInsensitiveContains(filter)) {
-                saveAllContentChildren(for: item)
-                return true
-            }
-        } else if item.name.localizedCaseInsensitiveContains(filter) {
-            saveAllContentChildren(for: item)
-            return true
-        }
-
-        if let children = workspace?.workspaceFileManager?.childrenOfFile(item) {
-            return children.contains { fileSearchMatches(filter, for: $0, sourceControlFilter: sourceControlFilter) }
-        }
-
-        return false
-    }
-
-    /// Saves all children of a given folder item to the filtered content cache.
-    /// This is specially useful when the name of a folder matches the search.
-    /// Just like in Xcode, this shows all the content of the folder.
-    private func saveAllContentChildren(for item: CEWorkspaceFile) {
-        guard item.isFolder, filteredContentChildren[item] == nil else { return }
-
-        if let children = workspace?.workspaceFileManager?.childrenOfFile(item) {
-            filteredContentChildren[item] = children
-            for child in children.filter({ $0.isFolder }) {
-                saveAllContentChildren(for: child)
-            }
-        }
-    }
-
     /// Restores the expanded state of items when finish searching.
-    private func restoreExpandedState() {
+    func restoreExpandedState() {
         let copy = expandedItems
         collapse(outlineView.item(atRow: 0), collapseChildren: true)
 

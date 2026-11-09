@@ -9,7 +9,11 @@ nonisolated struct PartialCommitHunk: Identifiable, Hashable, Sendable {
     let preview: String
 
     var id: String {
-        "\(oldStart),\(oldCount),\(newCount)#\(String(contentHash, radix: 16))"
+        "\(oldStart),\(oldCount)"
+    }
+
+    func sharesOldSide(with other: PartialCommitHunk) -> Bool {
+        oldAnchor <= other.oldAnchor + other.oldCount && other.oldAnchor <= oldAnchor + oldCount
     }
 
     var oldAnchor: Int {

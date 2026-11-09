@@ -3,6 +3,7 @@ import Foundation
 nonisolated struct RelocatedFileEvents: Sendable {
     let events: [DirectoryEventStream.Event]
     let treeParents: Set<String>
+    let rescanRoots: Set<String>
     let modifiedFiles: Set<String>
 
     init(_ rawEvents: [DirectoryEventStream.Event], folderPath: String, policy: WatchExclusionPolicy) {
@@ -10,6 +11,7 @@ nonisolated struct RelocatedFileEvents: Sendable {
         var excludedDirectories: [String: Bool] = [:]
         var kept: [DirectoryEventStream.Event] = []
         var parents: Set<String> = []
+        var rescans: Set<String> = []
         var modified: Set<String> = []
         kept.reserveCapacity(rawEvents.count)
 
@@ -33,12 +35,16 @@ nonisolated struct RelocatedFileEvents: Sendable {
             if Self.changesTree(event.eventType) {
                 parents.insert(parent)
             }
+            if event.eventType == .mustRescan {
+                rescans.insert(path)
+            }
             if event.eventType == .itemModified, !path.contains("/.git/") {
                 modified.insert(path)
             }
         }
         events = kept
         treeParents = parents
+        rescanRoots = rescans
         modifiedFiles = modified.filter { path in
             (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
         }
@@ -48,7 +54,7 @@ nonisolated struct RelocatedFileEvents: Sendable {
         switch eventType {
         case .itemCreated, .itemCloned, .itemRemoved, .itemRenamed:
             true
-        case .changeInDirectory, .itemChangedOwner, .itemModified, .rootChanged:
+        case .changeInDirectory, .itemChangedOwner, .itemModified, .mustRescan:
             false
         }
     }

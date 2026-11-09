@@ -9,7 +9,7 @@ final class TerminalCoverageDelegate: CELocalShellTerminalViewDelegate {
     var sizes: [[Int]] = []
     var titles: [String] = []
     var directories: [String?] = []
-    var exitCodes: [Int32?] = []
+    var exits: [ProcessExit?] = []
 
     func sizeChanged(source: CETerminalView, newCols: Int, newRows: Int) {
         sizes.append([newCols, newRows])
@@ -23,8 +23,8 @@ final class TerminalCoverageDelegate: CELocalShellTerminalViewDelegate {
         directories.append(directory)
     }
 
-    func processTerminated(source: TerminalView, exitCode: Int32?) {
-        exitCodes.append(exitCode)
+    func processTerminated(source: TerminalView, exit: ProcessExit?) {
+        exits.append(exit)
     }
 }
 
@@ -129,12 +129,13 @@ struct TerminalViewCoverageTests {
         view.setTerminalTitle(source: view, title: "build output")
         view.hostCurrentDirectoryUpdate(source: view, directory: "file:///tmp/project")
         view.hostCurrentDirectoryUpdate(source: view, directory: nil)
-        view.processTerminated(view.process, exitCode: 4)
+        view.processTerminated(view.process, exitCode: 4 << 8)
+        view.processTerminated(view.process, exitCode: 9)
         view.processTerminated(view.process, exitCode: nil)
 
         #expect(delegate.titles == ["build output"])
         #expect(delegate.directories == ["file:///tmp/project", nil])
-        #expect(delegate.exitCodes == [4, nil])
+        #expect(delegate.exits == [.exited(code: 4), .signaled(signal: 9), nil])
     }
 
     @Test
@@ -190,71 +191,6 @@ struct TerminalViewCoverageTests {
 
         #expect(CEActiveTaskTerminalView(coder: unarchiver) == nil)
         unarchiver.finishDecoding()
-    }
-
-    @Test
-    func explicitShellTypesWinOverTheSettings() {
-        let view = terminalCoverageView()
-
-        let bash = view.getShell(.bash, userSetting: .zsh)
-        let zsh = view.getShell(.zsh, userSetting: .bash)
-
-        #expect(bash?.0 == .bash)
-        #expect(bash?.1 == "/bin/bash")
-        #expect(zsh?.0 == .zsh)
-        #expect(zsh?.1 == "/bin/zsh")
-    }
-
-    @Test
-    func shellSettingsPickTheMatchingShell() {
-        let view = terminalCoverageView()
-
-        let bash = view.getShell(nil, userSetting: .bash)
-        let zsh = view.getShell(nil, userSetting: .zsh)
-
-        #expect(bash?.0 == .bash)
-        #expect(bash?.1 == "/bin/bash")
-        #expect(zsh?.0 == .zsh)
-        #expect(zsh?.1 == "/bin/zsh")
-    }
-
-    @Test
-    func systemShellSettingUsesTheDetectedShellWhenSupported() {
-        let view = terminalCoverageView()
-
-        view.systemShell = { "/opt/homebrew/bin/bash" }
-        let bash = view.getShell(nil, userSetting: .system)
-        view.systemShell = { "/bin/zsh" }
-        let zsh = view.getShell(nil, userSetting: .system)
-        view.systemShell = { "/opt/homebrew/bin/fish" }
-        let fish = view.getShell(nil, userSetting: .system)
-
-        #expect(bash?.0 == .bash)
-        #expect(bash?.1 == "/opt/homebrew/bin/bash")
-        #expect(zsh?.0 == .zsh)
-        #expect(fish == nil)
-    }
-
-    @Test
-    func systemShellDefaultsToTheUsersLoginShell() {
-        let view = terminalCoverageView()
-
-        #expect(view.systemShell() == Shell.autoDetectDefaultShell())
-    }
-
-    @Test
-    func startingWithAnUnsupportedSystemShellDoesNothing() async throws {
-        await withTerminalCoverageSettings({ $0.shell = .system }) {
-            let view = terminalCoverageView()
-            let delegate = TerminalCoverageDelegate()
-            view.processDelegate = delegate
-            view.systemShell = { "/opt/homebrew/bin/fish" }
-
-            view.startProcess(workspaceURL: nil)
-
-            #expect(!view.process.running)
-            #expect(delegate.titles.isEmpty)
-        }
     }
 
     @Test(arguments: [Shell.zsh, Shell.bash])
@@ -314,10 +250,9 @@ struct TerminalViewCoverageTests {
                 try await eventually { terminalCoverageText(view).contains("cwd-cwd-check-21") }
 
                 view.send(source: view, data: Array("exit 3\n".utf8)[...])
-                try await eventually { !delegate.exitCodes.isEmpty }
-                let exitCode = try #require(delegate.exitCodes.first ?? nil)
-                #expect(exitCode != 0)
-                try await eventually { !view.process.running }
+                try await eventually(timeout: .seconds(20)) { !delegate.exits.isEmpty }
+                #expect(delegate.exits == [.exited(code: 3)])
+                try await eventually(timeout: .seconds(20)) { !view.process.running }
             }
         }
     }

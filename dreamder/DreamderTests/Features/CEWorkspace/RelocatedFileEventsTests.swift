@@ -46,7 +46,7 @@ struct RelocatedFileEventsTests {
             let policy = makePolicy(root)
             let relocated = RelocatedFileEvents(
                 [
-                    event(policy.canonicalRootPath, .rootChanged),
+                    event(policy.canonicalRootPath, .mustRescan),
                     event("/definitely/elsewhere/file"),
                     event("no-slash"),
                     event("/top")
@@ -98,7 +98,7 @@ struct RelocatedFileEventsTests {
         try withTempDir { root in
             let policy = makePolicy(root)
             let structural: [FSEvent] = [.itemCreated, .itemCloned, .itemRemoved, .itemRenamed]
-            let passive: [FSEvent] = [.changeInDirectory, .itemChangedOwner, .itemModified, .rootChanged]
+            let passive: [FSEvent] = [.changeInDirectory, .itemChangedOwner, .itemModified, .mustRescan]
 
             for type in structural {
                 let relocated = RelocatedFileEvents(

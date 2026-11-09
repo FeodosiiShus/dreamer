@@ -70,7 +70,7 @@ extension SearchEverywhereViewModel {
         if wantsClasses || wantsSymbols {
             index?.ensureIndexed()
         }
-        let symbols = index?.symbols ?? []
+        let store = index?.store ?? SearchEverywhereSymbolStore()
         indexTask = Task { [weak self] in
             if wantsFiles, let scope {
                 let urls = await scope.enumerateFiles(limit: nil)
@@ -85,29 +85,24 @@ extension SearchEverywhereViewModel {
                     hits.map { model.fileItem($0, line: parsed.line, column: parsed.column) }
                 }
             }
-            if wantsClasses {
-                await self?.publishSymbolHits(text: text, symbols: symbols, root: root, classesOnly: true)
-            }
-            if wantsSymbols {
-                await self?.publishSymbolHits(text: text, symbols: symbols, root: root, classesOnly: false)
+            if wantsClasses || wantsSymbols {
+                let symbols = await store.flattened()
+                for classesOnly in [true, false] where classesOnly ? wantsClasses : wantsSymbols {
+                    let hits = await SearchEverywhereProjectSearch.rankedSymbolHits(
+                        text: text,
+                        symbols: symbols,
+                        root: root,
+                        classesOnly: classesOnly,
+                        limit: 300
+                    )
+                    guard !Task.isCancelled else { return }
+                    self?.publishSymbolHits(hits, classesOnly: classesOnly)
+                }
             }
         }
     }
 
-    private func publishSymbolHits(
-        text: String,
-        symbols: [SearchEverywhereSymbol],
-        root: URL,
-        classesOnly: Bool
-    ) async {
-        let hits = await SearchEverywhereProjectSearch.rankedSymbolHits(
-            text: text,
-            symbols: symbols,
-            root: root,
-            classesOnly: classesOnly,
-            limit: 300
-        )
-        guard !Task.isCancelled else { return }
+    private func publishSymbolHits(_ hits: [SearchEverywhereSymbolHit], classesOnly: Bool) {
         publish(classesOnly ? .classes : .symbols) { model in
             hits.map { model.symbolItem($0, classesOnly: classesOnly) }
         }

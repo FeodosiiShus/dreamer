@@ -186,18 +186,6 @@ extension MergeAutomationTests {
     }
 
     @Test
-    func showingConflictsForTheActiveWorkspaceWithoutArgumentsResolvesThroughTheWindows() {
-        if let active = MergeToolPresenter.activeWorkspace(), active.sourceControlManager != nil {
-            return
-        }
-        let conflictsKey = MergeToolPresenter.lastConflictsKey
-
-        MergeToolPresenter.showConflictsForActiveWorkspace()
-
-        #expect(MergeToolPresenter.lastConflictsKey == conflictsKey)
-    }
-
-    @Test
     func centerOpensTheConflictsDialogWhenConflictsAppearInAMonitoredWorkspace() async throws {
         try await withTempDir { dir in
             let fixture = try await GitMergeFixture(root: dir)

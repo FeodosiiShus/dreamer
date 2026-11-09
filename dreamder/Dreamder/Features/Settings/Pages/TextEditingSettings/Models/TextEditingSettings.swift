@@ -131,71 +131,35 @@ extension SettingsData {
         }
 
         /// Explicit decoder init for setting default values when key is not present in `JSON`
-        init(from decoder: Decoder) throws { // swiftlint:disable:this function_body_length
+        init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.defaultTabWidth = try container.decodeIfPresent(Int.self, forKey: .defaultTabWidth) ?? 4
-            self.indentOption = try container.decodeIfPresent(
-                IndentOption.self,
-                forKey: .indentOption
-            ) ?? IndentOption(indentType: .spaces, spaceCount: 4)
-            self.font = try container.decodeIfPresent(EditorFont.self, forKey: .font) ?? .init()
-            self.enableTypeOverCompletion = try container.decodeIfPresent(
-                Bool.self,
-                forKey: .enableTypeOverCompletion
-            ) ?? true
-            self.autocompleteBraces = try container.decodeIfPresent(
-                Bool.self,
-                forKey: .autocompleteBraces
-            ) ?? true
-            self.wrapLinesToEditorWidth = try container.decodeIfPresent(
-                Bool.self,
-                forKey: .wrapLinesToEditorWidth
-            ) ?? false
-            self.overscroll = try container.decodeIfPresent(
-                OverscrollOption.self,
-                forKey: .overscroll
-            ) ?? .medium
-            self.lineHeightMultiple = try container.decodeIfPresent(
-                Double.self,
-                forKey: .lineHeightMultiple
-            ) ?? 1.3
-            self.letterSpacing = try container.decodeIfPresent(
-                Double.self,
-                forKey: .letterSpacing
-            ) ?? 1
-            self.bracketEmphasis = try container.decodeIfPresent(
-                BracketPairEmphasis.self,
-                forKey: .bracketEmphasis
-            ) ?? BracketPairEmphasis()
-            self.useSystemCursor = try container.decodeIfPresent(Bool.self, forKey: .useSystemCursor) ?? true
+            self.defaultTabWidth = container.lenient(.defaultTabWidth, default: 4)
+            self.indentOption = container.lenient(
+                .indentOption,
+                default: IndentOption(indentType: .spaces, spaceCount: 4)
+            )
+            self.font = container.lenient(.font, default: .init())
+            self.enableTypeOverCompletion = container.lenient(.enableTypeOverCompletion, default: true)
+            self.autocompleteBraces = container.lenient(.autocompleteBraces, default: true)
+            self.wrapLinesToEditorWidth = container.lenient(.wrapLinesToEditorWidth, default: false)
+            self.overscroll = container.lenient(.overscroll, default: .medium)
+            self.lineHeightMultiple = container.lenient(.lineHeightMultiple, default: 1.3)
+            self.letterSpacing = container.lenient(.letterSpacing, default: 1)
+            self.bracketEmphasis = container.lenient(.bracketEmphasis, default: BracketPairEmphasis())
+            self.useSystemCursor = container.lenient(.useSystemCursor, default: true)
 
-            self.showGutter = try container.decodeIfPresent(Bool.self, forKey: .showGutter) ?? true
-            self.showMinimap = try container.decodeIfPresent(Bool.self, forKey: .showMinimap) ?? false
-            self.showFoldingRibbon = try container.decodeIfPresent(Bool.self, forKey: .showFoldingRibbon) ?? true
-            self.reformatAtColumn = try container.decodeIfPresent(Int.self, forKey: .reformatAtColumn) ?? 120
-            self.showReformattingGuide = try container.decodeIfPresent(
-                Bool.self,
-                forKey: .showReformattingGuide
-            ) ?? true
-            self.invisibleCharacters = try container.decodeIfPresent(
-                InvisibleCharactersConfig.self,
-                forKey: .invisibleCharacters
-            ) ?? .default
-            self.warningCharacters = try container.decodeIfPresent(
-                WarningCharacters.self,
-                forKey: .warningCharacters
-            ) ?? .default
-            self.stripTrailingSpaces = try container.decodeIfPresent(
-                TrailingSpacesMode.self,
-                forKey: .stripTrailingSpaces
-            ) ?? .modifiedLines
-            self.keepTrailingSpacesOnCaretLine = try container.decodeIfPresent(
-                Bool.self,
-                forKey: .keepTrailingSpacesOnCaretLine
-            ) ?? true
-            self.ensureFinalNewline = try container.decodeIfPresent(Bool.self, forKey: .ensureFinalNewline) ?? false
-            self.formatOnSave = try container.decodeIfPresent(Bool.self, forKey: .formatOnSave) ?? false
-            self.inlayHints = try container.decodeIfPresent(InlayHintSettings.self, forKey: .inlayHints) ?? .init()
+            self.showGutter = container.lenient(.showGutter, default: true)
+            self.showMinimap = container.lenient(.showMinimap, default: false)
+            self.showFoldingRibbon = container.lenient(.showFoldingRibbon, default: true)
+            self.reformatAtColumn = container.lenient(.reformatAtColumn, default: 120)
+            self.showReformattingGuide = container.lenient(.showReformattingGuide, default: true)
+            self.invisibleCharacters = container.lenient(.invisibleCharacters, default: .default)
+            self.warningCharacters = container.lenient(.warningCharacters, default: .default)
+            self.stripTrailingSpaces = container.lenient(.stripTrailingSpaces, default: .modifiedLines)
+            self.keepTrailingSpacesOnCaretLine = container.lenient(.keepTrailingSpacesOnCaretLine, default: true)
+            self.ensureFinalNewline = container.lenient(.ensureFinalNewline, default: false)
+            self.formatOnSave = container.lenient(.formatOnSave, default: false)
+            self.inlayHints = container.lenient(.inlayHints, default: .init())
 
             self.populateCommands()
         }
@@ -311,9 +275,9 @@ extension SettingsData {
         /// Explicit decoder init for setting default values when key is not present in `JSON`
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.size = try container.decodeIfPresent(Double.self, forKey: .size) ?? size
-            self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? name
-            self.weight = try container.decodeIfPresent(NSFont.Weight.self, forKey: .weight) ?? weight
+            self.size = container.lenient(.size, default: size)
+            self.name = container.lenient(.name, default: name)
+            self.weight = container.lenient(.weight, default: weight)
             _ = Self.bundledFontsRegistered
         }
 

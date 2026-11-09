@@ -216,10 +216,8 @@ extension CEWorkspaceFileManager {
         // If a file/folder with the same name exists, add "copy" to the end
         var fileUrl = file.url
         while fileManager.fileExists(atPath: fileUrl.path) {
-            let previousName = fileUrl.lastPathComponent
             let fileExtension = fileUrl.pathExtension.isEmpty ? "" : ".\(fileUrl.pathExtension)"
-            let fileName = fileExtension.isEmpty ? previousName :
-            previousName.replacingOccurrences(of: fileExtension, with: "")
+            let fileName = fileUrl.deletingPathExtension().lastPathComponent
             fileUrl = fileUrl.deletingLastPathComponent().appending(path: "\(fileName) copy\(fileExtension)")
         }
 
@@ -278,7 +276,7 @@ extension CEWorkspaceFileManager {
             throw FileManagerError.originFileNotFound
         }
 
-        guard !fileManager.fileExists(atPath: newLocation.path(percentEncoded: false)) else {
+        guard fileManager.destinationIsFree(newLocation, whenMoving: oldLocation) else {
             throw FileManagerError.destinationFileExists
         }
     }

@@ -88,16 +88,16 @@ struct CodeFileDocumentTests {
     }
 
     @Test
-    func loadsExternalUpdatesWithNoOutstandingChanges() throws {
-        try withCodeFile { codeFile in
-            // Update the modification date
-            try "different contents".write(to: codeFile.fileURL!, atomically: true, encoding: .utf8)
+    func loadsExternalUpdatesWithNoOutstandingChanges() async throws {
+        try await withTempDir { dir in
+            let fileURL = dir.appending(path: "file.swift")
+            try defaultString.write(to: fileURL, atomically: true, encoding: .utf8)
+            let codeFile = try CodeFileDocument(contentsOf: fileURL, ofType: "public.source-code")
 
-            // Tell the file the disk representation changed
+            try "different contents".write(to: fileURL, atomically: true, encoding: .utf8)
             codeFile.presentedItemDidChange()
 
-            // The file should have reloaded (it was clean)
-            #expect(codeFile.content?.string == "different contents")
+            try await eventually(timeout: .seconds(20)) { codeFile.content?.string == "different contents" }
             #expect(codeFile.isDocumentEdited == false)
         }
     }

@@ -13,9 +13,11 @@ enum RenameController {
                 documentText: context.documentText,
                 symbol: context.symbol
             )
-            let backend = RenameBackend.make(client: context.client) { edit in
-                await context.service.applyWorkspaceEdit(edit, via: context.client)
-            }
+            let backend = RenameBackend.make(
+                client: context.client,
+                documentText: { LSPEditorContextResolver.documentText(for: context.tab) },
+                apply: { edit in await context.service.applyWorkspaceEdit(edit, via: context.client) }
+            )
             let presenter = RenamePanelPresenter(controller: controller)
             return Task { @MainActor in
                 await RenameFlow.run(request: request, backend: backend, presenter: presenter)

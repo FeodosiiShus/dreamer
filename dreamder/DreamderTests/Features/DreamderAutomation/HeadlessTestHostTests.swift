@@ -246,24 +246,4 @@ struct HeadlessTestHostTests {
             application.absoluteString
         ])
     }
-
-    @Test(arguments: [
-        ([String: String](), false, false),
-        (["DREAMDER_HEADLESS": "1"], false, true),
-        (["DREAMDER_HEADLESS": "0"], false, false),
-        (["DREAMDER_HEADLESS": "yes"], false, false),
-        ([String: String](), true, true),
-        (["DREAMDER_HEADLESS": "0"], true, true)
-    ])
-    func headlessIsEnabledByTheEnvironmentOrTheLaunchArgument(
-        environment: [String: String],
-        argument: Bool,
-        expected: Bool
-    ) throws {
-        try withIsolatedDefaults { defaults in
-            defaults.set(argument, forKey: DreamderHeadless.argumentKey)
-
-            #expect(DreamderHeadless.resolveIsEnabled(environment: environment, defaults: defaults) == expected)
-        }
-    }
 }

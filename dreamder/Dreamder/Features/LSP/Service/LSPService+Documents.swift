@@ -4,6 +4,11 @@ import LanguageServerProtocol
 import SwiftUI
 
 extension LSPService {
+    struct DocumentOperation {
+        let id: Int
+        let task: Task<Void, Never>
+    }
+
     // MARK: - Document Management
 
     /// Notify all relevant language clients that a document was opened. A second open of a document that is already
@@ -20,6 +25,7 @@ extension LSPService {
         let key = ClientKey(lspLanguage, workspacePath)
         let isReload = openDocumentURIs[key]?.contains(uri) ?? false
         openDocumentURIs[key, default: []].insert(uri)
+        pendingDocuments[key]?[uri] = nil
         let fileManager = workspace.workspaceFileManager
         enqueueDocumentOperation(uri: uri) {
             let languageServer: LanguageServerType
@@ -30,7 +36,9 @@ extension LSPService {
                     languageServer = try await self.startServer(for: lspLanguage, workspacePath: workspacePath)
                 }
             } catch {
-                self.openDocumentURIs[key]?.remove(uri)
+                if self.openDocumentURIs[key]?.remove(uri) != nil {
+                    self.pendingDocuments[key, default: [:]][uri] = document
+                }
                 // swiftlint:disable:next line_length
                 self.logger.error("Failed to find/start server for language: \(lspLanguage.rawValue), workspace: \(workspacePath, privacy: .private)")
                 return
@@ -58,8 +66,8 @@ extension LSPService {
         for key in Array(openDocumentURIs.keys) {
             openDocumentURIs[key]?.remove(uri)
         }
-        for key in Array(lostDocuments.keys) {
-            lostDocuments[key]?.removeAll { $0.languageServerURI == uri }
+        for key in Array(pendingDocuments.keys) {
+            pendingDocuments[key]?[uri] = nil
         }
         enqueueDocumentOperation(uri: uri) {
             guard let languageClient = self.languageClient(forDocument: url) else { return }
@@ -73,17 +81,28 @@ extension LSPService {
         }
     }
 
-    private func enqueueDocumentOperation(uri: String, _ operation: @escaping @MainActor () async -> Void) {
-        let previous = documentOperations[uri]
-        documentOperations[uri] = Task {
+    @discardableResult
+    func enqueueDocumentOperation(
+        uri: String,
+        _ operation: @escaping @MainActor () async -> Void
+    ) -> Task<Void, Never> {
+        let previous = documentOperations[uri]?.task
+        let id = nextDocumentOperationID
+        nextDocumentOperationID += 1
+        let task = Task {
             await previous?.value
             await operation()
+            if self.documentOperations[uri]?.id == id {
+                self.documentOperations[uri] = nil
+            }
         }
+        documentOperations[uri] = DocumentOperation(id: id, task: task)
+        return task
     }
 
     func waitForDocumentOperations() async {
-        for task in Array(documentOperations.values) {
-            await task.value
+        for operation in Array(documentOperations.values) {
+            await operation.task.value
         }
     }
 

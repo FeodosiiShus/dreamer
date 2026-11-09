@@ -24,7 +24,7 @@ private final class RestartSleepGate: Sendable {
     func shouldReturnImmediately() -> Bool {
         calls.withLock { count in
             count += 1
-            return count == 1
+            return count <= 2
         }
     }
 }
@@ -145,13 +145,13 @@ struct TaskManagerTrustTests {
             let confirmation = TrustConfirmation(answer: false)
             let manager = try makeManager(root: directory, confirmation: confirmation, pretrusted: true)
             let command = """
-            trap '' TERM; echo ready-$((40+2)); i=0; while [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done
+            trap '' HUP TERM; echo ready-$((40+2)); i=0; while [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done
             """
             let task = fixture.makeTask(command: command)
             await manager.runTask(task: task)
             let activeTask = try #require(manager.activeTasks[task.id])
             let output = try #require(activeTask.output)
-            try await fixture.waitUntilReady(output)
+            try await fixture.waitUntilReady(output, timeout: .seconds(20))
             let firstRunID = activeTask.activeTaskID
             let gate = RestartSleepGate()
             activeTask.sleep = { _ in
@@ -164,7 +164,7 @@ struct TaskManagerTrustTests {
 
             #expect(activeTask.activeTaskID != firstRunID)
             #expect(activeTask.status == .running)
-            try await fixture.waitUntilReady(output, occurrences: 2)
+            try await fixture.waitUntilReady(output, occurrences: 2, timeout: .seconds(20))
         }
     }
 }

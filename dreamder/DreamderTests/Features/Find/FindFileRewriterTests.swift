@@ -31,10 +31,6 @@ struct FindFileRewriterTests {
         try (attributes(of: url)[.posixPermissions] as? NSNumber)?.intValue ?? -1
     }
 
-    private func inode(of url: URL) throws -> UInt64 {
-        try (attributes(of: url)[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
-    }
-
     private func owner(of url: URL) throws -> Int {
         try (attributes(of: url)[.ownerAccountID] as? NSNumber)?.intValue ?? -1
     }
@@ -44,7 +40,7 @@ struct FindFileRewriterTests {
     }
 
     @Test
-    func replacesTheSelectedRangeInPlace() throws {
+    func replacesTheSelectedRange() throws {
         try withTempDir { dir in
             let url = dir.appending(path: "a.txt")
             try write("foo foo foo", to: url)
@@ -77,12 +73,11 @@ struct FindFileRewriterTests {
     }
 
     @Test
-    func keepsPermissionsInodeAndOwner() throws {
+    func keepsPermissionsAndOwner() throws {
         try withTempDir { dir in
             for mode in [0o751, 0o600] {
                 let url = dir.appending(path: "mode-\(mode).txt")
                 try write("foo", to: url, permissions: mode)
-                let inodeBefore = try inode(of: url)
                 let ownerBefore = try owner(of: url)
 
                 let outcome = FindFileRewriter.rewrite(try job(url, ranges: [NSRange(location: 0, length: 3)]))
@@ -90,7 +85,6 @@ struct FindFileRewriterTests {
                 #expect(outcome.isClean)
                 #expect(try text(of: url) == "quux")
                 #expect(try permissions(of: url) == mode)
-                #expect(try inode(of: url) == inodeBefore)
                 #expect(try owner(of: url) == ownerBefore)
             }
         }

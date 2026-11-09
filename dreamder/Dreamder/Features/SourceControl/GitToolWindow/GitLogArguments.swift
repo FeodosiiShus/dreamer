@@ -17,26 +17,18 @@ nonisolated enum GitLogArguments {
         userResolver: GitLogUserResolver = GitLogUserResolver(),
         headIsResolvable: Bool = true
     ) -> GitLogParameters? {
-        let branchLike = branchLikeParameters(
+        let hasRevisionSelection = selectsRevisions(filters)
+        guard let revisions = branchLikeParameters(
             filters: filters,
             existingBranches: existingBranches,
             headIsResolvable: headIsResolvable
-        )
-        if branchLike.isEmpty && (filters.branch != nil || filters.revision != nil || filters.range != nil) {
+        ), !(hasRevisionSelection && revisions.isEmpty) else {
             return nil
         }
 
         var configParameters: [String] = []
-        var filterParameters = branchLike
-
-        if let date = filters.date {
-            if let after = date.after {
-                filterParameters.append(parameter("after", gitDate(after)))
-            }
-            if let before = date.before {
-                filterParameters.append(parameter("before", gitDate(before)))
-            }
-        }
+        var filterParameters = hasRevisionSelection ? [] : revisions
+        appendDateParameters(filters.date, to: &filterParameters)
 
         let textFilter = filters.text
         let regexp = textFilter?.isRegex ?? true
@@ -65,21 +57,12 @@ nonisolated enum GitLogArguments {
             filterParameters.append("--first-parent")
         }
 
-        if let parent = filters.parent, !parent.matchesAll {
-            if parent.hasLowerBound {
-                filterParameters.append("--min-parents=\(parent.minParents)")
-            }
-            if parent.hasUpperBound {
-                filterParameters.append("--max-parents=\(parent.maxParents)")
-            }
-        }
-
-        if let structure = filters.structure, !structure.paths.isEmpty {
-            filterParameters.append("--full-history")
-            filterParameters.append("--simplify-merges")
-            filterParameters.append("--")
-            filterParameters.append(contentsOf: structure.paths)
-        }
+        appendParentParameters(filters.parent, to: &filterParameters)
+        appendRevisionsAndPaths(
+            revisions: hasRevisionSelection ? revisions : [],
+            paths: filters.structure?.paths ?? [],
+            to: &filterParameters
+        )
 
         return GitLogParameters(configParameters: configParameters, filterParameters: filterParameters)
     }
@@ -95,22 +78,30 @@ nonisolated enum GitLogArguments {
         return arguments
     }
 
+    static func selectsRevisions(_ filters: GitLogFilterCollection) -> Bool {
+        filters.branch != nil || filters.revision != nil || filters.range != nil
+    }
+
     static func branchLikeParameters(
         filters: GitLogFilterCollection,
         existingBranches: [String],
         headIsResolvable: Bool
-    ) -> [String] {
+    ) -> [String]? {
         let branchFilter = filters.branch
         let revisionFilter = filters.revision
         let rangeFilter = filters.range
-        if branchFilter == nil && revisionFilter == nil && rangeFilter == nil {
+        if !selectsRevisions(filters) {
             return headIsResolvable ? logAll : Array(logAll.dropFirst())
         }
+
+        let suppliedRefs = (revisionFilter?.heads ?? [])
+            + (rangeFilter?.ranges.flatMap { [$0.exclusiveRef, $0.inclusiveRef] } ?? [])
+        guard !suppliedRefs.contains(where: { $0.hasPrefix("-") }) else { return nil }
 
         var result: [String] = []
 
         if let branchFilter {
-            for name in existingBranches + [headReference] where branchFilter.matches(name) {
+            for name in existingBranches + [headReference] where branchFilter.matches(name) && !name.hasPrefix("-") {
                 result.append(name)
             }
         }
@@ -125,6 +116,45 @@ nonisolated enum GitLogArguments {
             }
         }
         return result
+    }
+
+    private static func appendDateParameters(_ date: GitLogDateFilter?, to filterParameters: inout [String]) {
+        guard let date else { return }
+        if let after = date.after {
+            filterParameters.append(parameter("after", gitDate(after)))
+        }
+        if let before = date.before {
+            filterParameters.append(parameter("before", gitDate(before)))
+        }
+    }
+
+    private static func appendParentParameters(_ parent: GitLogParentFilter?, to filterParameters: inout [String]) {
+        guard let parent, !parent.matchesAll else { return }
+        if parent.hasLowerBound {
+            filterParameters.append("--min-parents=\(parent.minParents)")
+        }
+        if parent.hasUpperBound {
+            filterParameters.append("--max-parents=\(parent.maxParents)")
+        }
+    }
+
+    private static func appendRevisionsAndPaths(
+        revisions: [String],
+        paths: [String],
+        to filterParameters: inout [String]
+    ) {
+        if !paths.isEmpty {
+            filterParameters.append("--full-history")
+            filterParameters.append("--simplify-merges")
+        }
+        if !revisions.isEmpty {
+            filterParameters.append("--end-of-options")
+            filterParameters.append(contentsOf: revisions)
+        }
+        if !paths.isEmpty {
+            filterParameters.append("--")
+            filterParameters.append(contentsOf: paths)
+        }
     }
 
     static func gitDate(_ date: Date) -> String {

@@ -47,7 +47,8 @@ nonisolated final class FileEventBatcher: Sendable {
     }
 
     private func drain() async {
-        while true {
+        var finished = false
+        repeat {
             try? await clock.sleep(for: window)
             let batch = state.withLock { state -> [DirectoryEventStream.Event] in
                 let batch = state.pending
@@ -57,12 +58,11 @@ nonisolated final class FileEventBatcher: Sendable {
             if !batch.isEmpty {
                 await handler(batch)
             }
-            let finished = state.withLock { state -> Bool in
+            finished = state.withLock { state -> Bool in
                 guard state.pending.isEmpty || state.isCancelled else { return false }
                 state.isDraining = false
                 return true
             }
-            if finished { return }
-        }
+        } while !finished
     }
 }

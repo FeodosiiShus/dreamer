@@ -32,6 +32,8 @@ final class SourceControlManager {
     /// A list of changed files
     var changedFiles: [GitChangedFile] = []
 
+    var changedFilesFailure: String?
+
     /// Current branch
     var currentBranch: GitBranch?
 

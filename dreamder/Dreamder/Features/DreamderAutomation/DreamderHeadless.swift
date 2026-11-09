@@ -7,15 +7,6 @@ enum DreamderHeadless {
     static let environmentKey = "DREAMDER_HEADLESS"
     static let hiddenLevel = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.minimumWindow)))
 
-    static let isEnabled = resolveIsEnabled(environment: ProcessInfo.processInfo.environment, defaults: .standard)
-
-    static func resolveIsEnabled(environment: [String: String], defaults: UserDefaults) -> Bool {
-        if environment[environmentKey] == "1" {
-            return true
-        }
-        return defaults.bool(forKey: argumentKey)
-    }
-
     private static var observer: NSObjectProtocol?
     private static var stallSampler: MainThreadStallSampler?
 

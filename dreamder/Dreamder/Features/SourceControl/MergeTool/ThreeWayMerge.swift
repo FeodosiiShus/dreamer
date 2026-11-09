@@ -81,6 +81,7 @@ nonisolated struct ThreeWayMerge: Equatable, Sendable {
     let baseLines: [String]
     let leftLines: [String]
     let rightLines: [String]
+    let lineEnding: LineEnding
     private(set) var blocks: [Block]
 
     init(base: String, ours: String, theirs: String, policy: ComparisonPolicy = .default) {
@@ -90,6 +91,10 @@ nonisolated struct ThreeWayMerge: Equatable, Sendable {
         baseLines = TextDiff.lines(in: base)
         leftLines = TextDiff.lines(in: ours)
         rightLines = TextDiff.lines(in: theirs)
+        lineEnding = LineEnding.dominant(in: ours)
+            ?? LineEnding.dominant(in: base)
+            ?? LineEnding.dominant(in: theirs)
+            ?? .lineFeed
         blocks = Self.buildBlocks(
             baseLines: baseLines,
             leftLines: leftLines,
@@ -104,10 +109,6 @@ nonisolated struct ThreeWayMerge: Equatable, Sendable {
             ours: leftLines.joined(separator: "\n"),
             theirs: rightLines.joined(separator: "\n")
         )
-    }
-
-    var hasTrailingNewline: Bool {
-        baseText.hasSuffix("\n") || leftText.hasSuffix("\n") || rightText.hasSuffix("\n")
     }
 
     var conflictCount: Int {
@@ -202,12 +203,6 @@ nonisolated struct ThreeWayMerge: Equatable, Sendable {
             lines.append(contentsOf: baseLines[cursor...])
         }
         return lines
-    }
-
-    var resultText: String {
-        let text = resultLines.joined(separator: "\n")
-        guard hasTrailingNewline, !text.isEmpty else { return text }
-        return text + "\n"
     }
 
     var leftPane: MergePaneContent { paneContent(.left) }

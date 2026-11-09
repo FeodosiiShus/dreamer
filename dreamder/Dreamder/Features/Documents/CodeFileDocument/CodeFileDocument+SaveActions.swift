@@ -60,13 +60,12 @@ extension CodeFileDocument {
         isApplyingSaveActions = true
         defer { isApplyingSaveActions = false }
         if let textView {
-            for edit in plan.edits {
-                textView.replaceCharacters(in: edit.range, with: edit.replacement, skipUpdateSelection: true)
-            }
+            applyAsOneUndoGroup(plan.edits, through: textView)
             textView.selectionManager.setSelectedRanges(
                 selections.map { SaveActions.map($0, through: plan.edits) }
             )
         } else {
+            registerDetached(plan.edits, in: content)
             content.beginEditing()
             for edit in plan.edits {
                 content.replaceCharacters(in: edit.range, with: edit.replacement)
@@ -74,5 +73,23 @@ extension CodeFileDocument {
             content.endEditing()
         }
         return true
+    }
+
+    private func applyAsOneUndoGroup(_ edits: [SaveTextEdit], through textView: TextView) {
+        textView.undoManager?.beginUndoGrouping()
+        for edit in edits {
+            textView.replaceCharacters(in: edit.range, with: edit.replacement, skipUpdateSelection: true)
+        }
+        textView.undoManager?.endUndoGrouping()
+    }
+
+    private func registerDetached(_ edits: [SaveTextEdit], in content: NSTextStorage) {
+        guard let undoManager = registeredUndoManager else { return }
+        let replica = TextView(string: content.string)
+        replica.setUndoManager(undoManager)
+        applyAsOneUndoGroup(edits, through: replica)
+        if let attached = attachedTextView, attached.undoManager === undoManager {
+            attached.setUndoManager(undoManager)
+        }
     }
 }

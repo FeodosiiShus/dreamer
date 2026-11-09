@@ -42,7 +42,7 @@ struct SearchEverywhereWorkspaceTests {
             first.start(on: .classes)
             first.query = "Alpha"
             try await eventually { first.flatItems.contains { $0.title == "Alpha" } }
-            #expect(second.symbolIndex?.symbols.isEmpty == false)
+            #expect(second.symbolIndex?.store.symbolsByFile.isEmpty == false)
             #expect(!second.isIndexing)
 
             workspace.tearDownFileScope()
@@ -102,7 +102,7 @@ struct SearchEverywhereWorkspaceTests {
             let model = SearchEverywhereViewModel(workspace: workspace)
             model.start(on: .classes)
             model.query = "Fresh"
-            try await eventually { !model.isIndexing && model.symbolIndex?.symbols.isEmpty == false }
+            try await eventually { !model.isIndexing && model.symbolIndex?.store.symbolsByFile.isEmpty == false }
             try await Task.sleep(for: .milliseconds(300))
 
             try touch(dir, "Sources/Fresh.swift", "class FreshType {}\n")

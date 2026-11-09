@@ -24,7 +24,7 @@ nonisolated extension GitClient {
         return output
             .components(separatedBy: "\n")
             .filter { line in
-                guard line != "", !line.contains("HEAD") else { return false }
+                guard line != "" else { return false }
                 guard let remotePrefix else { return true }
                 return line.starts(with: remotePrefix)
             }
@@ -47,6 +47,7 @@ nonisolated extension GitClient {
                     behind: trackInfo.behind
                 )
             }
+            .filter { Self.isListedBranch(longName: $0.longName) }
     }
 
     /// Get current branch
@@ -90,12 +91,14 @@ nonisolated extension GitClient {
             ?? remoteReference
         let targetName = newName ?? (branch.isRemote ? remoteBranchName : branch.name)
 
+        try Self.requireRefNames(targetName, branch.name, remoteReference)
+
         if branch.isRemote, !forceLocal {
-            arguments += ["-b", targetName, "--track", remoteReference]
+            arguments += ["-b", targetName, "--track", "--end-of-options", remoteReference]
         } else if newName != nil {
-            arguments += ["-b", targetName, branch.name]
+            arguments += ["-b", targetName, "--end-of-options", branch.name]
         } else {
-            arguments.append(targetName)
+            arguments += ["--end-of-options", targetName]
         }
 
         do {
@@ -110,6 +113,12 @@ nonisolated extension GitClient {
                 throw error
             }
         }
+    }
+
+    static func isListedBranch(longName: String) -> Bool {
+        let components = longName.split(separator: "/")
+        let isRemoteHead = components.count == 4 && components[1] == "remotes" && components[3] == "HEAD"
+        return longName.hasPrefix("refs/") && !isRemoteHead
     }
 
     static func parseBranchTrackInfo(from infoString: String) -> (ahead: Int, behind: Int) {

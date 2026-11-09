@@ -31,12 +31,12 @@ extension TerminalEmulatorView {
             onTitleChange?(title)
         }
 
-        func processTerminated(source: TerminalView, exitCode: Int32?) {
-            guard let exitCode else {
+        func processTerminated(source: TerminalView, exit: ProcessExit?) {
+            guard let exit else {
                 return
             }
             if case .shell = mode {
-                source.feed(text: "Exit code: \(exitCode)\n\r\n")
+                source.feed(text: "\(exit.summary)\n\r\n")
                 source.feed(text: "To open a new session, create a new terminal tab.")
                 TerminalCache.shared.removeCachedView(terminalID)
             }

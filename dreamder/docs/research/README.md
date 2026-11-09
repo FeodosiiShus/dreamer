@@ -27,6 +27,8 @@ Machine: M1 Pro, 10 cores, Xcode 27.2. The suite has 9 822 test cases (9 704 tes
 | One host, after the defaults-key fix, new Makefile and fresh instrumented build | 757 s | 9 704 tests passed; gate short by 2 lines (`FileEventBatcher.swift` 69/70, `SequenceDiff.swift` 431/432) |
 | One host, after the fix, host restarted after 4 minutes by CRASH-1 | 471 s | failed on the crash; the second host ran the last 2 925 tests in 213 s |
 | Three hosts, after the fix (`Scripts/sharded-tests.py --flavor coverage --shards 3`, the body of `make coverage-sharded`) | 245 s (shards 215 s, 227 s, 224 s) | 2 failures in one shard, merged coverage 99.92 % |
+| Three hosts, after the bug-fix wave of 2026-11-10 (third full run) | 249 s (shards 236 s, 233 s, 230 s) | 10 197 passed, none failed, gate passed at 100 %; shard 0 was restarted once by CRASH-1 |
+| One host, after the bug-fix wave (`make coverage FLAVOR=coverage COVERAGE_CHECK=1`) | 803 s | 10 231 tests in 1 047 suites passed, no restart, gate passed: 82 372 of 82 372 executable lines |
 
 | Build step, as the CI build job runs it | Time |
 |---|---|
@@ -37,7 +39,7 @@ Machine: M1 Pro, 10 cores, Xcode 27.2. The suite has 9 822 test cases (9 704 tes
 - 120 main-thread stall samples of the test host (`.build/logs/stalls`, threshold 3 s): in 54 the main thread was inside `removeDefaultsKeys`/`removeStandardDefaultsKeys`, the cleanup that every `withTempDir` runs. The process was 93 % idle in those samples. The hot frames were `_StringGuts._opaqueCharacterStride`, `_CFStringGetCStringPtrInternal` and grapheme breaking: `String.contains` over keys bridged from `UserDefaults`. The helper now searches through `NSString.range(of:options:)` (`DreamderTests/Utils/withTempDir.swift`).
 - A long-lived host slows down as it runs: the key-match fix alone saved 6 % (802 s to 757 s), a restart in the middle saved 38 %, three fresh hosts took a third of the time. What accumulates in the host is not identified; two of the eleven CI stall samples end in `_CFXNotificationRegistrarRemoveObservers` under a `deinit`. Every test host on the machine also shares one preferences domain with the installed app.
 - `CFFIXED_USER_HOME` passed through `TEST_RUNNER_` does not move the preferences domain of the test host: the real `dev.dreamder.Dreamder` plist kept changing and the substitute home stayed empty.
-- Three hosts are not a gate yet. `DefinitionJumpDelegateTests/theDefaultDelegateResolvesTheWindowControllerOfTheEditorWindow` and `UtilityAreaViewModelCoverageTests/removingATerminalKillsTheShellAndEverythingItStarted` failed in shard 0, and the merged bundle left nine files below 100 % although all 9 822 cases ran: `WorkspaceDocument+FindAndReplace.swift`, `IconButtonStyle.swift`, `StructureTree.swift`, `LSPJumpToDefinitionDelegate.swift`, `LSPFileOperationFilters.swift`, `LSPWorkspaceEditing.swift`, `MarkdownBlockLexer.swift`, `FindReplaceEngine.swift`, `FindModel.swift`. Whether `xcresulttool merge` loses partially covered functions or these files are covered only by tests of another shard is not determined.
+- Three hosts are a gate since 2026-11-10. The two failing tests were fixed. The files below 100 % were an artifact of the merged bundle's function-level report, not missing coverage: `xcresulttool merge` lists some functions a second time with zero coverage (`SemanticTokenMap.decode(tokens:using:)` read 0/19 in the merged report and 19/19 in two of the three shards; the file had 87 executable lines in the merged report and 68 in every shard), while the line data of the merged archive (`xccov view --archive --json`) was identical to the union of the three shards for all 900 files. `Scripts/coverage-report.py` now counts distinct executable lines from the archive and names the uncovered lines.
 
 ## CRASH-1 (P0): highlighter state mutated off the main thread
 
@@ -52,15 +54,15 @@ closure #3 in TreeSitterClient.applyEdit(textView:range:delta:completion:) TreeS
 closure #1 in TreeSitterExecutor.execAsync(priority:operation:onCancel:)   TreeSitterExecutor.swift:115
 ```
 
-Cause, in the CodeEditSourceEditor package: `TreeSitterClient.applyEdit` hops to the main queue on its synchronous path (`TreeSitterClient.swift:171`, `DispatchQueue.dispatchMainIfNot`) and on cancellation (`:185`), but the asynchronous path calls the completion directly inside the executor task (`:180`, `operation: { completion(.success(operation())) }`). The completion mutates `validSet` of `HighlightProviderState`, a `@MainActor` class, while the main thread uses it. The asynchronous path is taken for long edits and long documents (`Constants.maxSyncEditLength`, `Constants.maxSyncContentLength`), so the race is reachable by editing a large file.
+Cause, in the CodeEditSourceEditor package: `TreeSitterClient.applyEdit` hops to the main queue on its synchronous path (`TreeSitterClient.swift:171`, `DispatchQueue.dispatchMainIfNot`) and on cancellation (`:185`), but the asynchronous path calls the completion directly inside the executor task (`:180`, `operation: { completion(.success(operation())) }`). The completion mutates `validSet` of `HighlightProviderState`, a `@MainActor` class, while the main thread uses it. The asynchronous path is taken for long edits and long documents (`Constants.maxSyncEditLength`, `Constants.maxSyncContentLength`) and also whenever `TreeSitterExecutor.execSync` refuses because another task is queued (`TreeSitterExecutor.swift:80`), for example an edit while the initial parse of `setUp` is still running. The race is therefore reachable in any file, and it restarted a test host again on 2026-11-10 (`Dreamder-2026-11-10-010700.ips`, same frames).
 
-Fix options: wrap the client in an app-side `HighlightProviding` decorator that delivers `applyEdit` completions on the main actor (`CodeFileViewSession.swift:29` creates the client, `CodeFileView.swift:230` passes the providers), after checking that the package does not look for a `TreeSitterClient` instance among the providers; or fork the package and dispatch at `TreeSitterClient.swift:180` (needs approval, `AGENTS.md` rule 6 and the package notes).
+Fix options, checked on 2026-11-10: an app-side `HighlightProviding` decorator is not possible, because `TextViewController.init` takes its `treeSitterClient` (tag completion, jump to definition) from the first concrete `TreeSitterClient` among the providers (`TextViewController.swift:227-229`), the class is `final`, the property is `internal(set)`, and any `TreeSitterClient` left in the provider list is driven by the highlighter directly. What remains is a fork or a vendored copy of the package with the dispatch added at `TreeSitterClient.swift:180` (needs approval, `AGENTS.md` rule 6 and the package notes); the package's `main` branch still has the defect.
 
 Standard: data-race safety and main-actor isolation; the rules and their official citations are the data-race entries of `swift-standards-checklist.md`.
 
 ## Bug audit: all findings
 
-12 P0, 22 P1 and 27 P2 findings. None is fixed here except the test defect above; each report names the test that would reproduce its finding. Confidence and unverified assumptions are stated per finding in the reports.
+12 P0, 22 P1 and 27 P2 findings. Status on 2026-11-10: every finding in the table except CRASH-1 is fixed in the application with regression tests, see "Fix status" at the end of this file; the reports keep the original analysis and name the reproducing test. Confidence and unverified assumptions are stated per finding in the reports.
 
 | Id | Severity | Defect | Report |
 |---|---|---|---|
@@ -125,3 +127,20 @@ Standard: data-race safety and main-actor isolation; the rules and their officia
 | WUI-5 | P2 | Project filter walks the whole tree synchronously on the main actor | `bugs-workspace-ui.md` |
 | WUI-6 | P2 | Symbol index applies every file-system delta in O(all symbols) on the main actor | `bugs-workspace-ui.md` |
 | WUI-7 | P2 | Search Everywhere text search keeps running after the panel is gone | `bugs-workspace-ui.md` |
+
+## Fix status (2026-11-10)
+
+Sixty findings are fixed, each with regression tests written from the failing sequence in its report (the tests were run on the fixed code only, not against the old code); CRASH-1 is open because the defect is inside the `CodeEditSourceEditor` package.
+
+| Area | Findings | Where the fix lives |
+|---|---|---|
+| Processes, terminal, tasks | F1 to F12, BUG-07 | `Features/TerminalEmulator/Model/` (`ProcessExit`, `ShellLaunch`, `SignalMask`, `ProcessTree`), `Features/Tasks/` (`TaskManager+Shutdown`, `TaskEscalations`, stop requests end as cancelled), `Utils/Process/ProcessSlotPool.swift`, `String.shellQuoted()` |
+| Language servers | LSP-01 to LSP-11, BUG-04 | `LSP/Discovery/UntrustedWorkspaceServerPolicy.swift`, `LSP/Service/LSPWorkspaceEditExecutor.swift` and `WorkspaceEditApplier` (version check and apply in one main-actor section, edits confined to the workspace, deletes go to the Trash), percent-encoded and canonically decomposed `URL.lspURI`, per-URI operation queue for close and reopen |
+| Source control | SC-01 to SC-12 | `SourceControl/MergeTool/` (`LineEnding`, `ThreeWayMerge+Text`, non-UTF-8 files refused), `SourceControlManager.changedFilesFailure`, `--end-of-options` and ref-name validation in `Client/`, shelf and commit tool window flows |
+| Editor and documents | B-01 to B-11 | `CodeFileDocument` (undo registration, one undo group per save, asynchronous load above `FileSizeLimit.synchronousOpen`), `CodeFileTextViewBinder` (weak controller list), `DiskWorkspaceFileSystem`, FSEvents flags, case-only renames |
+| Workspace UI | WUI-1 to WUI-7 | `ProjectNavigatorItemReplacement` (replace keeps a backup until the move succeeds), `ProjectNavigatorFilterMatches` (filter walks off the main actor), `AppDelegate+Termination` (quit stops tasks first), atomic Replace in Files, Search Everywhere task lifetime |
+| Settings, automation, Markdown | BUG-01 to BUG-06 | `Settings/Models/LenientDecoding.swift` (a bad key keeps the rest, an unreadable file is preserved), `DreamderHeadless+Resolution.swift`, sanitizer namespace for raw HTML ids and `md-src-pos`, `MarkdownTextLines+InsertionPoint.swift` |
+
+B-10 is bounded, not removed: files up to `FileSizeLimit.synchronousOpen` (1 MiB) still load on the main actor so `openTab` stays synchronous, larger files load asynchronously into a document in loading state.
+
+CRASH-1 cannot be fixed from the application: `TreeSitterClient.applyEdit` calls its completion from the executor's task (`operation: { completion(.success(operation())) }`, still so on the package's `main` branch), `TextViewController` only accepts the concrete `final class TreeSitterClient` for tag completion and jump to definition, and `forceSyncOperation` is `package`. Raising `TreeSitterClient.Constants.maxSyncEditLength` and `maxSyncContentLength` only narrows the window, because `execSync` also fails whenever another tree-sitter task is queued. The fix is one line in a fork of the package.

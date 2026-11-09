@@ -215,7 +215,7 @@ struct WorkspaceFileScopeEventTests {
             let scope = await primedScope(root)
             var changes = scope.changes().makeAsyncIterator()
 
-            scope.handle(events: [fsEvent(root, .rootChanged)])
+            scope.handle(events: [fsEvent(root, .mustRescan)])
             #expect(await changes.next() == .reset)
             #expect(scope.cachedFiles() == nil)
 

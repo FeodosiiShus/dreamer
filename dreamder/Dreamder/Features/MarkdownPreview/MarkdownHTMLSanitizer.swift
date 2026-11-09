@@ -140,8 +140,10 @@ nonisolated enum MarkdownHTMLSanitizer {
 
     static let contentDroppedElements: Set<String> = ["script", "style"]
 
+    static let userIdentifierPrefix = "user-content-"
+
     static let globalAttributes: Set<String> = [
-        "id", "class", "title", "lang", "dir", "align", "valign", "width", "height", "role", "md-src-pos"
+        "id", "class", "title", "lang", "dir", "align", "valign", "width", "height", "role"
     ]
 
     static let elementAttributes: [String: Set<String>] = [
@@ -167,7 +169,13 @@ nonisolated enum MarkdownHTMLSanitizer {
     private struct Attribute {
         let name: String
         let value: String
+        let separator: String
         let text: String
+
+        var namespacedText: String {
+            separator + "id=\"" + MarkdownHTMLSanitizer.userIdentifierPrefix
+                + value.replacingOccurrences(of: "\"", with: "&quot;") + "\""
+        }
     }
 
     static func sanitize(_ html: String) -> String {
@@ -260,12 +268,17 @@ nonisolated enum MarkdownHTMLSanitizer {
             }
             let name = String(characters[nameStart..<index]).lowercased()
             let value = attributeValue(in: characters, index: &index)
-            let attribute = Attribute(name: name, value: value, text: String(characters[whitespaceStart..<index]))
+            let attribute = Attribute(
+                name: name,
+                value: value,
+                separator: String(characters[whitespaceStart..<nameStart]),
+                text: String(characters[whitespaceStart..<index])
+            )
             guard isAllowed(attribute, on: element) else { continue }
             if name == "type", value.lowercased() == "checkbox" {
                 isCheckbox = true
             }
-            kept += attribute.text
+            kept += name == "id" ? attribute.namespacedText : attribute.text
         }
         if element == "input", !isCheckbox {
             return ""

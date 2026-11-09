@@ -21,13 +21,22 @@ extension LanguageServer {
 
             openFiles.addDocument(document, for: self)
 
+            let uri = content.uri
             let textDocument = TextDocumentItem(
-                uri: content.uri,
+                uri: uri,
                 languageId: content.language,
                 version: 0,
                 text: content.string
             )
-            try await lspInstance.textDocumentDidOpen(DidOpenTextDocumentParams(textDocument: textDocument))
+            let params = DidOpenTextDocumentParams(textDocument: textDocument)
+            try await document.languageServerObjects.textCoordinator.open(document, on: self) {
+                do {
+                    try await self.lspInstance.textDocumentDidOpen(params)
+                } catch {
+                    self.openFiles.removeDocument(for: uri)
+                    throw error
+                }
+            }
 
             updateIsolatedDocument(document)
             await requestPullDiagnosticsIfSupported(for: content.uri)

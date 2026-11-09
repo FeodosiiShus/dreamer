@@ -48,6 +48,31 @@ class LSPContentCoordinator<DocumentType: LanguageServerDocument>: TextViewCoord
         documentURI = document.languageServerURI
     }
 
+    func open(
+        _ document: DocumentType,
+        on server: LanguageServer<DocumentType>,
+        sending send: @escaping @MainActor () async throws -> Void
+    ) async throws {
+        discardPendingChanges()
+        setUp(server: server, document: document)
+        let opening = Task {
+            do {
+                try await send()
+            } catch {
+                self.detach()
+                throw error
+            }
+        }
+        inFlightSend = Task { _ = await opening.result }
+        try await opening.value
+    }
+
+    private func detach() {
+        discardPendingChanges()
+        languageServer = nil
+        documentURI = nil
+    }
+
     func prepareCoordinator(controller: TextViewController) {
         batchTask?.cancel()
         batchTask = nil

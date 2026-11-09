@@ -14,7 +14,7 @@ nonisolated enum MakeTaskDiscovery {
         return directory.group(
             kind: .make,
             manifestName: manifestName,
-            entries: targets.map { TaskEntry(command: "make \($0)") }
+            entries: targets.map { TaskEntry(command: "make \($0.shellQuoted())") }
         )
     }
 
@@ -55,7 +55,7 @@ nonisolated enum MakeTaskDiscovery {
     }
 
     private static func isValidTarget(_ name: String) -> Bool {
-        !name.hasPrefix(".") && name.rangeOfCharacter(from: forbiddenTargetCharacters) == nil
+        !name.hasPrefix(".") && !name.hasPrefix("-") && name.rangeOfCharacter(from: forbiddenTargetCharacters) == nil
     }
 
     private static func unique(_ names: [String]) -> [String] {

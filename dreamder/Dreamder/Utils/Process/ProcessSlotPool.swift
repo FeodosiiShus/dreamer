@@ -14,13 +14,23 @@ nonisolated final class ProcessSlotPool: Sendable {
         var waiters: [Waiter] = []
     }
 
+    private enum Admission {
+        case granted
+        case cancelled
+        case queued
+    }
+
     let limit: Int
     private let state: Mutex<State>
+    private let beforeAdmission: @Sendable () -> Void
 
-    init(limit: Int) {
+    init(limit: Int, beforeAdmission: @escaping @Sendable () -> Void = ProcessSlotPool.admitImmediately) {
         self.limit = max(1, limit)
         state = Mutex(State(available: self.limit))
+        self.beforeAdmission = beforeAdmission
     }
+
+    static func admitImmediately() {}
 
     var availableSlots: Int {
         state.withLock { $0.available }
@@ -35,18 +45,24 @@ nonisolated final class ProcessSlotPool: Sendable {
     func acquire() async throws {
         let id = UUID()
         try await withTaskCancellationHandler {
-            try Task.checkCancellation()
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-                let granted = state.withLock { state -> Bool in
+                beforeAdmission()
+                let admission = state.withLock { state -> Admission in
+                    if Task.isCancelled { return .cancelled }
                     if state.available > 0 {
                         state.available -= 1
-                        return true
+                        return .granted
                     }
                     state.waiters.append(Waiter(id: id, continuation: continuation))
-                    return false
+                    return .queued
                 }
-                if granted {
+                switch admission {
+                case .granted:
                     continuation.resume()
+                case .cancelled:
+                    continuation.resume(throwing: CancellationError())
+                case .queued:
+                    break
                 }
             }
         } onCancel: {

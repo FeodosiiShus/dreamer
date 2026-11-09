@@ -255,34 +255,6 @@ struct PartialCommitPatchBuilderTests {
     }
 
     @Test
-    func hunkIdentityIgnoresTheNewSideStartButNotTheContent() {
-        let head = numbered(1...20)
-        let alone = PartialCommitPatchBuilder.hunks(
-            from: [header(10, 1, 10, 1)],
-            head: Data(head.utf8),
-            worktree: Data(numbered(1...20, replacing: [10: "L10"]).utf8)
-        )
-        var shifted = (1...20).map { $0 == 10 ? "L10" : "l\($0)" }
-        shifted.insert("z", at: 1)
-        let afterInsertion = PartialCommitPatchBuilder.hunks(
-            from: [header(10, 1, 11, 1)],
-            head: Data(head.utf8),
-            worktree: Data(shifted.map { $0 + "\n" }.joined().utf8)
-        )
-        let otherContent = PartialCommitPatchBuilder.hunks(
-            from: [header(10, 1, 10, 1)],
-            head: Data(head.utf8),
-            worktree: Data(numbered(1...20, replacing: [10: "other"]).utf8)
-        )
-
-        #expect(alone.count == 1)
-        #expect(alone.map(\.id) == afterInsertion.map(\.id))
-        #expect(alone.map(\.id) != otherContent.map(\.id))
-        #expect(alone[0].id.hasPrefix("10,1,1#"))
-        #expect(afterInsertion[0].newStart == 11)
-    }
-
-    @Test
     func hunkRangeTitlesFollowGitsHeaderForm() {
         let head = Data("a\nb\nc\n".utf8)
         let worktree = Data("a\nB\nc\nx\ny\n".utf8)

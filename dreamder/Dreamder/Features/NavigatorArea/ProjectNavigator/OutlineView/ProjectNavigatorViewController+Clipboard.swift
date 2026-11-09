@@ -8,6 +8,11 @@ extension ProjectNavigatorViewController {
         let replacesExisting: Bool
     }
 
+    struct PastePlan {
+        var entries: [PasteEntry] = []
+        var rejected: [String] = []
+    }
+
     var selectedFiles: [CEWorkspaceFile] {
         outlineView.selectedRowIndexes.compactMap { outlineView.item(atRow: $0) as? CEWorkspaceFile }
     }
@@ -42,48 +47,12 @@ extension ProjectNavigatorViewController {
     func paste(into folder: CEWorkspaceFile) async {
         guard let manager = workspace?.workspaceFileManager else { return }
         let isCut = clipboard.isCut
-        let fileManager = manager.fileManager
-        var entries: [PasteEntry] = []
-        var rejected: [String] = []
-        for source in clipboard.fileURLs {
-            var isDirectoryFlag: ObjCBool = false
-            let sourcePath = source.path(percentEncoded: false)
-            guard fileManager.fileExists(atPath: sourcePath, isDirectory: &isDirectoryFlag) else {
-                continue
-            }
-            let name = source.lastPathComponent
-            if Self.url(folder.url, isWithin: source) {
-                rejected.append(name)
-                continue
-            }
-            let destination = folder.url.appending(path: name)
-            if isCut {
-                guard Self.normalizedPath(source.deletingLastPathComponent()) != Self.normalizedPath(folder.url) else {
-                    continue
-                }
-                let exists = fileManager.fileExists(atPath: destination.path(percentEncoded: false))
-                if exists, !(confirmReplace?(name) ?? replaceFileDialog(fileName: name)) {
-                    continue
-                }
-                entries.append(
-                    PasteEntry(source: source, destination: destination, isCut: true, replacesExisting: exists)
-                )
-            } else {
-                let isDirectory = isDirectoryFlag.boolValue
-                let unique = CopyNaming.uniqueURL(for: source, isDirectory: isDirectory, in: folder.url) {
-                    fileManager.fileExists(atPath: $0.path(percentEncoded: false))
-                }
-                entries.append(
-                    PasteEntry(source: source, destination: unique, isCut: false, replacesExisting: false)
-                )
-            }
-        }
-
-        let outcomes = await Self.transfer(entries)
+        let plan = pastePlan(into: folder, isCut: isCut, fileManager: manager.fileManager)
+        let outcomes = await Self.transfer(plan.entries, using: fileOperations)
         var pasted: [URL] = []
         var firstError: Error?
         var staleDirectories: [URL] = [folder.url]
-        for (entry, outcome) in zip(entries, outcomes) {
+        for (entry, outcome) in zip(plan.entries, outcomes) {
             switch outcome {
             case .success:
                 pasted.append(entry.destination)
@@ -95,12 +64,8 @@ extension ProjectNavigatorViewController {
                 firstError = firstError ?? error
             }
         }
-        for directory in staleDirectories {
-            do {
-                try manager.refresh(directoryAt: directory)
-            } catch {
-                firstError = firstError ?? error
-            }
+        if let refreshError = refresh(directories: staleDirectories, in: manager) {
+            firstError = firstError ?? refreshError
         }
         if isCut, !pasted.isEmpty {
             clipboard.clear()
@@ -114,32 +79,99 @@ extension ProjectNavigatorViewController {
         shouldSendSelectionUpdate = false
         outlineView.selectRowIndexes(IndexSet(rows), byExtendingSelection: false)
         shouldSendSelectionUpdate = true
+        reportPasteProblems(rejected: plan.rejected, error: firstError)
+    }
 
+    func pastePlan(into folder: CEWorkspaceFile, isCut: Bool, fileManager: FileManager) -> PastePlan {
+        var plan = PastePlan()
+        for source in clipboard.fileURLs {
+            var isDirectoryFlag: ObjCBool = false
+            let sourcePath = source.path(percentEncoded: false)
+            guard fileManager.fileExists(atPath: sourcePath, isDirectory: &isDirectoryFlag) else {
+                continue
+            }
+            let name = source.lastPathComponent
+            if Self.url(folder.url, isWithin: source) {
+                plan.rejected.append(name)
+                continue
+            }
+            let destination = folder.url.appending(path: name)
+            if isCut {
+                guard Self.normalizedPath(source.deletingLastPathComponent()) != Self.normalizedPath(folder.url) else {
+                    continue
+                }
+                if Self.url(source, isWithin: destination) {
+                    plan.rejected.append(name)
+                    continue
+                }
+                let exists = fileManager.fileExists(atPath: destination.path(percentEncoded: false))
+                if exists, !(confirmReplace?(name) ?? replaceFileDialog(fileName: name)) {
+                    continue
+                }
+                plan.entries.append(
+                    PasteEntry(source: source, destination: destination, isCut: true, replacesExisting: exists)
+                )
+            } else {
+                let isDirectory = isDirectoryFlag.boolValue
+                let unique = CopyNaming.uniqueURL(for: source, isDirectory: isDirectory, in: folder.url) {
+                    fileManager.fileExists(atPath: $0.path(percentEncoded: false))
+                }
+                plan.entries.append(
+                    PasteEntry(source: source, destination: unique, isCut: false, replacesExisting: false)
+                )
+            }
+        }
+        return plan
+    }
+
+    func reportPasteProblems(rejected: [String], error: (any Error)?) {
         if !rejected.isEmpty {
             let alert = NSAlert()
             alert.messageText = "Cannot paste \(rejected.joined(separator: ", ")) into itself"
             alert.addButton(withTitle: "Dismiss")
             alert.runModal()
         }
-        if let firstError {
-            let alert = NSAlert(error: firstError)
-            alert.addButton(withTitle: "Dismiss")
-            alert.runModal()
+        if let error {
+            showErrorAlert(error)
         }
     }
 
+    func refresh(directories: [URL], in manager: CEWorkspaceFileManager) -> (any Error)? {
+        var firstError: (any Error)?
+        for directory in directories {
+            do {
+                try manager.refresh(directoryAt: directory)
+            } catch {
+                firstError = firstError ?? error
+            }
+        }
+        return firstError
+    }
+
+    func showErrorAlert(_ error: any Error) {
+        let alert = NSAlert(error: error)
+        alert.addButton(withTitle: "Dismiss")
+        alert.runModal()
+    }
+
     @concurrent
-    static func transfer(_ entries: [PasteEntry]) async -> [Result<Void, any Error>] {
-        let fileManager = FileManager.default
-        return entries.map { entry in
+    static func transfer(
+        _ entries: [PasteEntry],
+        using operations: ProjectNavigatorFileOperations
+    ) async -> [Result<Void, any Error>] {
+        entries.map { entry in
             Result {
                 if entry.replacesExisting {
-                    try fileManager.removeItem(at: entry.destination)
-                }
-                if entry.isCut {
-                    try fileManager.moveItem(at: entry.source, to: entry.destination)
+                    try ProjectNavigatorItemReplacement.replace(
+                        entry.destination,
+                        with: entry.source,
+                        mode: .move,
+                        using: operations
+                    )
+                } else if entry.isCut {
+                    try operations.move(entry.source, entry.destination)
                 } else {
-                    try fileManager.copyItem(at: entry.source, to: entry.destination)
+                    try operations.copy(entry.source, entry.destination)
                 }
             }
         }

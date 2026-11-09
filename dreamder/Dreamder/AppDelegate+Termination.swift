@@ -9,48 +9,53 @@ extension AppDelegate {
         didCloseAll: Bool,
         contextInfo: UnsafeMutableRawPointer?
     ) {
+        let taskManagers = QuitTaskManagers.take(from: contextInfo)
         guard didCloseAll else {
             replyToTerminate(false)
             return
         }
-        terminateTasks()
-        terminateLanguageServers()
+        finishTermination(taskManagers: taskManagers)
     }
 
-    /// Terminates running language servers. Used during app termination to ensure resources are freed.
-    private func terminateLanguageServers() {
-        let timeout = languageServerShutdownTimeout
+    private func finishTermination(taskManagers: [TaskManager]) {
         Task { @MainActor in
-            let service = self.languageService()
-            let task = TaskNotificationModel(
-                id: "appdelegate.terminate_language_servers",
-                title: "Stopping Language Servers",
-                message: "Stopping running language server processes...",
-                isLoading: true
-            )
-
-            if !service.languageClients.isEmpty {
-                TaskNotificationHandler.postTask(action: .create, model: task)
-            }
-
-            try? await withTimeout(
-                duration: timeout,
-                onTimeout: {
-                    // Stop-gap measure to ensure we don't hang on CMD-Q
-                    await service.killAllServers()
-                },
-                operation: {
-                    await service.stopAllServers()
-                }
-            )
-
-            TaskNotificationHandler.postTask(action: .delete, model: task)
+            await self.terminateTasks(of: taskManagers)
+            await self.terminateLanguageServers()
             self.replyToTerminate(true)
         }
     }
 
+    /// Terminates running language servers. Used during app termination to ensure resources are freed.
+    private func terminateLanguageServers() async {
+        let timeout = languageServerShutdownTimeout
+        let service = languageService()
+        let task = TaskNotificationModel(
+            id: "appdelegate.terminate_language_servers",
+            title: "Stopping Language Servers",
+            message: "Stopping running language server processes...",
+            isLoading: true
+        )
+
+        if !service.languageClients.isEmpty {
+            TaskNotificationHandler.postTask(action: .create, model: task)
+        }
+
+        try? await withTimeout(
+            duration: timeout,
+            onTimeout: {
+                // Stop-gap measure to ensure we don't hang on CMD-Q
+                await service.killAllServers()
+            },
+            operation: {
+                await service.stopAllServers()
+            }
+        )
+
+        TaskNotificationHandler.postTask(action: .delete, model: task)
+    }
+
     /// Terminates all running tasks. Used during app termination to ensure resources are freed.
-    private func terminateTasks() {
+    private func terminateTasks(of taskManagers: [TaskManager]) async {
         let task = TaskNotificationModel(
             id: "appdelegate.terminate_tasks",
             title: "Terminating Tasks",
@@ -58,16 +63,14 @@ extension AppDelegate {
             isLoading: true
         )
 
-        let taskManagers = documentsController.documents
-            .compactMap({ $0 as? WorkspaceDocument })
-            .compactMap({ $0.taskManager })
-
-        if taskManagers.reduce(0, { $0 + $1.activeTasks.count }) > 0 {
+        if taskManagers.contains(where: { $0.hasActiveTasks }) {
             TaskNotificationHandler.postTask(action: .create, model: task)
         }
 
-        taskManagers.forEach { manager in
-            manager.stopAllTasks()
+        await withTaskGroup(of: Void.self) { group in
+            for manager in taskManagers {
+                group.addTask { await manager.shutDownTasks() }
+            }
         }
 
         TaskNotificationHandler.postTask(action: .delete, model: task)
@@ -92,6 +95,8 @@ extension AppDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let projects: [String] = documentsController.documents
             .compactMap { ($0 as? WorkspaceDocument)?.fileURL?.path }
+        let taskManagers = documentsController.documents
+            .compactMap { ($0 as? WorkspaceDocument)?.taskManager }
 
         defaults.set(projects, forKey: AppDelegate.recoverWorkspacesKey)
 
@@ -100,14 +105,13 @@ extension AppDelegate {
             documentsController.closeAllDocuments(
                 withDelegate: self,
                 didCloseAllSelector: #selector(documentController(_:didCloseAll:contextInfo:)),
-                contextInfo: nil
+                contextInfo: QuitTaskManagers(taskManagers).retainedPointer()
             )
             // `documentController(_:didCloseAll:contextInfo:)` will call `terminateLanguageServers()`
             return .terminateLater
         }
 
-        terminateTasks()
-        terminateLanguageServers()
+        finishTermination(taskManagers: taskManagers)
         return .terminateLater
     }
 
@@ -117,5 +121,21 @@ extension AppDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+}
+
+private final class QuitTaskManagers {
+    let taskManagers: [TaskManager]
+
+    init(_ taskManagers: [TaskManager]) {
+        self.taskManagers = taskManagers
+    }
+
+    func retainedPointer() -> UnsafeMutableRawPointer {
+        Unmanaged.passRetained(self).toOpaque()
+    }
+
+    static func take(from pointer: UnsafeMutableRawPointer?) -> [TaskManager] {
+        pointer.map { Unmanaged<QuitTaskManagers>.fromOpaque($0).takeRetainedValue().taskManagers } ?? []
     }
 }

@@ -20,8 +20,8 @@ extension LSPService {
         for key in serverStates.keys where key.workspacePath == workspacePath && startTasks[key] == nil {
             serverStates.removeValue(forKey: key)
         }
-        for key in lostDocuments.keys where key.workspacePath == workspacePath {
-            lostDocuments.removeValue(forKey: key)
+        for key in pendingDocuments.keys where key.workspacePath == workspacePath {
+            pendingDocuments.removeValue(forKey: key)
         }
         for key in automaticRestarts.keys where key.workspacePath == workspacePath {
             automaticRestarts.removeValue(forKey: key)

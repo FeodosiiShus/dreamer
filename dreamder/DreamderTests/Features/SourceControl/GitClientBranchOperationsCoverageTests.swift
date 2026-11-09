@@ -10,7 +10,7 @@ struct GitClientBranchOperationsCoverage {
         }
     }
 
-    private static func calls(_ fake: FakeProcessRunner) -> [[String]] {
+    static func calls(_ fake: FakeProcessRunner) -> [[String]] {
         fake.invocations.map(ScmFakeGit.arguments)
     }
 
@@ -84,18 +84,18 @@ struct GitClientBranchOperationsCoverage {
         try await client.branchOpsRenameBranch(oldName: "old", newName: "new", unsetUpstream: true)
 
         #expect(Self.calls(fake) == [
-            ["checkout", "main"],
-            ["checkout", "--track", "-b", "feat", "origin/feat"],
-            ["checkout", "-B", "feat", "origin/feat"],
-            ["checkout", "-B", "feat", "origin/feat"],
-            ["checkout", "abc123"],
+            ["checkout", "--end-of-options", "main"],
+            ["checkout", "--track", "-b", "feat", "--end-of-options", "origin/feat"],
+            ["checkout", "-B", "feat", "--end-of-options", "origin/feat"],
+            ["checkout", "-B", "feat", "--end-of-options", "origin/feat"],
+            ["checkout", "--end-of-options", "abc123"],
             ["checkout", "-b", "a"],
-            ["checkout", "-B", "b", "main"],
-            ["branch", "c", "main"],
-            ["branch", "-f", "d"],
-            ["branch", "-m", "old", "new"],
-            ["branch", "-m", "old", "new"],
-            ["branch", "--unset-upstream", "new"]
+            ["checkout", "-B", "b", "--end-of-options", "main"],
+            ["branch", "--end-of-options", "c", "main"],
+            ["branch", "-f", "--end-of-options", "d"],
+            ["branch", "-m", "--end-of-options", "old", "new"],
+            ["branch", "-m", "--end-of-options", "old", "new"],
+            ["branch", "--unset-upstream", "--end-of-options", "new"]
         ])
     }
 
@@ -112,14 +112,14 @@ struct GitClientBranchOperationsCoverage {
         try await client.branchOpsPushTag(name: "v1", remote: "origin")
 
         #expect(Self.calls(fake) == [
-            ["rev-list", "--count", "main..feat"],
-            ["log", "--format=%h|%s|%an|%ad", "--date=short", "main..feat"],
-            ["log", "--format=%h  %s", "main..feat"],
-            ["branch", "gone", "abc"],
-            ["tag", "v1", "abc"],
-            ["push", "origin", "--delete", "feat"],
-            ["tag", "-d", "v1"],
-            ["push", "origin", "refs/tags/v1"]
+            ["rev-list", "--count", "--end-of-options", "main..feat"],
+            ["log", "--format=%h|%s|%an|%ad", "--date=short", "--end-of-options", "main..feat"],
+            ["log", "--format=%h  %s", "--end-of-options", "main..feat"],
+            ["branch", "--end-of-options", "gone", "abc"],
+            ["tag", "--end-of-options", "v1", "abc"],
+            ["push", "--delete", "--end-of-options", "origin", "feat"],
+            ["tag", "-d", "--end-of-options", "v1"],
+            ["push", "--end-of-options", "origin", "refs/tags/v1"]
         ])
     }
 
@@ -174,17 +174,17 @@ struct GitClientBranchOperationsCoverage {
         #expect(Self.calls(fake) == [
             ["fetch", "--all", "--prune"],
             ["pull", "--no-rebase"],
-            ["-c", "core.editor=true", "pull", "--rebase", "origin", "feat/x"],
-            ["-c", "core.editor=true", "pull", "--no-rebase", "origin", "feat"],
-            ["branch", "--set-upstream-to=origin/feat", "feat"],
-            ["branch", "--unset-upstream", "feat"],
-            ["fetch", "origin"],
-            ["merge", "--ff-only", "origin/main"],
-            ["fetch", "origin", "feat/x:feat"],
-            ["worktree", "add", "/tmp/wt", "feat"],
-            ["worktree", "add", "/tmp/wt2"],
-            ["worktree", "add", "/tmp/wt3"],
-            ["worktree", "add", "/"]
+            ["-c", "core.editor=true", "pull", "--rebase", "--end-of-options", "origin", "feat/x"],
+            ["-c", "core.editor=true", "pull", "--no-rebase", "--end-of-options", "origin", "feat"],
+            ["branch", "--set-upstream-to=origin/feat", "--end-of-options", "feat"],
+            ["branch", "--unset-upstream", "--end-of-options", "feat"],
+            ["fetch", "--end-of-options", "origin"],
+            ["merge", "--ff-only", "--end-of-options", "origin/main"],
+            ["fetch", "--end-of-options", "origin", "feat/x:feat"],
+            ["worktree", "add", "--end-of-options", "/tmp/wt", "feat"],
+            ["worktree", "add", "--end-of-options", "/tmp/wt2"],
+            ["worktree", "add", "--end-of-options", "/tmp/wt3"],
+            ["worktree", "add", "--end-of-options", "/"]
         ])
     }
 
@@ -217,7 +217,7 @@ struct GitClientBranchOperationsCoverage {
         try await existing.branchOpsCheckoutRemote("origin/feat")
         #expect(Self.calls(existingFake) == [
             ["rev-parse", "-q", "--verify", "refs/heads/feat"],
-            ["checkout", "feat"]
+            ["checkout", "--end-of-options", "feat"]
         ])
 
         let (missing, missingFake) = ScmFakeGit.client { invocation in
@@ -226,7 +226,7 @@ struct GitClientBranchOperationsCoverage {
         try await missing.branchOpsCheckoutRemote("origin/feat")
         #expect(Self.calls(missingFake) == [
             ["rev-parse", "-q", "--verify", "refs/heads/feat"],
-            ["checkout", "--track", "-b", "feat", "origin/feat"]
+            ["checkout", "--track", "-b", "feat", "--end-of-options", "origin/feat"]
         ])
     }
 
@@ -269,86 +269,13 @@ struct GitClientBranchOperationsCoverage {
         let (ok, okFake) = ScmFakeGit.client { _ in ScmFakeGit.ok() }
         try await ok.branchOpsDeleteLocalBranch("x")
         try await ok.branchOpsDeleteLocalBranch("x", force: true)
-        #expect(Self.calls(okFake) == [["branch", "-d", "x"], ["branch", "-D", "x"]])
-        #expect(Self.calls(fake) == [["branch", "-d", "x"], ["branch", "-D", "x"]])
-    }
-
-    @Test
-    func mergeReportsConflictsFromOutputOrStateAndFailuresOtherwise() async throws {
-        let (conflicting, _) = ScmFakeGit.client { invocation in
-            ScmFakeGit.arguments(invocation).contains("merge")
-                ? ScmFakeGit.failure("CONFLICT (content): Merge conflict in a.txt", code: 1)
-                : ScmFakeGit.ok()
-        }
-        #expect(try await conflicting.branchOpsMerge("topic"))
-
-        let (clean, cleanFake) = ScmFakeGit.client { _ in ScmFakeGit.ok() }
-        #expect(try await clean.branchOpsMerge("topic") == false)
-        #expect(Self.calls(cleanFake).first == ["-c", "core.editor=true", "merge", "--no-edit", "topic"])
-
-        let (failing, _) = ScmFakeGit.client { _ in ScmFakeGit.failure("fatal: refusing", code: 128) }
-        await #expect(throws: GitClient.GitClientError.outputError("refusing")) {
-            _ = try await failing.branchOpsMerge("topic")
-        }
-    }
-
-    @Test
-    func rebaseReportsConflictsFromOutputAndFailuresOtherwise() async throws {
-        let (conflicting, _) = ScmFakeGit.client { invocation in
-            ScmFakeGit.arguments(invocation).first == "rebase"
-                ? ScmFakeGit.failure("error: could not apply abc123... change", code: 1)
-                : ScmFakeGit.ok()
-        }
-        #expect(try await conflicting.branchOpsRebase(onto: "main"))
-
-        let (conflictText, _) = ScmFakeGit.client { invocation in
-            ScmFakeGit.arguments(invocation).first == "rebase"
-                ? FakeProcessRunner.output("CONFLICT (content)", exitCode: 1)
-                : ScmFakeGit.ok()
-        }
-        #expect(try await conflictText.branchOpsRebase(onto: "main"))
-
-        let (clean, _) = ScmFakeGit.client { _ in ScmFakeGit.ok() }
-        #expect(try await clean.branchOpsRebase(onto: "main") == false)
-
-        let (failing, _) = ScmFakeGit.client { _ in ScmFakeGit.failure("fatal: invalid upstream", code: 128) }
-        await #expect(throws: GitClient.GitClientError.outputError("invalid upstream")) {
-            _ = try await failing.branchOpsRebase(onto: "main")
-        }
-    }
-
-    @Test
-    func checkoutAndRebaseSwitchesBeforeReplaying() async throws {
-        let (client, fake) = ScmFakeGit.client { _ in ScmFakeGit.ok() }
-        #expect(try await client.branchOpsCheckoutAndRebase("feat", onto: "main") == false)
-        #expect(Self.calls(fake).prefix(2) == [["checkout", "feat"], ["rebase", "main"]])
-    }
-
-    @Test
-    func tagsAreParsedFromRefListing() async throws {
-        let (client, fake) = ScmFakeGit.client { _ in ScmFakeGit.ok("v2|bbb\nv1|aaa\n\n") }
-        let tags = try await client.branchOpsListTags()
-        #expect(tags == [GitTag(name: "v1", objectName: "aaa"), GitTag(name: "v2", objectName: "bbb")])
-        #expect(Self.calls(fake) == [["for-each-ref", "--format=%(refname:short)|%(objectname:short)", "refs/tags"]])
-    }
-
-    @Test
-    func revisionsAreTrimmed() async throws {
-        let (client, _) = ScmFakeGit.client { _ in ScmFakeGit.ok("abc123\n") }
-        #expect(try await client.branchOpsRevision("HEAD") == "abc123")
-    }
-
-    @Test
-    func recentBranchesFilterTheReflogByExistingLocalBranches() async throws {
-        let (client, _) = ScmFakeGit.client { invocation in
-            switch ScmFakeGit.arguments(invocation).first {
-            case "reflog":
-                ScmFakeGit.ok("checkout: moving from main to feature\ncheckout: moving from feature to gone\n")
-            default:
-                ScmFakeGit.ok("refs/heads/main\nrefs/heads/feature\n")
-            }
-        }
-        let recent = try await client.branchOpsRecentBranchNames(limit: 5)
-        #expect(recent == ["feature"])
+        #expect(Self.calls(okFake) == [
+            ["branch", "-d", "--end-of-options", "x"],
+            ["branch", "-D", "--end-of-options", "x"]
+        ])
+        #expect(Self.calls(fake) == [
+            ["branch", "-d", "--end-of-options", "x"],
+            ["branch", "-D", "--end-of-options", "x"]
+        ])
     }
 }

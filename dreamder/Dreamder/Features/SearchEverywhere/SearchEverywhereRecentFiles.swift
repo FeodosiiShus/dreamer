@@ -118,12 +118,12 @@ final class SearchEverywhereRecentFilesStore {
         workspace.fileURL?.standardizedFileURL.path ?? "untitled"
     }
 
-    private static func defaultsKey(_ key: String) -> String {
-        "dreamder.recentFiles.\(key)"
+    static func defaultsKey(forProjectPath path: String) -> String {
+        "dreamder.recentFiles.\(path)"
     }
 
     private func storedList(for key: String) -> SearchEverywhereRecentFileList {
-        let paths = defaults.stringArray(forKey: Self.defaultsKey(key)) ?? []
+        let paths = defaults.stringArray(forKey: Self.defaultsKey(forProjectPath: key)) ?? []
         let urls = paths
             .map { URL(fileURLWithPath: $0) }
             .filter { FileManager.default.fileExists(atPath: $0.path) }
@@ -131,6 +131,6 @@ final class SearchEverywhereRecentFilesStore {
     }
 
     private func store(_ urls: [URL], for key: String) {
-        defaults.set(urls.map { $0.path }, forKey: Self.defaultsKey(key))
+        defaults.set(urls.map { $0.path }, forKey: Self.defaultsKey(forProjectPath: key))
     }
 }

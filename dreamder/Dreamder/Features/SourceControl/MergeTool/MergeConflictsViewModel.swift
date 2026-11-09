@@ -13,6 +13,7 @@ final class MergeConflictsViewModel {
     private(set) var primaryPath: String?
     private(set) var isBusy = false
     private(set) var errorMessage: String?
+    private(set) var statusFailure: String?
 
     @ObservationIgnored private var anchorPath: String?
 
@@ -59,10 +60,21 @@ final class MergeConflictsViewModel {
     }
 
     var summary: String {
+        if let statusFailure {
+            return statusFailure
+        }
         guard !entries.isEmpty, let context else {
-            return "All conflicts have been resolved"
+            return Self.resolvedMessage
         }
         return context.summary
+    }
+
+    static let resolvedMessage = "All conflicts have been resolved"
+
+    var emptyStateMessage: String { statusFailure ?? Self.resolvedMessage }
+
+    var emptyStateIcon: String {
+        statusFailure == nil ? "general/greenCheckmark" : "general/warningDialog"
     }
 
     var yoursHeader: String {
@@ -159,6 +171,7 @@ final class MergeConflictsViewModel {
 
     private func apply(_ state: MergeConflictsCenter.WorkspaceState?) {
         entries = state?.entries ?? []
+        statusFailure = state?.failure
         if let context = state?.context {
             self.context = context
         }

@@ -101,6 +101,7 @@ nonisolated enum RenameMessages {
     static let missingServer = "Rename needs a language server for this file"
     static let emptyName = "The name must not be empty"
     static let unknownFailure = "The edit could not be applied"
+    static let documentChanged = "The document changed while the rename was computed"
     static let confirmHint = "Enter to rename, Esc to cancel"
 
     static func prompt(for name: String) -> String {

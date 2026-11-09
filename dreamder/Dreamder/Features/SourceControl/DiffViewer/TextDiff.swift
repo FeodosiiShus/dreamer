@@ -149,13 +149,15 @@ nonisolated struct TextDiff: Sendable, Equatable {
         return HunkInnerFragments(leftText: leftText, rightText: rightText, blocks: blocks)
     }
 
+    static func normalizingLineBreaks(in text: String) -> String {
+        guard text.utf8.contains(13) else { return text }
+        let unified = (text as NSString).replacingOccurrences(of: "\r\n", with: "\n")
+        return (unified as NSString).replacingOccurrences(of: "\r", with: "\n")
+    }
+
     static func lines(in text: String) -> [String] {
         guard !text.isEmpty else { return [] }
-        var normalized = text
-        if normalized.utf8.contains(13) {
-            normalized = (normalized as NSString).replacingOccurrences(of: "\r\n", with: "\n")
-            normalized = (normalized as NSString).replacingOccurrences(of: "\r", with: "\n")
-        }
+        let normalized = normalizingLineBreaks(in: text)
         var lines = normalized.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         if normalized.hasSuffix("\n") {
             lines.removeLast()

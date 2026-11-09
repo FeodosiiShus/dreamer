@@ -24,55 +24,6 @@ nonisolated protocol WorkspaceFileSystem: Sendable {
     func entry(at url: URL) -> WorkspaceFileEntry?
 }
 
-nonisolated struct DiskWorkspaceFileSystem: WorkspaceFileSystem {
-    private static let keys: [URLResourceKey] = [
-        .isDirectoryKey,
-        .isRegularFileKey,
-        .isSymbolicLinkKey,
-        .isPackageKey,
-        .contentModificationDateKey,
-        .fileSizeKey
-    ]
-
-    func entries(in directory: URL) -> [WorkspaceFileEntry] {
-        guard let urls = try? FileManager.default.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: Self.keys,
-            options: []
-        ) else {
-            return []
-        }
-        return urls.compactMap { url in
-            Self.entry(for: url, reportedAs: directory.appending(path: url.lastPathComponent))
-        }
-    }
-
-    func entry(at url: URL) -> WorkspaceFileEntry? {
-        let reported = URL(fileURLWithPath: url.path(percentEncoded: false))
-        return Self.entry(for: reported, reportedAs: reported)
-    }
-
-    private static func entry(for url: URL, reportedAs reportedURL: URL) -> WorkspaceFileEntry? {
-        guard let values = try? url.resourceValues(forKeys: Set(keys)) else { return nil }
-        let kind: WorkspaceFileEntry.Kind
-        if values.isSymbolicLink == true || values.isPackage == true {
-            kind = .other
-        } else if values.isDirectory == true {
-            kind = .directory
-        } else if values.isRegularFile == true {
-            kind = .file
-        } else {
-            kind = .other
-        }
-        return WorkspaceFileEntry(
-            url: reportedURL,
-            name: reportedURL.lastPathComponent,
-            kind: kind,
-            signature: WorkspaceFileSignature(modified: values.contentModificationDate, size: values.fileSize ?? 0)
-        )
-    }
-}
-
 nonisolated enum WorkspaceFileChange: Sendable, Equatable {
     case reset
     case delta(updated: [URL], removed: [URL])
@@ -297,7 +248,7 @@ nonisolated final class WorkspaceFileScope: Sendable {
         var observed: [String: (url: URL, types: Set<FSEvent>)] = [:]
         for event in events {
             switch event.eventType {
-            case .rootChanged:
+            case .mustRescan:
                 reload()
                 return
             case .changeInDirectory, .itemChangedOwner:
@@ -327,7 +278,7 @@ nonisolated final class WorkspaceFileScope: Sendable {
         var removed: [URL] = []
         var directories: [URL] = []
         for (url, types) in observed.keys.sorted().compactMap({ observed[$0] }) {
-            guard let entry = fileSystem.entry(at: url) else {
+            guard let entry = fileSystem.existingEntry(at: url) else {
                 removed.append(url)
                 continue
             }
@@ -362,7 +313,7 @@ nonisolated final class WorkspaceFileScope: Sendable {
             guard let relative = gitignore.relativePath(of: candidate), !relative.isEmpty,
                   relative.split(separator: "/").first != ".git" else { continue }
             let url = rootURL.appending(path: relative)
-            guard let entry = fileSystem.entry(at: url), entry.kind == .file,
+            guard let entry = fileSystem.existingEntry(at: url), entry.kind == .file,
                   !isExcluded(url, isDirectory: false, filter: filter) else { continue }
             updated.append(url)
             signatures[url.workspacePathKey] = entry.signature

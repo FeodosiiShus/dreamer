@@ -41,9 +41,8 @@ protocol CELocalShellTerminalViewDelegate: AnyObject {
 
     /// This method will be invoked when the child process started by `startProcess` has terminated.
     /// - Parameter source: the local process that terminated
-    /// - Parameter exitCode: the exit code returned by the process, or nil if this was an error caused during
-    ///                       the IO reading/writing
-    func processTerminated(source: TerminalView, exitCode: Int32?)
+    /// - Parameter exit: how the process ended, or nil if this was an error caused during the IO reading/writing
+    func processTerminated(source: TerminalView, exit: ProcessExit?)
 }
 
 // MARK: - CELocalShellTerminalView
@@ -55,8 +54,9 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
             return MainActor.assumeIsolated { view.getWindowSize() }
         },
         wake: { [weak self] in
-            guard let view = self else { return }
+            guard let view = self else { return false }
             Task { @MainActor in view.drainProcessEvents() }
+            return true
         }
     )
 
@@ -67,13 +67,23 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
             switch event {
             case .data(let bytes):
                 dataReceived(slice: ArraySlice(bytes))
-            case .terminated(let exitCode):
-                processTerminated(process, exitCode: exitCode)
+            case .terminated(let waitStatus):
+                processTerminated(process, exitCode: waitStatus)
             }
         }
     }
 
     var systemShell: () -> String = { Shell.autoDetectDefaultShell() }
+    var isExecutable: (String) -> Bool = { LaunchPaths.isExecutableFile(atPath: $0) }
+    var spawnProcess: (LocalProcess, ProcessSpawn) -> Void = { process, spawn in
+        process.startProcess(
+            executable: spawn.executable,
+            args: spawn.arguments,
+            environment: spawn.environment,
+            execName: spawn.executableName,
+            currentDirectory: spawn.currentDirectory
+        )
+    }
     var shellIntegrationBundle: Bundle = .main
     var settings: Settings = SettingsScope.current ?? .shared
 
@@ -115,19 +125,21 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
     /// - Parameters:
     ///     - workspaceURL: The URL of the workspace to start at.
     ///     - shell: The shell to use, leave as `nil` to
+    /// - Returns: `false` when no process was started; the reason has been printed into the terminal.
+    @discardableResult
     public func startProcess(
         workspaceURL url: URL?,
         shell: Shell? = nil,
         environment: [String] = [],
         interactive: Bool = true
-    ) {
+    ) -> Bool {
         let terminalSettings = settings.preferences.terminal
 
         var terminalEnvironment: [String] = Terminal.getEnvironmentVariables()
         terminalEnvironment.append("TERM_PROGRAM=DreamderApp_Terminal")
 
-        guard let (shell, shellPath) = getShell(shell, userSetting: terminalSettings.shell) else {
-            return
+        guard let (shell, shellPath) = resolveShellOrReport(shell, userSetting: terminalSettings.shell) else {
+            return false
         }
 
         processDelegate?.setTerminalTitle(source: self, title: shell.rawValue)
@@ -148,32 +160,76 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
 
             terminalEnvironment.append(contentsOf: environment)
 
-            process.startProcess(
-                executable: shellPath,
-                args: shellArgs,
-                environment: terminalEnvironment,
-                execName: shell.rawValue,
-                currentDirectory: url?.absolutePath
+            return spawn(
+                ProcessSpawn(
+                    executable: shellPath,
+                    arguments: shellArgs,
+                    environment: terminalEnvironment,
+                    executableName: shell.rawValue,
+                    currentDirectory: url?.absolutePath
+                )
             )
         } catch {
-            terminal.feed(text: "Failed to start a terminal session: \(error.localizedDescription)")
+            reportLaunchNotice("Failed to start a terminal session: \(error.localizedDescription)")
+            return false
         }
     }
 
-    /// Returns a string of a shell path to use
-    func getShell(_ shellType: Shell?, userSetting: SettingsData.TerminalShell) -> (Shell, String)? {
+    func spawn(_ request: ProcessSpawn) -> Bool {
+        SignalMask.withEmptyMask { spawnProcess(process, request) }
+        guard process.running else {
+            reportLaunchNotice("Failed to start \(request.executable).")
+            return false
+        }
+        return true
+    }
+
+    func reportLaunchNotice(_ message: String) {
+        feed(text: message + "\r\n")
+    }
+
+    func resolveShellOrReport(_ shellType: Shell?, userSetting: SettingsData.TerminalShell) -> (Shell, String)? {
+        switch resolveShell(shellType, userSetting: userSetting) {
+        case let .ready(shell, path, replacedPath):
+            if let replacedPath {
+                reportLaunchNotice("Shell \(replacedPath) cannot be used, using \(path).")
+            }
+            return (shell, path)
+        case .unavailable(let reason):
+            reportLaunchNotice(reason)
+            return nil
+        }
+    }
+
+    func resolveShell(_ shellType: Shell?, userSetting: SettingsData.TerminalShell) -> ShellResolution {
+        let wanted = wantedShell(shellType, userSetting: userSetting)
+        if let shell = wanted.shell, isExecutable(wanted.path) {
+            return .ready(shell: shell, path: wanted.path, replacedPath: nil)
+        }
+        let fallback = Shell.zsh
+        guard isExecutable(fallback.defaultPath) else {
+            return .unavailable(
+                reason: "Cannot start a shell: \(wanted.path) and \(fallback.defaultPath) are not executable files."
+            )
+        }
+        return .ready(shell: fallback, path: fallback.defaultPath, replacedPath: wanted.path)
+    }
+
+    private func wantedShell(
+        _ shellType: Shell?,
+        userSetting: SettingsData.TerminalShell
+    ) -> (shell: Shell?, path: String) {
         if let shellType {
             return (shellType, shellType.defaultPath)
         }
         switch userSetting {
         case .system:
             let defaultShell = systemShell()
-            guard let type = Shell(rawValue: NSString(string: defaultShell).lastPathComponent) else { return nil }
-            return (type, defaultShell)
+            return (Shell(rawValue: NSString(string: defaultShell).lastPathComponent), defaultShell)
         case .bash:
-            return (.bash, "/bin/bash")
+            return (.bash, Shell.bash.defaultPath)
         case .zsh:
-            return (.zsh, "/bin/zsh")
+            return (.zsh, Shell.zsh.defaultPath)
         }
     }
 
@@ -219,7 +275,11 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
 
     /// Implements the LocalProcessDelegate method.
     public func processTerminated(_ source: LocalProcess, exitCode: Int32?) {
-        processDelegate?.processTerminated(source: self, exitCode: exitCode)
+        handleProcessExit(exitCode.map(ProcessExit.init(waitStatus:)))
+    }
+
+    func handleProcessExit(_ exit: ProcessExit?) {
+        processDelegate?.processTerminated(source: self, exit: exit)
     }
 
     /// Implements the LocalProcessDelegate.dataReceived method

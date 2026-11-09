@@ -65,8 +65,11 @@ extension AppDelegateTests {
         defer { harness.tearDown() }
         let workspace = WorkspaceDocument()
         let manager = RecordingTaskManager(workspaceSettings: CEWorkspaceSettingsData(), workspaceURL: nil)
+        manager.shutdownTimeout = .milliseconds(100)
         let activeTask = CETask(target: "build")
-        manager.activeTasks[activeTask.id] = CEActiveTask(task: activeTask)
+        let runningTask = CEActiveTask(task: activeTask)
+        runningTask.updateTaskStatus(to: .running)
+        manager.activeTasks[activeTask.id] = runningTask
         workspace.taskManager = manager
         harness.controller.stubbedDocuments = [workspace]
 
@@ -74,8 +77,10 @@ extension AppDelegateTests {
 
         #expect(reply == .terminateLater)
         #expect(harness.controller.closeAllCalls == 0)
+        try await eventually(timeout: .seconds(20)) {
+            harness.recorder.replies == [true] && harness.recorder.notifications.count >= 3
+        }
         #expect(manager.stopAllCalls == 1)
-        try await eventually { harness.recorder.replies == [true] && harness.recorder.notifications.count >= 3 }
         #expect(harness.recorder.replies == [true])
         #expect(harness.recorder.notifications == [
             "appdelegate.terminate_tasks:create",

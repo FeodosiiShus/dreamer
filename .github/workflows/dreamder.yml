@@ -52,6 +52,7 @@ jobs:
     with:
       runner: ${{ matrix.runner }}
       xcode: ${{ matrix.xcode }}
+      shards: "[0, 1]"
 
   release:
     name: Release app (macOS 26 / Xcode 26.6)

@@ -51,7 +51,7 @@ struct MergeToolIntegrationTests {
             #expect(context.theirsLabel == "feature")
             #expect(context.swapsSides == false)
 
-            let entries = await repo.entries()
+            let entries = try await repo.entries()
             #expect(entries.map(\.path) == ["app/config.txt", "docs/notes.txt"])
             let entry = try #require(entries.first { $0.path == "app/config.txt" })
             try await repo.accept(.yours, entry: entry, context: context)
@@ -59,7 +59,7 @@ struct MergeToolIntegrationTests {
             #expect(try trimmed(fixture.read("app/config.txt")) == "alpha\nbeta-main\ngamma\ndelta\nepsilon\nzeta-main\neta\ntheta\niota\nkappa\nlambda")
             #expect(try await fixture.isFullyStaged("app/config.txt"))
             #expect(try await fixture.unmergedPaths() == ["docs/notes.txt"])
-            #expect(await repo.entries().map(\.path) == ["docs/notes.txt"])
+            #expect(try await repo.entries().map(\.path) == ["docs/notes.txt"])
         }
     }
 
@@ -69,7 +69,7 @@ struct MergeToolIntegrationTests {
             let fixture = try await GitMergeFixture.mergeConflict(in: dir)
             let repo = repository(dir)
             let context = await repo.context()
-            let entry = try #require(await repo.entries().first { $0.path == "docs/notes.txt" })
+            let entry = try #require(try await repo.entries().first { $0.path == "docs/notes.txt" })
             try await repo.accept(.theirs, entry: entry, context: context)
 
             #expect(try trimmed(fixture.read("docs/notes.txt")) == "one\nnotes-feature\nthree")
@@ -91,7 +91,7 @@ struct MergeToolIntegrationTests {
             #expect(context.theirsLabel == "main")
             #expect(context.yoursHeader == "Yours (feature)")
 
-            let entry = try #require(await repo.entries().first)
+            let entry = try #require(try await repo.entries().first)
             #expect(entry.change(for: .yours, swapsSides: true) == .modified)
             try await repo.accept(.yours, entry: entry, context: context)
 
@@ -135,7 +135,7 @@ struct MergeToolIntegrationTests {
             let fixture = try await GitMergeFixture.deleteModifyConflict(in: dir)
             let repo = repository(dir)
             let context = await repo.context()
-            let entry = try #require(await repo.entries().first)
+            let entry = try #require(try await repo.entries().first)
             #expect(entry.ours == .deleted)
             #expect(entry.theirs == .modified)
 
@@ -152,7 +152,7 @@ struct MergeToolIntegrationTests {
             let fixture = try await GitMergeFixture.deleteModifyConflict(in: dir)
             let repo = repository(dir)
             let context = await repo.context()
-            let entry = try #require(await repo.entries().first)
+            let entry = try #require(try await repo.entries().first)
 
             try await repo.accept(.theirs, entry: entry, context: context)
 
@@ -168,7 +168,7 @@ struct MergeToolIntegrationTests {
             let fixture = try await GitMergeFixture.bothAddedConflict(in: dir)
             let repo = repository(dir)
             let context = await repo.context()
-            let entry = try #require(await repo.entries().first)
+            let entry = try #require(try await repo.entries().first)
             #expect(entry.ours == .added)
             #expect(entry.theirs == .added)
 
@@ -222,7 +222,7 @@ struct MergeToolIntegrationTests {
             let merge = try #require(model.merge)
             let conflict = try #require(merge.blocks.first { $0.kind == .conflict })
 
-            model.resolve(conflict.id, with: .left)
+            await model.requestResolve(conflict.id, with: .left, window: nil)
             #expect(model.resultText.contains("zeta-main\n"))
             #expect(model.resultText.contains("zeta-feature") == false)
             #expect(model.merge?.conflictCount == 0)
@@ -239,7 +239,7 @@ struct MergeToolIntegrationTests {
             let merge = try #require(model.merge)
             let conflict = try #require(merge.blocks.first { $0.kind == .conflict })
 
-            model.resolve(conflict.id, with: .right)
+            await model.requestResolve(conflict.id, with: .right, window: nil)
             #expect(model.resultText.contains("zeta-feature\n"))
             #expect(model.resultText.contains("zeta-main") == false)
             #expect(model.merge?.conflictCount == 0)
@@ -255,7 +255,7 @@ struct MergeToolIntegrationTests {
             let merge = try #require(model.merge)
             let conflict = try #require(merge.blocks.first { $0.kind == .conflict })
 
-            model.resolve(conflict.id, with: .ignored)
+            await model.requestResolve(conflict.id, with: .ignored, window: nil)
             #expect(model.resultText.contains("epsilon\nzeta\neta"))
             #expect(model.merge?.conflictCount == 0)
         }
@@ -268,7 +268,7 @@ struct MergeToolIntegrationTests {
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
 
-            model.applyNonConflicting(.left)
+            await model.requestApplyNonConflicting(.left, window: nil)
             #expect(lines(model.resultText) == [
                 "alpha", "beta-main", "gamma", "delta", "epsilon", "zeta",
                 "eta", "theta", "iota", "kappa", "lambda"
@@ -283,7 +283,7 @@ struct MergeToolIntegrationTests {
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
 
-            model.applyNonConflicting(.right)
+            await model.requestApplyNonConflicting(.right, window: nil)
             #expect(lines(model.resultText) == [
                 "alpha", "beta", "gamma", "delta", "epsilon", "zeta",
                 "eta", "theta", "iota", "kappa", "feature-added", "lambda"
@@ -298,7 +298,7 @@ struct MergeToolIntegrationTests {
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
 
-            model.applyNonConflicting(.all)
+            await model.requestApplyNonConflicting(.all, window: nil)
             #expect(lines(model.resultText) == [
                 "alpha", "beta-main", "gamma", "delta", "epsilon", "zeta",
                 "eta", "theta", "iota", "kappa", "feature-added", "lambda"
@@ -351,7 +351,7 @@ struct MergeToolIntegrationTests {
                     "alpha\nbeta-main\ngamma\ndelta\nepsilon\nzeta\neta\ntheta\niota\nkappa\nfeature-added\nlambda")
             #expect(fixture.hasConflictMarkers("app/config.txt") == false)
             #expect(try await fixture.unmergedPaths() == ["docs/notes.txt"])
-            #expect(await repo.entries().map(\.path) == ["docs/notes.txt"])
+            #expect(try await repo.entries().map(\.path) == ["docs/notes.txt"])
         }
     }
 

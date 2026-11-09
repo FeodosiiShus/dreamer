@@ -72,16 +72,22 @@ nonisolated extension GitClient {
     }
 
     func logGraphMessage(hash: String) async throws -> String {
-        let output = try await run(arguments: ["log", "-1", "--format=%B", hash])
+        try Self.requireRefNames(hash)
+        let output = try await run(arguments: ["log", "-1", "--format=%B", "--end-of-options", hash])
         return output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func logGraphChangedFiles(commit: GitLogCommit) async throws -> [GitChangedFile] {
+        try Self.requireRefNames(commit.hash, commit.parents.first)
         let output: String
         if let firstParent = commit.parents.first {
-            output = try await run(arguments: ["diff", "--name-status", firstParent, commit.hash])
+            output = try await run(arguments: [
+                "diff", "--name-status", "--end-of-options", firstParent, commit.hash
+            ])
         } else {
-            output = try await run(arguments: ["diff-tree", "--root", "--no-commit-id", "--name-status", "-r", commit.hash])
+            output = try await run(arguments: [
+                "diff-tree", "--root", "--no-commit-id", "--name-status", "-r", "--end-of-options", commit.hash
+            ])
         }
         return Self.logGraphParseChangedFiles(output, root: directoryURL)
     }

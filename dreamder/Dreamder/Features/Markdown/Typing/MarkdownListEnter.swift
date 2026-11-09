@@ -44,8 +44,7 @@ nonisolated enum MarkdownListEnter {
         shift: Bool = false,
         settings: MarkdownTypingSettings = MarkdownTypingSettings()
     ) -> MarkdownTypingEdit? {
-        guard caret >= 0, caret <= units.count else { return nil }
-        let context = Context(units: units, caret: caret, settings: settings)
+        guard let context = Context(units: units, caret: caret, settings: settings) else { return nil }
         let result = shift ? shiftEnter(context) : enter(context)
         return result.map { MarkdownTypingEdit.between(units, and: $0) }
     }
@@ -63,8 +62,7 @@ nonisolated enum MarkdownListEnter {
         caret: Int,
         settings: MarkdownTypingSettings = MarkdownTypingSettings()
     ) -> MarkdownTypingEdit? {
-        guard caret > 0, caret <= units.count else { return nil }
-        let context = Context(units: units, caret: caret, settings: settings)
+        guard caret > 0, let context = Context(units: units, caret: caret, settings: settings) else { return nil }
         return backspace(context).map { MarkdownTypingEdit.between(units, and: $0) }
     }
 
@@ -75,12 +73,14 @@ nonisolated enum MarkdownListEnter {
         let structure: MarkdownListStructure
         let line: Int
 
-        init(units: [UInt16], caret: Int, settings: MarkdownTypingSettings) {
+        init?(units: [UInt16], caret: Int, settings: MarkdownTypingSettings) {
+            let structure = MarkdownListStructure(text: MarkdownTextLines(units: units), tabWidth: settings.tabWidth)
+            guard let line = structure.text.insertionLine(containing: caret) else { return nil }
             self.units = units
             self.caret = caret
             self.settings = settings
-            structure = MarkdownListStructure(text: MarkdownTextLines(units: units), tabWidth: settings.tabWidth)
-            line = structure.text.lineIndex(containing: caret)
+            self.structure = structure
+            self.line = line
         }
 
         var text: MarkdownTextLines {

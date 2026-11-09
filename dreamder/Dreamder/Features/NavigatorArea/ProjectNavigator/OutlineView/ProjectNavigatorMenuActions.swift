@@ -74,9 +74,13 @@ extension ProjectNavigatorMenu {
     @objc
     func openInNewWindow() {
         let files = selectedItems().filter { !$0.isFolder }.sorted { $0.url.path < $1.url.path }
+        Task { await openInNewWindows(files) }
+    }
+
+    func openInNewWindows(_ files: [CEWorkspaceFile]) async {
         for file in files {
             do {
-                try DreamderDocumentController.shared.openInNewEditorWindow(file)
+                try await DreamderDocumentController.shared.openInNewEditorWindow(file)
             } catch {
                 presentError(error)
             }
@@ -355,6 +359,5 @@ extension ProjectNavigatorMenu {
 
     private func reloadData() {
         sender?.outlineView.reloadData()
-        sender?.filteredContentChildren.removeAll()
     }
 }

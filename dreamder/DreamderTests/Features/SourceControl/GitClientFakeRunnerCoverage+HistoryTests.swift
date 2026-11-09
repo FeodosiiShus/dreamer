@@ -72,7 +72,7 @@ extension GitClientFakeRunnerCoverage {
         #expect(commits.isEmpty)
         let logArguments = ScmFakeGit.arguments(try #require(fake.invocations.first))
         #expect(!logArguments.contains("--no-merges"))
-        #expect(Array(logArguments.suffix(5)) == ["-n", "5", "release", "--", "src/a.txt"])
+        #expect(Array(logArguments.suffix(6)) == ["-n", "5", "--end-of-options", "release", "--", "src/a.txt"])
     }
 
     @Test
@@ -119,15 +119,19 @@ extension GitClientFakeRunnerCoverage {
         #expect(merged.count == 2)
         #expect(initial.count == 2)
         let invocations = fake.invocations.map(ScmFakeGit.arguments)
-        #expect(invocations[0] == ["diff", "--name-status", "p1", "h1"])
-        #expect(invocations[1] == ["diff-tree", "--root", "--no-commit-id", "--name-status", "-r", "h0"])
+        #expect(invocations[0] == ["diff", "--name-status", "--end-of-options", "p1", "h1"])
+        #expect(invocations[1] == [
+            "diff-tree", "--root", "--no-commit-id", "--name-status", "-r", "--end-of-options", "h0"
+        ])
     }
 
     @Test
     func logGraphMessageIsTrimmed() async throws {
         let (client, fake) = ScmFakeGit.client { _ in ScmFakeGit.ok("\nSubject\n\nBody\n\n") }
         #expect(try await client.logGraphMessage(hash: "abc") == "Subject\n\nBody")
-        #expect(ScmFakeGit.arguments(try #require(fake.invocations.first)) == ["log", "-1", "--format=%B", "abc"])
+        #expect(ScmFakeGit.arguments(try #require(fake.invocations.first)) == [
+            "log", "-1", "--format=%B", "--end-of-options", "abc"
+        ])
     }
 
     @Test

@@ -8,8 +8,8 @@ import Testing
 struct ProjectNavigatorViewControllerTests {
     typealias Harness = ProjectNavigatorControllerHarness
 
-    private static let folders = ["Sources", "Empty"]
-    private static let files = ["a.txt", "b.md", "Sources/main.swift", "Sources/util.swift"]
+    static let folders = ["Sources", "Empty"]
+    static let files = ["a.txt", "b.md", "Sources/main.swift", "Sources/util.swift"]
 
     private func selectInOutline(_ harness: Harness, _ files: CEWorkspaceFile...) {
         let rows = IndexSet(files.map { harness.row(of: $0) })
@@ -105,22 +105,6 @@ struct ProjectNavigatorViewControllerTests {
         controller.clearSearchFieldFocus()
 
         #expect(window.firstResponder === controller.outlineView)
-    }
-
-    @Test
-    func cachedFolderChildrenAreSortedByNameWithoutAWorkspace() async throws {
-        try withTempDir { directory in
-            let defaults = try makeIsolatedDefaults()
-            defer { removeIsolatedDefaults(defaults.defaults, suiteName: defaults.suiteName) }
-            let controller = ProjectNavigatorViewController()
-            controller.sortModes = ProjectNavigatorSortModes(rootURL: directory, defaults: defaults.defaults)
-            let folder = CEWorkspaceFile(url: directory)
-            let first = CEWorkspaceFile(url: directory.appending(path: "a.txt"))
-            let second = CEWorkspaceFile(url: directory.appending(path: "b.txt"))
-            controller.filteredContentChildren[folder] = [second, first]
-
-            #expect(controller.visibleChildren(of: folder).map(\.name) == ["a.txt", "b.txt"])
-        }
     }
 
     @Test
@@ -342,140 +326,6 @@ struct ProjectNavigatorViewControllerTests {
     }
 
     @Test
-    func filterShowsMatchingItemsAndExpandsEverything() async throws {
-        try await Harness.run(folders: Self.folders, files: Self.files, loadsTree: true) { harness in
-            harness.workspace.navigatorFilter = "main"
-
-            harness.controller.handleFilterChange()
-
-            #expect(!harness.controller.filterIsEmpty)
-            #expect(!harness.outlineView.autosaveExpandedItems)
-            #expect(harness.controller.noResultsLabel.isHidden)
-            #expect(harness.childNames(of: harness.rootFile) == ["Sources"])
-            let sources = try harness.file("Sources")
-            #expect(harness.childNames(of: sources) == ["main.swift"])
-            #expect(harness.outlineView.isItemExpanded(sources))
-        }
-    }
-
-    @Test
-    func aFolderNameMatchShowsEveryChildOfTheFolder() async throws {
-        let folders = Self.folders + ["Sources/Deep"]
-        let files = Self.files + ["Sources/Deep/x.txt"]
-        try await Harness.run(folders: folders, files: files, loadsTree: true) { harness in
-            harness.workspace.navigatorFilter = "Sources"
-
-            harness.controller.handleFilterChange()
-
-            let sources = try harness.file("Sources")
-            #expect(harness.childNames(of: sources) == ["Deep", "main.swift", "util.swift"])
-            let deep = try harness.file("Sources/Deep")
-            #expect(harness.controller.filteredContentChildren[deep] != nil)
-        }
-    }
-
-    @Test
-    func filterWithoutMatchesShowsTheNoResultsLabel() async throws {
-        try await Harness.run(folders: Self.folders, files: Self.files) { harness in
-            harness.workspace.navigatorFilter = "zzz-no-such-file"
-
-            harness.controller.handleFilterChange()
-
-            #expect(!harness.controller.noResultsLabel.isHidden)
-            #expect(harness.childNames(of: harness.rootFile).isEmpty)
-        }
-    }
-
-    @Test
-    func clearingAFilterWithoutMatchesHidesTheNoResultsLabelAgain() async throws {
-        try await Harness.run(folders: Self.folders, files: Self.files) { harness in
-            harness.workspace.navigatorFilter = "zzz-no-such-file"
-            harness.controller.handleFilterChange()
-            #expect(!harness.controller.noResultsLabel.isHidden)
-
-            harness.workspace.navigatorFilter = ""
-            harness.controller.handleFilterChange()
-
-            #expect(harness.controller.noResultsLabel.isHidden)
-        }
-    }
-
-    @Test
-    func aFilterWithMatchesHidesTheNoResultsLabelAgain() async throws {
-        try await Harness.run(folders: Self.folders, files: Self.files, loadsTree: true) { harness in
-            harness.workspace.navigatorFilter = "zzz-no-such-file"
-            harness.controller.handleFilterChange()
-            #expect(!harness.controller.noResultsLabel.isHidden)
-
-            harness.workspace.navigatorFilter = "main"
-            harness.controller.handleFilterChange()
-
-            #expect(harness.controller.noResultsLabel.isHidden)
-            #expect(harness.childNames(of: harness.rootFile) == ["Sources"])
-        }
-    }
-
-    @Test
-    func sourceControlFilterKeepsOnlyChangedFiles() async throws {
-        try await Harness.run(folders: Self.folders, files: Self.files) { harness in
-            let a = try harness.file("a.txt")
-            a.gitStatus = .modified
-            harness.workspace.sourceControlFilter = true
-
-            harness.controller.handleFilterChange()
-
-            #expect(harness.childNames(of: harness.rootFile) == ["a.txt"])
-            #expect(harness.controller.noResultsLabel.isHidden)
-        }
-    }
-
-    @Test
-    func clearingTheFilterRestoresTheExpandedFolders() async throws {
-        try await Harness.run(folders: Self.folders, files: Self.files) { harness in
-            let sources = try harness.file("Sources")
-            try harness.expand("Sources")
-            #expect(harness.controller.expandedItems.contains(sources))
-
-            harness.workspace.navigatorFilter = "main"
-            harness.controller.handleFilterChange()
-            harness.workspace.navigatorFilter = ""
-            harness.controller.handleFilterChange()
-
-            #expect(harness.outlineView.autosaveExpandedItems)
-            #expect(harness.outlineView.isItemExpanded(sources))
-            #expect(harness.outlineView.isItemExpanded(harness.rootFile))
-            #expect(harness.controller.expandedItems.contains(sources))
-        }
-    }
-
-    @Test
-    func fileSearchMatchesNamesChildrenAndGitStatus() async throws {
-        try await Harness.run(folders: Self.folders, files: Self.files, loadsTree: true) { harness in
-            let a = try harness.file("a.txt")
-            let sources = try harness.file("Sources")
-            let gitFolder = CEWorkspaceFile(url: harness.url(".git"))
-
-            harness.workspace.navigatorFilter = ""
-            #expect(harness.controller.fileSearchMatches("", for: a, sourceControlFilter: false))
-            #expect(!harness.controller.fileSearchMatches("", for: gitFolder, sourceControlFilter: false))
-
-            harness.workspace.navigatorFilter = "main"
-            #expect(!harness.controller.fileSearchMatches("main", for: a, sourceControlFilter: false))
-            #expect(harness.controller.fileSearchMatches("main", for: sources, sourceControlFilter: false))
-            #expect(!harness.controller.fileSearchMatches("zzz", for: sources, sourceControlFilter: false))
-
-            harness.workspace.navigatorFilter = ""
-            a.gitStatus = .modified
-            #expect(harness.controller.fileSearchMatches("", for: a, sourceControlFilter: true))
-            a.gitStatus = GitStatus.none
-            #expect(!harness.controller.fileSearchMatches("", for: a, sourceControlFilter: true))
-            a.gitStatus = .modified
-            harness.workspace.navigatorFilter = "unrelated"
-            #expect(!harness.controller.fileSearchMatches("unrelated", for: a, sourceControlFilter: true))
-        }
-    }
-
-    @Test
     func childrenFollowTheFolderOrderSetting() async throws {
         try await Harness.run(folders: ["zeta"], files: ["alpha.txt", "zeta/inner.txt"]) { harness in
             harness.workspace.sortFoldersOnTop = true
@@ -485,7 +335,7 @@ struct ProjectNavigatorViewControllerTests {
             #expect(harness.childNames(of: harness.rootFile).prefix(2) == ["alpha.txt", "zeta"])
 
             harness.workspace.navigatorFilter = "a"
-            harness.controller.handleFilterChange()
+            await harness.applyFilter()
             harness.workspace.sortFoldersOnTop = true
             #expect(harness.childNames(of: harness.rootFile).prefix(2) == ["zeta", "alpha.txt"])
             harness.workspace.sortFoldersOnTop = false

@@ -69,7 +69,7 @@ class CETask: Identifiable, Hashable, Codable {
     /// Ensures that the shell navigates to the correct folder, and then executes the specified command.
     var fullCommand: String {
         // Move into the specified folder if needed
-        let changeDirectoryCommand = workingDirectory.isEmpty ? "" : "cd \(workingDirectory.escapedDirectory()) && "
+        let changeDirectoryCommand = workingDirectory.isEmpty ? "" : "cd -- \(workingDirectory.shellQuoted()) && "
 
         // Construct the full command
         return "\(changeDirectoryCommand)\(command)"

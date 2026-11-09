@@ -14,23 +14,27 @@ extension ProjectNavigatorViewController: OutlineTableViewCellDelegate {
     func moveFile(file: CEWorkspaceFile, to destination: URL) {
         guard let manager = workspace?.workspaceFileManager else { return }
         Task.immediate { [self] in
-            do {
-                let sourceURL = file.url
-                let moved = try await manager.move(file: file, to: destination)
-                outlineView.reloadItem(file.parent, reloadChildren: true)
-                retargetTabs(from: sourceURL, to: destination)
-                let destinationPath = destination.path(percentEncoded: false)
-                guard let newFile = moved ?? manager.getFile(destinationPath, createIfNotFound: true),
-                      !newFile.isFolder else {
-                    return
-                }
-                workspace?.listenerModel.highlightedFileItem = newFile
-                workspace?.editorManager?.openTab(item: newFile)
-            } catch {
-                let alert = NSAlert(error: error)
-                alert.addButton(withTitle: "Dismiss")
-                alert.runModal()
+            await performMove(file: file, to: destination, manager: manager)
+        }
+    }
+
+    func performMove(file: CEWorkspaceFile, to destination: URL, manager: CEWorkspaceFileManager) async {
+        do {
+            let sourceURL = file.url
+            let moved = try await manager.move(file: file, to: destination)
+            outlineView.reloadItem(file.parent, reloadChildren: true)
+            retargetTabs(from: sourceURL, to: destination)
+            let destinationPath = destination.path(percentEncoded: false)
+            guard let newFile = moved ?? manager.getFile(destinationPath, createIfNotFound: true),
+                  !newFile.isFolder else {
+                return
             }
+            workspace?.listenerModel.highlightedFileItem = newFile
+            workspace?.editorManager?.openTab(item: newFile)
+        } catch {
+            let alert = NSAlert(error: error)
+            alert.addButton(withTitle: "Dismiss")
+            alert.runModal()
         }
     }
 

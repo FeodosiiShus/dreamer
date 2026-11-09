@@ -8,23 +8,46 @@ nonisolated final class LocalProcessPump: LocalProcessDelegate, Sendable {
         case terminated(Int32?)
     }
 
+    private nonisolated struct State: Sendable {
+        var events: [Event] = []
+        var byteCount = 0
+        var producerWaiting = false
+        var closed = false
+    }
+
+    static let defaultHighWaterBytes = 256 * 1024
+
     let queue = DispatchQueue(label: "dev.dreamder.LocalProcessPump", qos: .userInitiated)
 
-    private let pending = Mutex<[Event]>([])
+    private let state = Mutex(State())
+    private let drained = DispatchSemaphore(value: 0)
+    private let highWaterBytes: Int
     private let windowSize: @Sendable () -> winsize
-    private let wake: @Sendable () -> Void
+    private let wake: @Sendable () -> Bool
 
-    init(windowSize: @escaping @Sendable () -> winsize, wake: @escaping @Sendable () -> Void) {
+    init(
+        highWaterBytes: Int = LocalProcessPump.defaultHighWaterBytes,
+        windowSize: @escaping @Sendable () -> winsize,
+        wake: @escaping @Sendable () -> Bool
+    ) {
+        self.highWaterBytes = highWaterBytes
         self.windowSize = windowSize
         self.wake = wake
     }
 
+    var pendingByteCount: Int {
+        state.withLock { $0.byteCount }
+    }
+
     func dataReceived(slice: ArraySlice<UInt8>) {
-        append(.data(Array(slice)))
+        while mustWaitForConsumer() {
+            drained.wait()
+        }
+        append(.data(Array(slice)), byteCount: slice.count)
     }
 
     func processTerminated(_ source: LocalProcess, exitCode: Int32?) {
-        append(.terminated(exitCode))
+        append(.terminated(exitCode), byteCount: 0)
     }
 
     func getWindowSize() -> winsize {
@@ -32,20 +55,51 @@ nonisolated final class LocalProcessPump: LocalProcessDelegate, Sendable {
     }
 
     func takeEvents() -> [Event] {
-        pending.withLock { events in
-            let taken = events
-            events.removeAll()
-            return taken
+        let (taken, producerWasWaiting) = state.withLock { state in
+            let taken = state.events
+            state.events.removeAll()
+            state.byteCount = 0
+            let waiting = state.producerWaiting
+            state.producerWaiting = false
+            return (taken, waiting)
+        }
+        if producerWasWaiting {
+            drained.signal()
+        }
+        return taken
+    }
+
+    func close() {
+        let producerWasWaiting = state.withLock { state in
+            state.closed = true
+            state.events.removeAll()
+            state.byteCount = 0
+            let waiting = state.producerWaiting
+            state.producerWaiting = false
+            return waiting
+        }
+        if producerWasWaiting {
+            drained.signal()
         }
     }
 
-    private func append(_ event: Event) {
-        let wasEmpty = pending.withLock { events in
-            events.append(event)
-            return events.count == 1
+    private func mustWaitForConsumer() -> Bool {
+        state.withLock { state in
+            let full = state.byteCount >= highWaterBytes && !state.closed
+            state.producerWaiting = full
+            return full
         }
-        if wasEmpty {
-            wake()
+    }
+
+    private func append(_ event: Event, byteCount: Int) {
+        let shouldWake = state.withLock { state in
+            guard !state.closed else { return false }
+            state.events.append(event)
+            state.byteCount += byteCount
+            return state.events.count == 1
+        }
+        if shouldWake, !wake() {
+            close()
         }
     }
 }

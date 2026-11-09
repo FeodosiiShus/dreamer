@@ -217,7 +217,7 @@ struct GitLogArgumentsTests {
     func branchFilterSelectsMatchingExistingBranches() {
         let filters = GitLogFilterCollection(branch: .fromBranch("main"))
         let result = parameters(filters, existingBranches: ["main", "dev"])
-        #expect(result?.filterParameters == ["main"] + defaultTail)
+        #expect(result?.filterParameters == defaultTail + ["--end-of-options", "main"])
     }
 
     @Test
@@ -234,27 +234,28 @@ struct GitLogArgumentsTests {
     @Test
     func headIsSelectableByNameEvenWithoutBranches() {
         let filters = GitLogFilterCollection(branch: .fromBranch("HEAD"))
-        #expect(parameters(filters, existingBranches: [])?.filterParameters == ["HEAD"] + defaultTail)
+        let result = parameters(filters, existingBranches: [])
+        #expect(result?.filterParameters == defaultTail + ["--end-of-options", "HEAD"])
     }
 
     @Test
     func excludingBranchesKeepsOthersAndHead() {
         let filters = GitLogFilterCollection(branch: GitLogBranchFilter(excludedBranches: ["dev"]))
         let result = parameters(filters, existingBranches: ["main", "dev", "origin/main"])
-        #expect(result?.filterParameters == ["main", "origin/main", "HEAD"] + defaultTail)
+        #expect(result?.filterParameters == defaultTail + ["--end-of-options", "main", "origin/main", "HEAD"])
     }
 
     @Test
     func branchPatternsSelectMatchingBranches() {
         let filters = GitLogFilterCollection(branch: GitLogBranchFilter(patterns: ["release/.*"]))
         let result = parameters(filters, existingBranches: ["main", "release/1", "release/2"])
-        #expect(result?.filterParameters == ["release/1", "release/2"] + defaultTail)
+        #expect(result?.filterParameters == defaultTail + ["--end-of-options", "release/1", "release/2"])
     }
 
     @Test
     func revisionFilterAddsItsHeads() {
         let filters = GitLogFilterCollection(revision: GitLogRevisionFilter(heads: ["abc123", "def456"]))
-        #expect(parameters(filters)?.filterParameters == ["abc123", "def456"] + defaultTail)
+        #expect(parameters(filters)?.filterParameters == defaultTail + ["--end-of-options", "abc123", "def456"])
     }
 
     @Test
@@ -270,7 +271,7 @@ struct GitLogArgumentsTests {
                 GitLogRefRange(exclusiveRef: "v1", inclusiveRef: "v2")
             ])
         )
-        #expect(parameters(filters)?.filterParameters == ["main..feature", "v1..v2"] + defaultTail)
+        #expect(parameters(filters)?.filterParameters == defaultTail + ["--end-of-options", "main..feature", "v1..v2"])
     }
 
     @Test
@@ -280,16 +281,15 @@ struct GitLogArgumentsTests {
             range: GitLogRangeFilter(ranges: [GitLogRefRange(exclusiveRef: "a", inclusiveRef: "b")]),
             revision: GitLogRevisionFilter(heads: ["abc123"])
         )
-        #expect(parameters(filters, existingBranches: ["main"])?.filterParameters == ["main", "abc123", "a..b"] + defaultTail)
+        let expected = defaultTail + ["--end-of-options", "main", "abc123", "a..b"]
+        #expect(parameters(filters, existingBranches: ["main"])?.filterParameters == expected)
     }
 
     @Test
     func headResolvabilityDoesNotAffectBranchFilters() {
         let filters = GitLogFilterCollection(branch: .fromBranch("main"))
-        #expect(
-            parameters(filters, existingBranches: ["main"], headIsResolvable: false)?.filterParameters
-                == ["main"] + defaultTail
-        )
+        let result = parameters(filters, existingBranches: ["main"], headIsResolvable: false)
+        #expect(result?.filterParameters == defaultTail + ["--end-of-options", "main"])
     }
 
     @Test

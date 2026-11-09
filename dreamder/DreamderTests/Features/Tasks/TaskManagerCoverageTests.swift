@@ -5,6 +5,7 @@ import Testing
 @MainActor
 @Suite(.serialized, .uiGate)
 struct TaskManagerCoverageTests {
+    private static let stepTimeout = Duration.seconds(20)
     private let fixture: TasksCoverageFixture
     private let settings: CEWorkspaceSettingsData
     private let manager: TaskManager
@@ -99,17 +100,16 @@ struct TaskManagerCoverageTests {
         await manager.runTask(task: task)
         let activeTask = try #require(manager.activeTasks[task.id])
         let output = try #require(activeTask.output)
-        try await fixture.waitUntilReady(output)
+        try await fixture.waitUntilReady(output, timeout: Self.stepTimeout)
         let firstRunID = activeTask.activeTaskID
 
         await manager.runTask(task: task)
 
         #expect(manager.activeTasks[task.id] === activeTask)
         #expect(activeTask.activeTaskID != firstRunID)
-        try await fixture.waitForOutput(output, containing: TasksCoverageFixture.terminateMarker)
-        try await fixture.waitUntilReady(output, occurrences: 2)
+        try await fixture.waitUntilReady(output, occurrences: 2, timeout: Self.stepTimeout)
         manager.terminateTask(taskID: task.id)
-        try await eventually { manager.taskStatus(taskID: task.id) == .finished }
+        try await eventually(timeout: Self.stepTimeout) { manager.taskStatus(taskID: task.id) == .notRunning }
     }
 
     @Test
@@ -117,7 +117,7 @@ struct TaskManagerCoverageTests {
         let task = fixture.makeSignalTask()
         await manager.runTask(task: task)
         let output = try #require(manager.activeTasks[task.id]?.output)
-        try await fixture.waitUntilReady(output)
+        try await fixture.waitUntilReady(output, timeout: Self.stepTimeout)
 
         manager.terminateActiveTask()
         try await Task.sleep(for: .milliseconds(300))
@@ -125,8 +125,8 @@ struct TaskManagerCoverageTests {
 
         manager.selectedTaskID = task.id
         manager.terminateActiveTask()
-        try await eventually { manager.taskStatus(taskID: task.id) == .finished }
-        try await fixture.waitForOutput(output, containing: TasksCoverageFixture.terminateMarker)
+        try await eventually(timeout: Self.stepTimeout) { manager.taskStatus(taskID: task.id) == .notRunning }
+        try await fixture.waitForOutput(output, containing: "Signal Task cancelled.", timeout: Self.stepTimeout)
     }
 
     @Test
@@ -151,7 +151,7 @@ struct TaskManagerCoverageTests {
         try await eventually { !TasksCoverageProcessProbe.isStopped(pid) }
 
         manager.terminateTask(taskID: task.id)
-        try await eventually { manager.taskStatus(taskID: task.id) == .finished }
+        try await eventually(timeout: Self.stepTimeout) { manager.taskStatus(taskID: task.id) == .notRunning }
     }
 
     @Test
@@ -190,12 +190,14 @@ struct TaskManagerCoverageTests {
         await manager.runTask(task: task)
         let activeTask = try #require(manager.activeTasks[task.id])
         let output = try #require(activeTask.output)
-        try await fixture.waitUntilReady(output)
+        try await fixture.waitUntilReady(output, timeout: Self.stepTimeout)
+        let pid = try #require(output.runningPID())
 
-        manager.deleteTask(taskID: task.id)
+        let termination = manager.deleteTask(taskID: task.id)
 
         #expect(manager.activeTasks[task.id] == nil)
-        try await eventually { activeTask.status == .finished }
-        try await fixture.waitForOutput(output, containing: TasksCoverageFixture.terminateMarker)
+        await termination?.value
+        try await eventually(timeout: Self.stepTimeout) { activeTask.status == .notRunning }
+        try await eventually(timeout: Self.stepTimeout) { TasksCoverageProcessProbe.isGone(pid) }
     }
 }

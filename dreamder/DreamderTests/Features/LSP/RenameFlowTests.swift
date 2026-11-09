@@ -4,7 +4,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-private final class RenameFlowPresenter: RenamePresenting {
+final class RenameFlowPresenter: RenamePresenting {
     var messages: [String] = []
     var prompted: [RenameTarget] = []
     var answer: String?
@@ -20,7 +20,7 @@ private final class RenameFlowPresenter: RenamePresenting {
 }
 
 @MainActor
-private final class RenameFlowApplier {
+final class RenameFlowApplier {
     var edits: [WorkspaceEdit] = []
     var result = ApplyWorkspaceEditResult(applied: true)
 
@@ -33,33 +33,34 @@ private final class RenameFlowApplier {
 @MainActor
 @Suite(.uiGate)
 struct RenameFlowTests {
-    private let uri = syncTestDocumentURI
-    private let caret = Position(line: 0, character: 2)
+    let uri = syncTestDocumentURI
+    let caret = Position(line: 0, character: 2)
 
-    private func renameCapabilities(prepare: Bool) -> ServerCapabilities {
+    func renameCapabilities(prepare: Bool) -> ServerCapabilities {
         var capabilities = ScriptedServerConnection.incrementalCapabilities()
         capabilities.renameProvider = .optionB(RenameOptions(prepareProvider: prepare))
         return capabilities
     }
 
-    private func makeHarness(prepare: Bool = true, text: String = "hello world") async throws -> SyncTestServer {
+    func makeHarness(prepare: Bool = true, text: String = "hello world") async throws -> SyncTestServer {
         let harness = try await SyncTestServer.make(capabilities: renameCapabilities(prepare: prepare))
         _ = try await harness.open(text: text)
         return harness
     }
 
-    private func request(symbol: String = "hello", text: String = "hello world") -> RenameRequest {
+    func request(symbol: String = "hello", text: String = "hello world") -> RenameRequest {
         RenameRequest(documentURI: uri, position: caret, documentText: text, symbol: symbol)
     }
 
-    private func backend(
+    func backend(
         _ server: SyncTestServer.Server,
-        applier: RenameFlowApplier
+        applier: RenameFlowApplier,
+        documentText: String? = "hello world"
     ) -> RenameBackend {
-        RenameBackend.make(client: server) { edit in await applier.apply(edit) }
+        RenameBackend.make(client: server, documentText: { documentText }, apply: { edit in await applier.apply(edit) })
     }
 
-    private func renameParams(_ connection: ScriptedServerConnection) -> [RenameParams] {
+    func renameParams(_ connection: ScriptedServerConnection) -> [RenameParams] {
         connection.requests.compactMap { request in
             if case let .rename(params, _) = request {
                 return params
@@ -68,7 +69,7 @@ struct RenameFlowTests {
         }
     }
 
-    private func prepareParams(_ connection: ScriptedServerConnection) -> [PrepareRenameParams] {
+    func prepareParams(_ connection: ScriptedServerConnection) -> [PrepareRenameParams] {
         connection.requests.compactMap { request in
             if case let .prepareRename(params, _) = request {
                 return params
@@ -77,25 +78,26 @@ struct RenameFlowTests {
         }
     }
 
-    private func edit(_ json: String) throws -> WorkspaceEdit {
+    func edit(_ json: String) throws -> WorkspaceEdit {
         try SyncTestServer.decode(WorkspaceEdit.self, json)
     }
 
-    private func singleFileEdit(newText: String) throws -> WorkspaceEdit {
+    func singleFileEdit(newText: String) throws -> WorkspaceEdit {
         try edit(
             #"{"changes":{"\#(uri)":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":5}},"newText":"\#(newText)"}]}}"#
         )
     }
 
-    private func run(
+    func run(
         _ harness: SyncTestServer,
         presenter: RenameFlowPresenter,
         applier: RenameFlowApplier,
         request: RenameRequest? = nil
     ) async {
+        let renameRequest = request ?? self.request()
         await RenameFlow.run(
-            request: request ?? self.request(),
-            backend: backend(harness.server, applier: applier),
+            request: renameRequest,
+            backend: backend(harness.server, applier: applier, documentText: renameRequest.documentText),
             presenter: presenter
         )
     }
@@ -300,214 +302,5 @@ struct RenameFlowTests {
         await run(harness, presenter: presenter, applier: applier)
 
         #expect(presenter.prompted == [RenameTarget(name: "hello", range: nil)])
-    }
-
-    @Test
-    func aDisabledDefaultBehaviorShowsTheNotRenameableMessage() async throws {
-        let harness = try await makeHarness()
-        let applier = RenameFlowApplier()
-        let presenter = RenameFlowPresenter()
-        try harness.connection.script(
-            .textDocumentPrepareRename,
-            PrepareRenameDefaultBehavior(defaultBehavior: false)
-        )
-
-        await run(harness, presenter: presenter, applier: applier)
-
-        #expect(presenter.prompted.isEmpty)
-        #expect(presenter.messages == ["Cannot rename this element"])
-    }
-
-    @Test
-    func aNullPrepareRenameResponseShowsTheNotRenameableMessage() async throws {
-        let harness = try await makeHarness()
-        let applier = RenameFlowApplier()
-        let presenter = RenameFlowPresenter()
-
-        await run(harness, presenter: presenter, applier: applier)
-
-        #expect(harness.connection.requestCount(.textDocumentPrepareRename) == 1)
-        #expect(presenter.prompted.isEmpty)
-        #expect(presenter.messages == ["Cannot rename this element"])
-        #expect(harness.connection.requestCount(.textDocumentRename) == 0)
-    }
-
-    @Test
-    func lspRenameTestPrepareProviderDisabledFallsBackToWordRange() async throws {
-        let harness = try await makeHarness(prepare: false)
-        let applier = RenameFlowApplier()
-        let presenter = RenameFlowPresenter()
-        presenter.answer = "greetings"
-
-        await run(harness, presenter: presenter, applier: applier)
-
-        #expect(harness.connection.requestCount(.textDocumentPrepareRename) == 0)
-        #expect(presenter.prompted == [RenameTarget(name: "hello", range: nil)])
-        #expect(renameParams(harness.connection).map(\.newName) == ["greetings"])
-    }
-
-    @Test
-    func withoutAWordUnderTheCaretAndNoPrepareSupportTheElementIsNotRenameable() async throws {
-        let harness = try await makeHarness(prepare: false)
-        let applier = RenameFlowApplier()
-        let presenter = RenameFlowPresenter()
-
-        await run(harness, presenter: presenter, applier: applier, request: request(symbol: ""))
-
-        #expect(presenter.prompted.isEmpty)
-        #expect(presenter.messages == ["Cannot rename this element"])
-    }
-
-    @Test
-    func aDynamicallyRegisteredPrepareProviderIsUsed() async throws {
-        let harness = try await makeHarness(prepare: false)
-        harness.server.dynamicCapabilities.register([
-            Registration(id: "rename", method: "textDocument/rename", registerOptions: ["prepareProvider": true])
-        ])
-        let applier = RenameFlowApplier()
-        let presenter = RenameFlowPresenter()
-        try harness.connection.script(
-            .textDocumentPrepareRename,
-            RangeWithPlaceholder(range: SyncTestServer.range(0, 0, 5), placeholder: "hello")
-        )
-
-        await run(harness, presenter: presenter, applier: applier)
-
-        #expect(harness.connection.requestCount(.textDocumentPrepareRename) == 1)
-        #expect(presenter.prompted.count == 1)
-    }
-
-    @Test
-    func prepareSupportComesFromStaticOrDynamicCapabilities() async throws {
-        let harness = try await makeHarness(prepare: false)
-        let server = harness.server
-
-        server.serverCapabilities.renameProvider = nil
-        #expect(!server.supportsPrepareRename)
-        server.serverCapabilities.renameProvider = .optionA(true)
-        #expect(!server.supportsPrepareRename)
-        server.serverCapabilities.renameProvider = .optionB(RenameOptions(prepareProvider: nil))
-        #expect(!server.supportsPrepareRename)
-        server.serverCapabilities.renameProvider = .optionB(RenameOptions(prepareProvider: true))
-        #expect(server.supportsPrepareRename)
-
-        server.serverCapabilities.renameProvider = nil
-        server.dynamicCapabilities.register([
-            Registration(id: "off", method: "textDocument/rename", registerOptions: ["prepareProvider": false])
-        ])
-        #expect(!server.supportsPrepareRename)
-        server.dynamicCapabilities.register([
-            Registration(id: "on", method: "textDocument/rename", registerOptions: ["prepareProvider": true])
-        ])
-        #expect(server.supportsPrepareRename)
-    }
-
-    @Test
-    func aNullRenameResponseShowsNothingToRename() async throws {
-        let harness = try await makeHarness(prepare: false)
-        let applier = RenameFlowApplier()
-        let presenter = RenameFlowPresenter()
-        presenter.answer = "greetings"
-
-        await run(harness, presenter: presenter, applier: applier)
-
-        #expect(harness.connection.requestCount(.textDocumentRename) == 1)
-        #expect(applier.edits.isEmpty)
-        #expect(presenter.messages == ["Nothing to rename"])
-    }
-
-    @Test
-    func anEditThatIsNotAppliedShowsTheReason() async throws {
-        let harness = try await makeHarness(prepare: false)
-        let applier = RenameFlowApplier()
-        applier.result = ApplyWorkspaceEditResult(applied: false, failureReason: "file is read-only", failedChange: 1)
-        let presenter = RenameFlowPresenter()
-        presenter.answer = "greetings"
-        try harness.connection.script(.textDocumentRename, try singleFileEdit(newText: "greetings"))
-
-        await run(harness, presenter: presenter, applier: applier)
-
-        #expect(applier.edits.count == 1)
-        #expect(presenter.messages == ["Cannot rename: file is read-only"])
-    }
-
-    @Test
-    func anEditThatIsNotAppliedWithoutAReasonShowsTheGenericText() async throws {
-        let harness = try await makeHarness(prepare: false)
-        let applier = RenameFlowApplier()
-        applier.result = ApplyWorkspaceEditResult(applied: false)
-        let presenter = RenameFlowPresenter()
-        presenter.answer = "greetings"
-        try harness.connection.script(.textDocumentRename, try singleFileEdit(newText: "greetings"))
-
-        await run(harness, presenter: presenter, applier: applier)
-
-        #expect(presenter.messages == ["Cannot rename: The edit could not be applied"])
-    }
-
-    @Test
-    func aFailingPrepareRequestShowsTheErrorAndStops() async throws {
-        let caps = renameCapabilities(prepare: true)
-        let scripted = ScriptedServerConnection(capabilities: caps)
-        let failing = FaultInjectingConnection(inner: scripted, failingRequests: [.textDocumentPrepareRename])
-        let server = try await SyncTestServer.makeServer(connection: failing, capabilities: caps)
-        let applier = RenameFlowApplier()
-        let presenter = RenameFlowPresenter()
-        presenter.answer = "greetings"
-
-        await RenameFlow.run(
-            request: request(),
-            backend: backend(server, applier: applier),
-            presenter: presenter
-        )
-
-        #expect(presenter.prompted.isEmpty)
-        #expect(presenter.messages.count == 1)
-        #expect(presenter.messages.first?.hasPrefix("Cannot rename: ") == true)
-        #expect(scripted.requestCount(.textDocumentRename) == 0)
-    }
-
-    @Test
-    func aFailingRenameRequestShowsTheError() async throws {
-        let caps = renameCapabilities(prepare: false)
-        let scripted = ScriptedServerConnection(capabilities: caps)
-        let failing = FaultInjectingConnection(inner: scripted, failingRequests: [.textDocumentRename])
-        let server = try await SyncTestServer.makeServer(connection: failing, capabilities: caps)
-        let applier = RenameFlowApplier()
-        let presenter = RenameFlowPresenter()
-        presenter.answer = "greetings"
-
-        await RenameFlow.run(
-            request: request(),
-            backend: backend(server, applier: applier),
-            presenter: presenter
-        )
-
-        #expect(presenter.messages.count == 1)
-        #expect(presenter.messages.first?.hasPrefix("Cannot rename: ") == true)
-        #expect(applier.edits.isEmpty)
-    }
-
-    @Test
-    func pendingEditsAreFlushedBeforeThePrepareAndRenameRequests() async throws {
-        let harness = try await SyncTestServer.make(capabilities: renameCapabilities(prepare: true))
-        let document = try await harness.open(batchInterval: .seconds(60))
-        let applier = RenameFlowApplier()
-        let presenter = RenameFlowPresenter()
-        presenter.answer = "greetings"
-        document.languageServerObjects.textCoordinator.recordEdit(
-            uri: uri,
-            range: SyncTestServer.range(0, 0, 0),
-            string: "e"
-        )
-        try harness.connection.script(
-            .textDocumentPrepareRename,
-            RangeWithPlaceholder(range: SyncTestServer.range(0, 0, 5), placeholder: "hello")
-        )
-
-        await run(harness, presenter: presenter, applier: applier)
-
-        let log = harness.connection.log
-        #expect(log.suffix(3) == ["textDocument/didChange", "textDocument/prepareRename", "textDocument/rename"])
     }
 }

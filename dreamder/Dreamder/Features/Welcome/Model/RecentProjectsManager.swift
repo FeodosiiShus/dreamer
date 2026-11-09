@@ -141,6 +141,10 @@ final class RecentProjectsManager {
         for project in projects {
             let workspaceURL = URL(filePath: project.path, directoryHint: .isDirectory)
             defaults.removeObject(forKey: WorkspaceDocument.workspaceStateKey(for: workspaceURL))
+            defaults.removeObject(forKey: SearchEverywhereRecentFilesStore.defaultsKey(forProjectPath: project.path))
+            defaults.removeObject(
+                forKey: ProjectNavigatorViewController.expandedItemsDefaultsKey(forProjectPath: project.path)
+            )
         }
     }
 

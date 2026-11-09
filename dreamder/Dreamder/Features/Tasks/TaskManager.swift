@@ -36,6 +36,9 @@ class TaskManager {
     @ObservationIgnored private var persistedSelectionID: UUID?
     @ObservationIgnored private var selectionIsFallback = true
     @ObservationIgnored private var isApplyingFallbackSelection = false
+    @ObservationIgnored private var runsInFlight: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored var shutdownTimeout: Duration = .seconds(2)
+    let terminations = TaskEscalations()
 
     init(
         workspaceSettings: CEWorkspaceSettingsData,
@@ -66,6 +69,7 @@ class TaskManager {
     isolated deinit {
         settingsTask?.cancel()
         discoveryTask?.cancel()
+        terminations.cancelEscalationsWithoutProcess()
     }
 
     private static func selectionKey(for workspaceURL: URL?) -> String? {
@@ -177,8 +181,20 @@ class TaskManager {
     func runTask(task: CETask) async {
         guard await isAllowedToRun() else { return }
         lastRunTask = task
+        if let inFlight = runsInFlight[task.id] {
+            await inFlight.value
+            return
+        }
+        let run = Task { await self.start(task) }
+        runsInFlight[task.id] = run
+        await run.value
+    }
+
+    private func start(_ task: CETask) async {
+        defer { runsInFlight[task.id] = nil }
         if let activeTask = activeTasks[task.id] {
             await activeTask.terminateAndWait()
+            guard activeTasks[task.id] === activeTask else { return }
             activeTask.run(workspaceURL: workspaceURL)
         } else {
             let runningTask = CEActiveTask(task: task, settings: settings)
@@ -231,10 +247,10 @@ class TaskManager {
     /// or if the task is not currently running, this method does nothing.
     ///
     /// - Parameter taskID: The ID of the task to terminate.
-    func terminateTask(taskID: UUID) {
-        if let activeTask = activeTasks[taskID] {
-            activeTask.terminate()
-        }
+    @discardableResult
+    func terminateTask(taskID: UUID) -> Task<Void, Never>? {
+        guard let activeTask = activeTasks[taskID] else { return nil }
+        return terminations.begin(for: activeTask)
     }
 
     /// Interrupts the task associated with the given task ID.
@@ -293,8 +309,10 @@ class TaskManager {
         return saved
     }
 
-    func deleteTask(taskID: UUID) {
-        terminateTask(taskID: taskID)
+    @discardableResult
+    func deleteTask(taskID: UUID) -> Task<Void, Never>? {
+        let termination = terminateTask(taskID: taskID)
         activeTasks.removeValue(forKey: taskID)
+        return termination
     }
 }

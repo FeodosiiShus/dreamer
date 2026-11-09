@@ -30,7 +30,8 @@ nonisolated extension GitClient {
             arguments += ["-n", "\(maxCount)"]
         }
         if let branchName {
-            arguments.append(branchName)
+            try Self.requireRefNames(branchName)
+            arguments += ["--end-of-options", branchName]
         }
         arguments.append("--")
         if let fileLocalPath {

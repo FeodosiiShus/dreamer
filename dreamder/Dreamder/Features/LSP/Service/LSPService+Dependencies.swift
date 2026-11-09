@@ -7,6 +7,8 @@ extension LSPService {
     struct Dependencies {
         var createServer: @MainActor (LSPLanguage, LanguageServerBinary, String) async throws -> LanguageServerType
         var discoverBinary: @MainActor (LSPLanguage, String) async -> LanguageServerBinary?
+        var isWorkspaceTrusted: @MainActor (String) -> Bool
+        var untrustedNotice: UntrustedWorkspaceServerNotice
         var restartBackoff: Duration
         var observesDocumentNotifications: Bool
         var notifications: @MainActor () -> NotificationManager
@@ -29,7 +31,7 @@ extension LSPService {
                         for: language,
                         with: binary,
                         workspacePath: workspacePath,
-                        workspaceTrusted: WorkspaceTrust.shared.isTrusted(URL(fileURLWithPath: workspacePath))
+                        workspaceTrusted: Dependencies.isTrusted(workspacePath)
                     )
                 },
                 discoverBinary: { language, workspacePath in
@@ -38,16 +40,22 @@ extension LSPService {
                     return await LanguageServerDiscovery.binary(
                         for: language,
                         workspacePath: workspacePath,
-                        workspaceTrusted: WorkspaceTrust.shared.isTrusted(URL(fileURLWithPath: workspacePath)),
+                        workspaceTrusted: Dependencies.isTrusted(workspacePath),
                         registryInstallPath: registry.installPath.path,
                         disabledRegistryPackages: disabledPackages
                     )
                 },
+                isWorkspaceTrusted: Dependencies.isTrusted,
+                untrustedNotice: LanguageServerDiscovery.untrustedNotice,
                 restartBackoff: LSPService.restartBackoff,
                 observesDocumentNotifications: true,
                 notifications: { NotificationManager.shared },
                 openSettings: { AppDelegate.openScene(.settings) }
             )
+        }
+
+        static func isTrusted(_ workspacePath: String) -> Bool {
+            WorkspaceTrust.shared.isTrusted(URL(fileURLWithPath: workspacePath))
         }
 
         static func disabledPackageNames(in servers: [String: SettingsData.InstalledLanguageServer]) -> Set<String> {

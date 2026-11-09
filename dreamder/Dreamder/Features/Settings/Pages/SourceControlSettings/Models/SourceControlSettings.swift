@@ -45,8 +45,8 @@ extension SettingsData {
         /// Explicit decoder init for setting default values when key is not present in `JSON`
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.general = try container.decodeIfPresent(SourceControlGeneral.self, forKey: .general) ?? .init()
-            self.git = try container.decodeIfPresent(SourceControlGit.self, forKey: .git) ?? .init()
+            self.general = container.lenient(.general, default: .init())
+            self.git = container.lenient(.git, default: .init())
         }
     }
 
@@ -74,36 +74,15 @@ extension SettingsData {
         /// Explicit decoder init for setting default values when key is not present in `JSON`
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.sourceControlIsEnabled = try container.decodeIfPresent(
-                Bool.self,
-                forKey: .sourceControlIsEnabled
-            ) ?? true
-            self.refreshStatusLocally = try container.decodeIfPresent(Bool.self, forKey: .refreshStatusLocally) ?? true
-            self.fetchRefreshServerStatus = try container.decodeIfPresent(
-                Bool.self,
-                forKey: .fetchRefreshServerStatus
-            ) ?? true
-            self.addRemoveAutomatically = try container.decodeIfPresent(
-                Bool.self,
-                forKey: .addRemoveAutomatically
-            ) ?? true
-            self.selectFilesToCommit = try container.decodeIfPresent(Bool.self, forKey: .selectFilesToCommit) ?? true
-            self.showSourceControlChanges = try container.decodeIfPresent(
-                Bool.self,
-                forKey: .showSourceControlChanges
-            ) ?? true
-            self.includeUpstreamChanges = try container.decodeIfPresent(
-                Bool.self,
-                forKey: .includeUpstreamChanges
-            ) ?? true
-            self.revisionComparisonLayout = try container.decodeIfPresent(
-                RevisionComparisonLayout.self,
-                forKey: .revisionComparisonLayout
-            ) ?? .localLeft
-            self.controlNavigatorOrder = try container.decodeIfPresent(
-                ControlNavigatorOrder.self,
-                forKey: .controlNavigatorOrder
-            ) ?? .sortByName
+            self.sourceControlIsEnabled = container.lenient(.sourceControlIsEnabled, default: true)
+            self.refreshStatusLocally = container.lenient(.refreshStatusLocally, default: true)
+            self.fetchRefreshServerStatus = container.lenient(.fetchRefreshServerStatus, default: true)
+            self.addRemoveAutomatically = container.lenient(.addRemoveAutomatically, default: true)
+            self.selectFilesToCommit = container.lenient(.selectFilesToCommit, default: true)
+            self.showSourceControlChanges = container.lenient(.showSourceControlChanges, default: true)
+            self.includeUpstreamChanges = container.lenient(.includeUpstreamChanges, default: true)
+            self.revisionComparisonLayout = container.lenient(.revisionComparisonLayout, default: .localLeft)
+            self.controlNavigatorOrder = container.lenient(.controlNavigatorOrder, default: .sortByName)
         }
     }
 
@@ -131,10 +110,7 @@ extension SettingsData {
         /// Explicit decoder init for setting default values when key is not present in `JSON`
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.showMergeCommitsPerFileLog = try container.decodeIfPresent(
-                Bool.self,
-                forKey: .showMergeCommitsPerFileLog
-            ) ?? false
+            self.showMergeCommitsPerFileLog = container.lenient(.showMergeCommitsPerFileLog, default: false)
         }
     }
 }

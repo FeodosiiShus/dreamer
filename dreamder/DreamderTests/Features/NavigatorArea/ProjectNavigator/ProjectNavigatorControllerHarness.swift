@@ -9,22 +9,6 @@ enum ProjectNavigatorHarnessError: Error {
     case missingMenuItem(String)
 }
 
-final class ProjectNavigatorTrashingFileManager: FileManager {
-    let trashDirectory: URL
-
-    init(trashDirectory: URL) {
-        self.trashDirectory = trashDirectory
-        super.init()
-    }
-
-    override func trashItem(
-        at url: URL,
-        resultingItemURL outResultingURL: AutoreleasingUnsafeMutablePointer<NSURL?>?
-    ) throws {
-        try moveItem(at: url, to: trashDirectory.appending(path: url.lastPathComponent))
-    }
-}
-
 struct ProjectNavigatorDrop {
     let urls: [URL]
     let sourceOperationMask: NSDragOperation

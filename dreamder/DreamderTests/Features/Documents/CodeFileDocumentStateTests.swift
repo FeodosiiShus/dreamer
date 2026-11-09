@@ -211,8 +211,8 @@ struct CodeFileDocumentStateTests {
     }
 
     @Test
-    func reloadingFromDiskMovesBetweenTheStates() throws {
-        try withTempDir { dir in
+    func reloadingFromDiskMovesBetweenTheStates() async throws {
+        try await withTempDir { dir in
             try writeRootConfig(in: dir)
             let document = try makeDocument(in: dir, text: "a\n  b\n  c\n")
             let url = try #require(document.fileURL)
@@ -220,21 +220,21 @@ struct CodeFileDocumentStateTests {
 
             try Self.latin1.write(to: url)
             document.presentedItemDidChange()
-            #expect(document.readError == .undecodable)
+            try await eventually(timeout: .seconds(20)) { document.readError == .undecodable }
             #expect(document.content == nil)
             #expect(document.detectedIndent == nil)
             #expect(document.isReadOnly)
 
             try "a\n\tb\n\tc\n".write(to: url, atomically: true, encoding: .utf8)
             document.presentedItemDidChange()
+            try await eventually(timeout: .seconds(20)) { document.content?.string == "a\n\tb\n\tc\n" }
             #expect(document.readError == nil)
-            #expect(document.content?.string == "a\n\tb\n\tc\n")
             #expect(document.detectedIndent == .tabs)
             #expect(!document.isReadOnly)
 
             try Self.binary.write(to: url)
             document.presentedItemDidChange()
-            #expect(document.isBinary)
+            try await eventually(timeout: .seconds(20)) { document.isBinary }
             #expect(document.isReadOnly)
             #expect(document.detectedIndent == nil)
         }

@@ -96,6 +96,7 @@ struct ProjectNavigatorOutlineView: NSViewControllerRepresentable {
         var selectionObservation: Task<Void, Never>?
         var filterObservation: Task<Void, Never>?
         var filterReload: Task<Void, Never>?
+        var filterRefresh: Task<Void, Never>?
         weak var workspace: WorkspaceDocument?
         weak var controller: ProjectNavigatorViewController?
 
@@ -108,8 +109,19 @@ struct ProjectNavigatorOutlineView: NSViewControllerRepresentable {
             }
         }
 
+        private func scheduleFilterRefresh() {
+            guard controller?.filterMatches.isActive == true else { return }
+            filterRefresh?.cancel()
+            filterRefresh = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(100))
+                guard !Task.isCancelled else { return }
+                self?.controller?.refreshFilterAfterFileChanges()
+            }
+        }
+
         func fileManagerUpdated(updatedItems: Set<CEWorkspaceFile>) {
             guard let outlineView = controller?.outlineView else { return }
+            scheduleFilterRefresh()
             let selectedRows = outlineView.selectedRowIndexes.compactMap({ outlineView.item(atRow: $0) })
 
             // If some text view inside the outline view is first responder right now, push the update off
@@ -137,6 +149,7 @@ struct ProjectNavigatorOutlineView: NSViewControllerRepresentable {
             selectionObservation?.cancel()
             filterObservation?.cancel()
             filterReload?.cancel()
+            filterRefresh?.cancel()
             workspace?.workspaceFileManager?.removeObserver(self)
         }
     }

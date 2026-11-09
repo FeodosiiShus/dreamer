@@ -22,7 +22,8 @@ nonisolated extension GitClient {
     /// - Parameter name: Name for remote
     /// - Parameter location: URL string for remote location
     func addRemote(name: String, location: String) async throws {
-        _ = try await run(arguments: ["remote", "add", name, location])
+        try Self.requireRefNames(name, location)
+        _ = try await run(arguments: ["remote", "add", "--end-of-options", name, location])
     }
 
     /// Get the URL of the remote

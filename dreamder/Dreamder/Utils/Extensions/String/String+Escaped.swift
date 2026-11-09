@@ -8,9 +8,15 @@
 import Foundation
 
 nonisolated extension String {
-    /// Escapes the string so it's an always-valid directory
-    func escapedDirectory() -> String {
-        "\"\(self.escapedQuotes())\""
+    private static let shellPlainScalars = CharacterSet(
+        charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.:/@+,"
+    )
+
+    func shellQuoted() -> String {
+        guard !isEmpty, unicodeScalars.allSatisfy(Self.shellPlainScalars.contains) else {
+            return "'" + replacingOccurrences(of: "'", with: "'\\''") + "'"
+        }
+        return self
     }
 
     /// Returns a new string, replacing all occurrences of ` ` with `\ ` if they aren't already escaped.

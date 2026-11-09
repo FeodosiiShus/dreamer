@@ -77,7 +77,7 @@ enum MergeAutomation {
             case "ignored": resolution = .ignored
             default: return
             }
-            model.resolve(blockID, with: resolution)
+            await model.requestResolve(blockID, with: resolution, window: nil)
         case "clickChip":
             let all = command.split(separator: ":").map(String.init)
             guard all.count == 4, let blockID = Int(all[2]) else { return }
@@ -85,9 +85,9 @@ enum MergeAutomation {
         case "applyNonConflicting":
             guard let model = MergeToolPresenter.revisionsModel else { return }
             switch first {
-            case "left": model.applyNonConflicting(.left)
-            case "all": model.applyNonConflicting(.all)
-            case "right": model.applyNonConflicting(.right)
+            case "left": await model.requestApplyNonConflicting(.left, window: nil)
+            case "all": await model.requestApplyNonConflicting(.all, window: nil)
+            case "right": await model.requestApplyNonConflicting(.right, window: nil)
             default: return
             }
         case "editResult":

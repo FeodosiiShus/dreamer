@@ -163,7 +163,7 @@ struct DirectoryEventStreamTests {
         }
 
         #expect(events(Int(kFSEventStreamEventFlagNone)) == [.changeInDirectory])
-        #expect(events(Int(kFSEventStreamEventFlagRootChanged)) == [.rootChanged])
+        #expect(events(Int(kFSEventStreamEventFlagRootChanged)) == [.mustRescan])
         #expect(events(Int(kFSEventStreamEventFlagItemChangeOwner)) == [.itemChangedOwner])
         #expect(events(Int(kFSEventStreamEventFlagItemCreated)) == [.itemCreated])
         #expect(events(Int(kFSEventStreamEventFlagItemCloned)) == [.itemCloned])

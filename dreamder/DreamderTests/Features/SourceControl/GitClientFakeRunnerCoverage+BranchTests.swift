@@ -98,8 +98,8 @@ extension GitClientFakeRunnerCoverage {
         try await client.checkoutBranch(remote)
 
         #expect(fake.invocations.map(ScmFakeGit.arguments) == [
-            ["checkout", "-b", "feature", "--track", "origin/feature"],
-            ["checkout", "feature"]
+            ["checkout", "-b", "feature", "--track", "--end-of-options", "origin/feature"],
+            ["checkout", "--end-of-options", "feature"]
         ])
     }
 
@@ -114,7 +114,10 @@ extension GitClientFakeRunnerCoverage {
         try await client.checkoutBranch(remote)
 
         #expect(fake.invocations.map(ScmFakeGit.arguments) == [
-            ["checkout", "-b", local, "--track", longName.replacingOccurrences(of: "refs/remotes/", with: "")]
+            [
+                "checkout", "-b", local, "--track", "--end-of-options",
+                longName.replacingOccurrences(of: "refs/remotes/", with: "")
+            ]
         ])
     }
 
@@ -123,7 +126,9 @@ extension GitClientFakeRunnerCoverage {
         let (client, fake) = ScmFakeGit.client { _ in ScmFakeGit.ok() }
         let odd = GitBranch(name: "x", longName: "refs/remotes/lonely", upstream: nil, ahead: 0, behind: 0)
         try await client.checkoutBranch(odd)
-        #expect(fake.invocations.map(ScmFakeGit.arguments) == [["checkout", "-b", "lonely", "--track", "lonely"]])
+        #expect(fake.invocations.map(ScmFakeGit.arguments) == [
+            ["checkout", "-b", "lonely", "--track", "--end-of-options", "lonely"]
+        ])
     }
 
     @Test
@@ -145,7 +150,7 @@ extension GitClientFakeRunnerCoverage {
         let (client, fake) = ScmFakeGit.client { _ in ScmFakeGit.ok() }
         let local = GitBranch(name: "main", longName: "refs/heads/main", upstream: nil, ahead: 0, behind: 0)
         try await client.checkoutBranch(local, newName: "copy")
-        #expect(fake.invocations.map(ScmFakeGit.arguments) == [["checkout", "-b", "copy", "main"]])
+        #expect(fake.invocations.map(ScmFakeGit.arguments) == [["checkout", "-b", "copy", "--end-of-options", "main"]])
     }
 
     @Test
@@ -159,7 +164,9 @@ extension GitClientFakeRunnerCoverage {
             behind: 0
         )
         try await client.checkoutBranch(remote, newName: "mine")
-        #expect(fake.invocations.map(ScmFakeGit.arguments) == [["checkout", "-b", "mine", "--track", "origin/feature"]])
+        #expect(fake.invocations.map(ScmFakeGit.arguments) == [
+            ["checkout", "-b", "mine", "--track", "--end-of-options", "origin/feature"]
+        ])
     }
 
     @Test(arguments: [

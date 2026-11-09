@@ -5,9 +5,17 @@ import LanguageServerProtocol
 enum LSPTextPositionConverter {
     static func offset(of position: Position, in textView: TextView) -> Int? {
         guard let line = textView.layoutManager.textLineForIndex(Int(position.line)) else { return nil }
-        let offset = line.range.location + Int(position.character)
-        guard offset >= line.range.location, offset <= textView.textStorage.length else { return nil }
-        return offset
+        let storage = textView.textStorage.mutableString
+        var contentEnd = NSMaxRange(line.range)
+        while contentEnd > line.range.location, isLineBreak(storage.character(at: contentEnd - 1)) {
+            contentEnd -= 1
+        }
+        let contentLength = contentEnd - line.range.location
+        return line.range.location + min(max(Int(position.character), 0), contentLength)
+    }
+
+    private static func isLineBreak(_ unit: unichar) -> Bool {
+        unit == 0x0A || unit == 0x0D
     }
 
     static func nsRange(from range: LSPRange, in textView: TextView) -> NSRange? {

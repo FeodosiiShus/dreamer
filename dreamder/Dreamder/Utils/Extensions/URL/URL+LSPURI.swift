@@ -13,6 +13,6 @@ extension URL {
     ///
     /// Use this whenever possible when using USLs in LSP processing if not using the ``LanguageServerDocument`` type.
     var lspURI: String {
-        return "file://" + absolutePath
+        LSPWorkspaceFolders.uri(forWorkspacePath: absolutePath.decomposedStringWithCanonicalMapping)
     }
 }

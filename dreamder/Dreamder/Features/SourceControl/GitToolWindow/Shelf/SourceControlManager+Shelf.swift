@@ -8,18 +8,21 @@ extension SourceControlManager {
     @discardableResult
     func shelveChanges(files: [GitChangedFile], name: String) async throws -> GitShelf {
         let paths = shelfPaths(for: files)
+        let urls = paths.map { repositoryURL.appending(path: $0) }
+        try refuseUnsavedDocuments(at: urls)
         let shelf = try await gitClient.shelve(paths: paths, name: name)
-        await finishShelfChange(urls: paths.map { repositoryURL.appending(path: $0) })
+        await finishShelfChange(urls: urls)
         return shelf
     }
 
     func unshelve(_ shelf: GitShelf, keep: Bool) async throws -> GitShelfUnshelveOutcome {
         let urls = shelf.files.map { repositoryURL.appending(path: $0.path) }
+        try refuseUnsavedDocuments(at: urls)
         let outcome: GitShelfUnshelveOutcome
         do {
             outcome = try await gitClient.unshelve(hash: shelf.hash, keep: keep)
         } catch {
-            await finishShelfChange(urls: urls)
+            await refreshShelfState()
             throw error
         }
         await finishShelfChange(urls: urls)
@@ -51,8 +54,19 @@ extension SourceControlManager {
         return paths
     }
 
+    private func refuseUnsavedDocuments(at urls: [URL]) throws {
+        let unsaved = unsavedOpenDocumentPaths(touchedBy: urls)
+        guard unsaved.isEmpty else {
+            throw GitShelfError.unsavedChanges(unsaved.joined(separator: "\n"))
+        }
+    }
+
     private func finishShelfChange(urls: [URL]) async {
-        reloadOpenDocuments(at: urls)
+        reloadUneditedOpenDocuments(touchedBy: urls)
+        await refreshShelfState()
+    }
+
+    private func refreshShelfState() async {
         try? await refreshStashEntries()
         await refreshAllChangedFiles()
     }

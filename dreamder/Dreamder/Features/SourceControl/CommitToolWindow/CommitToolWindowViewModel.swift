@@ -16,6 +16,11 @@ final class CommitToolWindowViewModel {
     private(set) var excludedHunkIDs: [String: Set<String>] = [:]
     private(set) var amendPrefill: AmendPrefill?
     private(set) var isCommitting = false
+    typealias HunkStager = (GitClient, String, Set<String>) async throws -> PartialStagingOutcome
+
+    @ObservationIgnored var stageHunks: HunkStager = { client, path, excluded in
+        try await client.stageSelectedHunks(path: path, excluding: excluded)
+    }
 
     static func isUnversioned(_ file: GitChangedFile) -> Bool {
         file.status == .untracked && file.stagedStatus == GitStatus.none
@@ -120,12 +125,16 @@ final class CommitToolWindowViewModel {
     }
 
     private func store(_ loaded: [PartialCommitHunk], for file: GitChangedFile) {
+        let previous = hunksByFile[file.id] ?? []
         hunksByFile[file.id] = loaded
+        guard let excluded = excludedHunkIDs[file.id] else { return }
+        let excludedBefore = previous.filter { excluded.contains($0.id) }
+        let carried = Set(
+            loaded.filter { hunk in excludedBefore.contains { $0.sharesOldSide(with: hunk) } }.map(\.id)
+        )
+        excludedHunkIDs[file.id] = carried.isEmpty ? nil : carried
         let ids = Set(loaded.map(\.id))
-        guard var excluded = excludedHunkIDs[file.id] else { return }
-        excluded.formIntersection(ids)
-        excludedHunkIDs[file.id] = excluded.isEmpty ? nil : excluded
-        if !ids.isEmpty, ids.isSubset(of: excluded) {
+        if !ids.isEmpty, ids.isSubset(of: carried) {
             excludedIDs.insert(file.id)
         }
     }
@@ -173,12 +182,10 @@ final class CommitToolWindowViewModel {
 
     @MainActor
     func commit(using manager: SourceControlManager, andPush: Bool) async {
+        await refreshHunks(using: manager)
         let files = manager.changedFiles
         let included = files.filter { isIncluded($0) }
-        let partial = included.compactMap { file -> (file: GitChangedFile, excluded: Set<String>)? in
-            guard Self.supportsHunks(file), let excluded = partialExclusions(of: file) else { return nil }
-            return (file, excluded)
-        }
+        let partial = partialSelections(in: included)
         let partialIDs = Set(partial.map(\.file.id))
         let whole = included.filter { !partialIDs.contains($0.id) }
         let stagedToReset = files.filter { !isIncluded($0) && $0.isStaged }
@@ -194,9 +201,10 @@ final class CommitToolWindowViewModel {
                 try await manager.reset(stagedToReset.map(\.fileURL))
             }
             for (file, excluded) in partial {
-                let outcome = try await manager.gitClient.stageSelectedHunks(
-                    path: file.fileURL.relativePath,
-                    excluding: excluded
+                let outcome = try await stageHunks(
+                    manager.gitClient,
+                    file.fileURL.relativePath,
+                    excluded
                 )
                 if outcome == .wholeFile {
                     try await manager.add([file.fileURL])
@@ -227,6 +235,13 @@ final class CommitToolWindowViewModel {
         }
     }
 
+    private func partialSelections(in included: [GitChangedFile]) -> [(file: GitChangedFile, excluded: Set<String>)] {
+        included.compactMap { file -> (file: GitChangedFile, excluded: Set<String>)? in
+            guard Self.supportsHunks(file), let excluded = partialExclusions(of: file) else { return nil }
+            return (file, excluded)
+        }
+    }
+
     @MainActor
     func rollback(_ files: [GitChangedFile], using manager: SourceControlManager) async {
         for file in files {
@@ -239,7 +254,8 @@ final class CommitToolWindowViewModel {
                     _ = try await manager.gitClient.run("clean -f -- \(GitClient.logGraphQuote(path))")
                 } else {
                     _ = try await manager.gitClient.run(
-                        "restore --source=HEAD --staged --worktree -- \(GitClient.logGraphQuote(path))"
+                        arguments: ["restore", "--source=HEAD", "--staged", "--worktree", "--"]
+                            + Self.restoredPaths(of: file, in: manager.gitClient.directoryURL)
                     )
                 }
             } catch {
@@ -250,5 +266,13 @@ final class CommitToolWindowViewModel {
         manager.reloadOpenDocuments(at: files.map(\.fileURL))
         await manager.refreshAllChangedFiles()
         await refreshHunks(using: manager)
+    }
+
+    private static func restoredPaths(of file: GitChangedFile, in repository: URL) -> [String] {
+        let path = file.fileURL.path(percentEncoded: false)
+        guard file.status == .renamed || file.stagedStatus == .renamed, let original = file.originalFilename else {
+            return [path]
+        }
+        return [path, repository.appending(path: original).path(percentEncoded: false)]
     }
 }

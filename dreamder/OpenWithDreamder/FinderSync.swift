@@ -36,7 +36,7 @@ class CEOpenWith: FIFinderSync {
             queue: .main
         ) { notification in
             if let volumeURL = notification.userInfo?[NSWorkspace.volumeURLUserInfoKey] as? URL {
-                finderSync.directoryURLs.insert(volumeURL)
+                FIFinderSyncController.default().directoryURLs.insert(volumeURL)
             }
         }
     }

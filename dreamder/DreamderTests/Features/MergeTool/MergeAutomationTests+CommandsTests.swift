@@ -156,7 +156,7 @@ extension MergeAutomationTests {
         ("editResult:let value: Int = 1", "let value: Int = 1"),
         ("editResult:a:b:c", "a:b:c"),
         ("editResult:a\\\\nb", "a\\nb"),
-        ("editResult:tab\\r\\nend", "tab\r\nend"),
+        ("editResult:tab\\r\\nend", "tab\nend"),
         ("editResult:dangling\\", "dangling\\"),
         ("editResult:odd\\tescape", "odd\\tescape"),
         ("editResult:", "")

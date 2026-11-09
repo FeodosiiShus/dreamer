@@ -63,18 +63,15 @@ extension SettingsData {
         /// Explicit decoder init for setting default values when key is not present in `JSON`
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.darkAppearance = try container.decodeIfPresent(Bool.self, forKey: .darkAppearance) ?? false
-            self.optionAsMeta = try container.decodeIfPresent(Bool.self, forKey: .optionAsMeta) ?? false
-            self.shell = try container.decodeIfPresent(TerminalShell.self, forKey: .shell) ?? .system
-            self.font = try container.decodeIfPresent(TerminalFont.self, forKey: .font) ?? .init()
-            self.cursorStyle = try container.decodeIfPresent(
-                TerminalCursorStyle.self,
-                forKey: .cursorStyle
-            ) ?? .block
-            self.cursorBlink = try container.decodeIfPresent(Bool.self, forKey: .cursorBlink) ?? false
-            self.useTextEditorFont = try container.decodeIfPresent(Bool.self, forKey: .useTextEditorFont) ?? true
-            self.useShellIntegration = try container.decodeIfPresent(Bool.self, forKey: .useShellIntegration) ?? true
-            self.useLoginShell = try container.decodeIfPresent(Bool.self, forKey: .useLoginShell) ?? true
+            self.darkAppearance = container.lenient(.darkAppearance, default: false)
+            self.optionAsMeta = container.lenient(.optionAsMeta, default: false)
+            self.shell = container.lenient(.shell, default: .system)
+            self.font = container.lenient(.font, default: .init())
+            self.cursorStyle = container.lenient(.cursorStyle, default: .block)
+            self.cursorBlink = container.lenient(.cursorBlink, default: false)
+            self.useTextEditorFont = container.lenient(.useTextEditorFont, default: true)
+            self.useShellIntegration = container.lenient(.useShellIntegration, default: true)
+            self.useLoginShell = container.lenient(.useLoginShell, default: true)
         }
     }
 
@@ -110,9 +107,9 @@ extension SettingsData {
         /// Explicit decoder init for setting default values when key is not present in `JSON`
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.size = try container.decodeIfPresent(Double.self, forKey: .size) ?? size
-            self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? name
-            self.weight = try container.decodeIfPresent(NSFont.Weight.self, forKey: .weight) ?? weight
+            self.size = container.lenient(.size, default: size)
+            self.name = container.lenient(.name, default: name)
+            self.weight = container.lenient(.weight, default: weight)
         }
 
         /// Returns an NSFont representation of the current configuration.

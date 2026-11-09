@@ -12,7 +12,7 @@ import SwiftUI
 final class DreamderDocumentController: NSDocumentController {
     private static let logger = Logger(subsystem: "dev.dreamder.Dreamder", category: "DreamderDocumentController")
 
-    var lspService: LSPService { .shared }
+    lazy var lspService: LSPService = .shared
 
     var recentProjects = RecentProjectsManager.shared
 
@@ -151,7 +151,7 @@ final class DreamderDocumentController: NSDocumentController {
     override func removeDocument(_ document: NSDocument) {
         super.removeDocument(document)
 
-        if let workspace = document as? WorkspaceDocument, let path = workspace.fileURL?.absoluteURL.path() {
+        if let workspace = document as? WorkspaceDocument, let path = workspace.fileURL?.absolutePath {
             lspService.closeWorkspace(path)
         }
 

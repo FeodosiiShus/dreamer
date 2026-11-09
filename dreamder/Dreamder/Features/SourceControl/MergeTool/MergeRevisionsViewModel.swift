@@ -17,6 +17,7 @@ final class MergeRevisionsViewModel {
     private(set) var isConflictValid = true
     private(set) var errorMessage: String?
     private(set) var isResultEdited = false
+    private(set) var isUndecodable = false
     var resultText = ""
 
     private let manager: SourceControlManager
@@ -41,36 +42,6 @@ final class MergeRevisionsViewModel {
 
     var title: String { "Merge Revisions for \(path)" }
 
-    var leftTitle: String {
-        guard let context else { return "Yours" }
-        switch context.operation {
-        case .merge:
-            return "Your version, branch \(context.yoursLabel)"
-        case .rebase:
-            return "Your commits, branch \(context.yoursLabel)"
-        case .cherryPick, .stash:
-            return "Local changes"
-        default:
-            return "Yours"
-        }
-    }
-
-    var rightTitle: String {
-        guard let context else { return "Theirs" }
-        switch context.operation {
-        case .merge:
-            return "Theirs, branch \(context.theirsLabel)"
-        case .rebase:
-            return "Changes from branch \(context.theirsLabel)"
-        case .cherryPick:
-            return "Changes from \(context.theirsLabel)"
-        case .stash:
-            return "Changes from stash"
-        default:
-            return "Theirs"
-        }
-    }
-
     var summary: String {
         guard let merge else { return isLoading ? "Computing differences…" : "" }
         if merge.isFullyResolved {
@@ -81,7 +52,7 @@ final class MergeRevisionsViewModel {
 
     var canApply: Bool { merge != nil && isConflictValid && !isSaving && !isLoading }
 
-    var canAcceptSide: Bool { isConflictValid && !isSaving && !isLoading && merge != nil }
+    var canAcceptSide: Bool { isConflictValid && !isSaving && !isLoading && (merge != nil || isUndecodable) }
 
     var hasUnresolvedConflicts: Bool { (merge?.conflictCount ?? 0) > 0 }
 
@@ -99,7 +70,14 @@ final class MergeRevisionsViewModel {
         let context = await repository.context()
         self.context = context
 
-        let entries = await repository.entries()
+        let entries: [MergeConflictEntry]
+        do {
+            entries = try await repository.entries()
+        } catch {
+            isLoading = false
+            errorMessage = MergeToolErrorText.describeStatusFailure(error)
+            return
+        }
         entry = entries.first { $0.path == path }
         guard entry != nil else {
             isConflictValid = false
@@ -111,9 +89,16 @@ final class MergeRevisionsViewModel {
 
         let revisions = await repository.revisions(for: path)
         revisionSet = revisions
+        isUndecodable = revisions.isNotUTF8
         if revisions.isBinary {
             isLoading = false
             errorMessage = "Binary files cannot be merged manually"
+            return
+        }
+        if revisions.isNotUTF8 {
+            isLoading = false
+            errorMessage = "This file is not valid UTF-8 and cannot be merged here. "
+                + "Use Accept Left or Accept Right to take one side with Git."
             return
         }
 
@@ -125,14 +110,14 @@ final class MergeRevisionsViewModel {
         isLoading = false
     }
 
-    func resolve(_ blockID: Int, with resolution: ThreeWayMerge.Resolution) {
+    private func resolve(_ blockID: Int, with resolution: ThreeWayMerge.Resolution) {
         guard var updated = merge else { return }
         updated.resolve(blockID, with: resolution)
         merge = updated
         refreshContent(merge: updated)
     }
 
-    func applyNonConflicting(_ mode: ThreeWayMerge.NonConflictingMode) {
+    private func applyNonConflicting(_ mode: ThreeWayMerge.NonConflictingMode) {
         guard var updated = merge else { return }
         updated.applyNonConflicting(mode)
         merge = updated
@@ -140,10 +125,37 @@ final class MergeRevisionsViewModel {
     }
 
     func userEditedResult(_ text: String) {
-        resultText = text
-        if text != merge?.resultText {
+        let converted = lineEnding.converting(text)
+        resultText = converted
+        if converted != merge?.resultText {
             isResultEdited = true
         }
+    }
+
+    func requestResolve(
+        _ blockID: Int,
+        with resolution: ThreeWayMerge.Resolution,
+        window: NSWindow?
+    ) async {
+        guard await confirmReplacingManualEdits(window: window) else { return }
+        resolve(blockID, with: resolution)
+    }
+
+    func requestApplyNonConflicting(_ mode: ThreeWayMerge.NonConflictingMode, window: NSWindow?) async {
+        guard await confirmReplacingManualEdits(window: window) else { return }
+        applyNonConflicting(mode)
+    }
+
+    private func confirmReplacingManualEdits(window: NSWindow?) async -> Bool {
+        guard isResultEdited else { return true }
+        return await MergeToolConfirmation.ask(
+            window: window,
+            title: "Discard Manual Edits?",
+            message: "The result was edited by hand. This change is generated from the conflict blocks "
+                + "and replaces your edits.",
+            confirmTitle: "Discard Edits and Apply",
+            cancelTitle: "Keep Editing"
+        )
     }
 
     func requestApply(window: NSWindow?) async -> Bool {
@@ -208,21 +220,21 @@ final class MergeRevisionsViewModel {
     }
 
     func acceptSide(_ choice: MergeSideChoice) async -> Bool {
-        guard let merge, let entry, let context, let revisionSet, canAcceptSide else { return false }
-        if isSideMissing(choice, in: revisionSet, swapsSides: context.swapsSides) {
-            isSaving = true
-            defer { isSaving = false }
-            do {
-                try await repository.accept(choice, entry: entry, context: context)
-                await MergeConflictsCenter.shared.refresh(manager: manager)
-                return true
-            } catch {
-                errorMessage = MergeToolErrorText.describe(error)
-                return false
-            }
+        guard let entry, let context, let revisionSet, canAcceptSide else { return false }
+        if let merge, !isUndecodable, !isSideMissing(choice, in: revisionSet, swapsSides: context.swapsSides) {
+            resultText = choice == .yours ? merge.leftText : merge.rightText
+            return await apply()
         }
-        resultText = choice == .yours ? merge.leftText : merge.rightText
-        return await apply()
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await repository.accept(choice, entry: entry, context: context)
+            await MergeConflictsCenter.shared.refresh(manager: manager)
+            return true
+        } catch {
+            errorMessage = MergeToolErrorText.describe(error)
+            return false
+        }
     }
 
     private func isSideMissing(
@@ -242,6 +254,8 @@ final class MergeRevisionsViewModel {
         }
         return false
     }
+
+    private var lineEnding: LineEnding { merge?.lineEnding ?? .lineFeed }
 
     private func refreshContent(merge: ThreeWayMerge) {
         leftPane = merge.leftPane

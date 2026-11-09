@@ -97,20 +97,12 @@ extension SettingsData {
         /// Explicit decoder init for setting default values when key is not present in `JSON`
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.selectedDarkTheme = try container.decodeIfPresent(
-                String.self, forKey: .selectedDarkTheme
-            ) ?? selectedDarkTheme
-            self.selectedLightTheme = try container.decodeIfPresent(
-                String.self, forKey: .selectedLightTheme
-            ) ?? selectedLightTheme
-            self.selectedTheme = try container.decodeIfPresent(
-                String.self, forKey: .selectedTheme
-            ) ?? "Islands Dark"
-            self.useThemeBackground = try container.decodeIfPresent(Bool.self, forKey: .useThemeBackground) ?? true
-            self.matchAppearance = try container.decodeIfPresent(
-                Bool.self, forKey: .matchAppearance
-            ) ?? true
-            self.overrides = try container.decodeIfPresent([String: ThemeOverrides].self, forKey: .overrides) ?? [:]
+            self.selectedDarkTheme = container.lenient(.selectedDarkTheme, default: selectedDarkTheme)
+            self.selectedLightTheme = container.lenient(.selectedLightTheme, default: selectedLightTheme)
+            self.selectedTheme = container.lenient(.selectedTheme, default: "Islands Dark")
+            self.useThemeBackground = container.lenient(.useThemeBackground, default: true)
+            self.matchAppearance = container.lenient(.matchAppearance, default: true)
+            self.overrides = container.lenient(.overrides, default: [:])
         }
     }
 }

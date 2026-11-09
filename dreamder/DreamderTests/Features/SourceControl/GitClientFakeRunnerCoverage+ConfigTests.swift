@@ -142,7 +142,7 @@ extension GitClientFakeRunnerCoverage {
         #expect(files.map(\.fileURL.lastPathComponent) == ["a.txt", "b c.txt", "weird"])
         #expect(files.allSatisfy { $0.stagedStatus == GitStatus.none && $0.originalFilename == nil })
         #expect(ScmFakeGit.arguments(try #require(fake.invocations.first)) == [
-            "diff-tree", "--no-commit-id", "--name-status", "-r", "abc"
+            "diff-tree", "--no-commit-id", "--name-status", "-r", "--end-of-options", "abc"
         ])
     }
 }

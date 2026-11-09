@@ -18,7 +18,9 @@ struct EditorAreaFileView: View {
     var codeFile: CodeFileDocument
 
     @ViewBuilder var editorAreaFileView: some View {
-        if let utType = codeFile.utType, utType.conforms(to: .text) {
+        if codeFile.isLoading {
+            LoadingFileView(editorInstance.file.name)
+        } else if let utType = codeFile.utType, utType.conforms(to: .text) {
             if MarkdownPreviewLayoutStore.isMarkdownFile(codeFile.fileURL) {
                 MarkdownEditorWithPreview(
                     editorInstance: editorInstance,

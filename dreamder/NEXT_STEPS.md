@@ -1,29 +1,33 @@
 # Next steps
 
-Status when work stopped (2026-11-09, late session). Read `AGENTS.md` first; this file lists only what is still open. Research, measurements and the bug audit are in `docs/research/README.md`.
+Status when work stopped (2026-11-10, night session). Read `AGENTS.md` first; this file lists only what is still open. Research, measurements, the bug audit and its fix status are in `docs/research/README.md`.
 
 ## Last verified state
 
-- CI is restructured but has not run on GitHub yet: `.github/workflows/dreamder.yml` calls `.github/workflows/dreamder-platform.yml` per platform (build once with instrumentation, test shard jobs, coverage gate, smoke) and builds the Release app in its own job. `actionlint` passes on both files.
-- Local, with the new Makefile: `make build-for-testing FLAVOR=coverage` into an empty `.build/xcode-coverage` took 230 s, `make lint FLAVOR=coverage` passed, `make pack-test-products` wrote a 135 MB archive; `make test-shard FLAVOR=coverage SHARDS=40 SHARD=0` ran 229 tests through `-xctestrun` with coverage in the result bundle; `make test FLAVOR=coverage FILTER=CEActiveTaskCoverageTests` passes with the hardened signal tests. `.build/xcode` still holds an instrumented build from before the flavor split, so the first plain `make build` recompiles it once.
-- `make coverage COVERAGE_CHECK=1` on the new layout: 9 704 tests passed in 757 s in one host (802 s before the defaults-key fix in `DreamderTests/Utils/withTempDir.swift`); the gate failed on 2 uncovered lines (`FileEventBatcher.swift` 69/70, `SequenceDiff.swift` 431/432). An earlier run of the same sources took 471 s because CRASH-1 restarted the host after four minutes. Three hosts: 245 s with 2 failures and 99.92 % merged coverage.
+- Bug audit: 60 of 61 findings are fixed with regression tests (`docs/research/README.md`, "Fix status"). CRASH-1 is open.
+- Local, Xcode 27.2, working tree on top of `7886dab2c6d5`: `make check` clean; `make lint` clean (baseline went from 3 556 to 3 528 entries, the six rewritten entries are size debts that shrank); `make build-for-testing FLAVOR=coverage` green.
+- One host, the canonical gate (`make coverage FLAVOR=coverage COVERAGE_CHECK=1`): `Test run with 10231 tests in 1047 suites passed after 803.038 seconds`, 117 XCTest tests with 0 failures, no host restart, `Coverage check passed: total 100.00%, logic 100.00%` (82 372 of 82 372 executable lines, 900 files). `Scripts/coverage-baseline.json` is rewritten from this run.
+- Three hosts (`Scripts/sharded-tests.py --flavor coverage --shards 3`), run just before it: 10 197 passed tests, none failed, 249 s wall, same gate result on the merged bundle. Shard 0 was restarted once by CRASH-1 (`~/Library/Logs/DiagnosticReports/Dreamder-2026-11-10-010700.ips`: `closure #3 in TreeSitterClient.applyEdit` → `HighlightProviderState.getNextRange` on a cooperative thread), so the shard exit code was a failure although every test passed.
+- CI run 42706519487 on `7886dab2c6d5` failed for two reasons, both fixed in the working tree and not yet seen by GitHub:
+  1. macOS 26 / Xcode 26.6 build and Release job: `OpenWithDreamder/FinderSync.swift:39:17: capture of 'finderSync' with non-Sendable type 'FIFinderSyncController' in a '@Sendable' closure` (Swift 6.3). The build stopped there after five minutes, so the Swift 6.3 compiler has not compiled the app or the tests yet.
+  2. macOS 27 / Xcode 27.2 tests: one shard took 1 812 s and twelve tests hit `Time limit was exceeded: 120.000 seconds` while they waited for the UI gate. The workflow now runs two shards per platform with `TIME_ALLOWANCE=600`.
+- On that run the new topology worked on `xcode-27`: instrumented build 17 min, `archive: false` handoff of `test-products-xcode-27.tar.zst` (138 MB), headless smoke on the downloaded products 1 min 30 s.
 
 ## To do
 
-1. Push the branch and watch the first run of the new workflows on `macos-26` and `xcode-27`. Unverified until then: the `archive: false` artifact handoff of `test-products-<runner>.tar.zst`, `strategy.job-total` as the shard count, the coverage merge job, and the smoke job on downloaded products. Re-run a job that fails with `The job was not acquired by Runner of type hosted`.
-2. CRASH-1: the highlighter state is mutated off the main thread after an asynchronous tree-sitter edit (`docs/research/README.md`). It crashes the app on large files and restarts the test host at random. Choose the app-side decorator or a package fork.
-3. Confirm two consecutive `make coverage COVERAGE_CHECK=1` runs with 0 failures and 0 host restarts, then `make coverage-baseline`.
-4. Make sharding a gate, locally and on CI: find why the merged three-shard bundle reads 99.92 % (nine files listed in `docs/research/README.md`), fix `DefinitionJumpDelegateTests/theDefaultDelegateResolvesTheWindowControllerOfTheEditorWindow` and `UtilityAreaViewModelCoverageTests/removingATerminalKillsTheShellAndEverythingItStarted` under three hosts, then raise the `shards` input of `dreamder-platform.yml`.
-5. Give each test host its own preferences domain. Every host on the machine shares `dev.dreamder.Dreamder` with the installed app, tests leave keys in it, and `CFFIXED_USER_HOME` does not redirect it.
-6. Bug audit: 12 P0, 22 P1 and 27 P2 findings in `docs/research/`, none fixed. Start with the data-loss group: `WUI-1`, `SC-01`, `SC-02`, `SC-03`, `B-01`, `B-02`, `BUG-01`.
-7. Build settings worth measuring (`docs/research/xcode-test-speed.md`): `COMPILATION_CACHE_ENABLE_CACHING=YES`, `RUN_DOCUMENTATION_COMPILER=NO` and `COMPILER_INDEX_STORE_ENABLE=NO` for command-line builds, an arm64-only Release build.
-8. Flaky under load, root cause not found:
+1. Commit and push the working tree, then watch the run. Expect iterations: Swift 6.3 has not compiled the new code, the coverage merge job has never run on GitHub, and lines that only one macOS version executes would fail the absolute gate on the other.
+2. CRASH-1: `TreeSitterClient.applyEdit` in `CodeEditSourceEditor` 0.15.1 (and on its `main` branch) calls the completion from the executor's task; the fix is `DispatchQueue.dispatchMainIfNot { completion(.success(result)) }` at `TreeSitter/TreeSitterClient.swift:180`. It needs a fork or a vendored copy of the package; the application cannot wrap the client (`docs/research/README.md`). Until then any test host or CI shard can restart at random, and the app can crash while typing during a parse.
+3. After CRASH-1: two consecutive full runs with no host restart, in one host and in three.
+4. Give each test host its own preferences domain. Every host on the machine shares `dev.dreamder.Dreamder` with the installed app, tests leave keys in it, and `CFFIXED_USER_HOME` does not redirect it.
+5. Build settings still worth measuring (`docs/research/xcode-test-speed.md`): `COMPILATION_CACHE_ENABLE_CACHING=YES` and an arm64-only Release build. `RUN_DOCUMENTATION_COMPILER=NO` and `COMPILER_INDEX_STORE_ENABLE=NO` are applied to every command-line build.
+6. Dead code found during the fixes, left in place: `String.fullCommand`, `escapedQuotes`, `escapedWhiteSpaces`, `escape(replacing:)` and `MergeToolPresenter.showConflictsForActiveWorkspace(resolve:)` have no production callers.
+7. Flaky under load, root cause not found:
    - Task output that never reaches the terminal (`CEActiveTaskTests/testRunMethod(.zsh)`): suspected pty race when a fast child exits before SwiftTerm's `LocalProcess` reads. Tests that need the output assert a file side effect instead.
-   - `ProjectNavigatorMenuTests/multipleSelectionHidesRenameAndOffersGroupingOnlyWithinOneParent` (waits with `eventually`).
-   - `DiagnosticTooltipPresenterTests/monitorForwardsMouseMovesAndDismissesOnInput` and `CommitToolWindowCoverageTests/aDirectoryWithoutARepositoryShowsTheHintAndBecomesTheTreeAfterInit`.
-9. Descriptor hygiene: `forkpty` children (SwiftTerm `LocalProcess`) inherit every non-close-on-exec descriptor of the app, and `LocalProcess` never closes the pty master. Both need a package fork or upstream fix.
-10. SwiftLint debt: `Scripts/swiftlint-baseline.json` records the pre-existing violations; `make lint` fails only on new ones. Pay it down file by file and regenerate with `make lint-baseline`.
-11. Known product follow-ups:
+   - `GitGutterStalenessTests/branchSwitchesMakeHeadAndMarkersFollowTheCheckedOutBranch` failed once in three full runs (two `awaitCondition` timeouts under three hosts).
+   - `ProjectNavigatorMenuTests/multipleSelectionHidesRenameAndOffersGroupingOnlyWithinOneParent`, `DiagnosticTooltipPresenterTests/monitorForwardsMouseMovesAndDismissesOnInput` and `CommitToolWindowCoverageTests/aDirectoryWithoutARepositoryShowsTheHintAndBecomesTheTreeAfterInit` (seen in earlier sessions, not in the last three runs).
+8. Descriptor hygiene: `forkpty` children (SwiftTerm `LocalProcess`) inherit every non-close-on-exec descriptor of the app, and `LocalProcess` never closes the pty master. Both need a package fork or upstream fix.
+9. SwiftLint debt: `Scripts/swiftlint-baseline.json` records the pre-existing violations; `make lint` fails only on new ones. Pay it down file by file and regenerate with `make lint-baseline`.
+10. Known product follow-ups:
     - The LSP client advertises no `workspace.inlayHint` / `workspace.diagnostics` refresh support, because the `LanguageServerProtocol` package lacks those fields.
-    - vtsls ignores the `tsserver.path` initialization option, so an untrusted workspace can still make vtsls load the project's TypeScript; Pyright's own virtual-environment detection is not trust-gated either.
-    - A language server already running when a workspace becomes trusted keeps its untrusted options until it restarts (the Safe Mode notification's action restarts it).
+    - Files up to 1 MiB (`FileSizeLimit.synchronousOpen`) are still read and decoded on the main actor when a tab opens (B-10 is bounded, not removed).
+    - In an untrusted workspace only typescript-language-server starts; there is no per-server opt-in short of trusting the project.

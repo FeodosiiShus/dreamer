@@ -7,22 +7,16 @@ extension LSPService {
     func restartServer(_ key: ClientKey) async throws {
         automaticRestarts[key] = 0
         restartTasks.removeValue(forKey: key)?.cancel()
-        let documents = languageClients[key]?.openFiles.documents ?? lostDocuments[key] ?? []
-        if languageClients[key] != nil {
+        if let client = languageClients[key] {
+            keepPendingDocuments(of: client, key: key)
             try? await stopServer(forLanguage: key.languageId, workspacePath: key.workspacePath)
         }
-        let server = try await startServer(for: key.languageId, workspacePath: key.workspacePath)
-        await reopen(documents, on: server, key: key)
+        _ = try await startServer(for: key.languageId, workspacePath: key.workspacePath)
     }
 
-    private func reopen(_ documents: [CodeFileDocument], on server: LanguageServerType, key: ClientKey) async {
-        for document in documents {
-            guard let uri = document.languageServerURI else { continue }
-            if let fileManager = document.findWorkspace()?.workspaceFileManager {
-                watchFiles(of: fileManager, key: key, client: server)
-            }
-            openDocumentURIs[key, default: []].insert(uri)
-            try? await server.openDocument(document)
+    private func keepPendingDocuments(of server: LanguageServerType, key: ClientKey) {
+        for uri in server.openFiles.uris {
+            pendingDocuments[key, default: [:]][uri] = server.openFiles.document(for: uri)
         }
     }
 
@@ -39,7 +33,7 @@ extension LSPService {
 
     func serverTerminated(_ server: LanguageServerType, key: ClientKey) {
         guard languageClients[key] === server, !intentionalStops.contains(key) else { return }
-        let documents = server.openFiles.documents
+        keepPendingDocuments(of: server, key: key)
         discardWorkDoneProgress(of: server, key: key)
         languageClients.removeValue(forKey: key)
         openDocumentURIs.removeValue(forKey: key)
@@ -53,7 +47,6 @@ extension LSPService {
 
         let attempts = automaticRestarts[key, default: 0]
         guard attempts < Self.maximumAutomaticRestarts else {
-            lostDocuments[key] = documents
             notifyServerCrashed(name: name)
             return
         }
@@ -62,20 +55,17 @@ extension LSPService {
             guard let self else { return }
             try? await Task.sleep(for: self.dependencies.restartBackoff)
             guard !Task.isCancelled, self.languageClients[key] == nil else { return }
-            await self.performAutomaticRestart(key, documents: documents, name: name)
+            await self.performAutomaticRestart(key, name: name)
         }
     }
 
-    private func performAutomaticRestart(_ key: ClientKey, documents: [CodeFileDocument], name: String) async {
+    private func performAutomaticRestart(_ key: ClientKey, name: String) async {
         do {
-            let server = try await startServer(for: key.languageId, workspacePath: key.workspacePath)
-            await reopen(documents, on: server, key: key)
-            restartTasks.removeValue(forKey: key)
+            _ = try await startServer(for: key.languageId, workspacePath: key.workspacePath)
         } catch {
-            restartTasks.removeValue(forKey: key)
-            lostDocuments[key] = documents
             notifyServerCrashed(name: name)
         }
+        restartTasks.removeValue(forKey: key)
     }
 
     func waitForAutomaticRestarts() async {

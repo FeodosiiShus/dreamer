@@ -37,6 +37,7 @@ class CEActiveTask: Identifiable, Hashable {
 
     @ObservationIgnored let settings: Settings
     @ObservationIgnored var terminationGrace: Duration = .seconds(5)
+    @ObservationIgnored private var isStopRequested = false
     @ObservationIgnored var sleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
 
     init(task: CETask, settings: Settings = SettingsScope.current ?? .shared) {
@@ -48,26 +49,47 @@ class CEActiveTask: Identifiable, Hashable {
     func run(workspaceURL: URL?, shell: Shell? = nil) {
         self.workspaceURL = workspaceURL
         self.activeTaskID = UUID() // generate a new ID for this run
+        self.isStopRequested = false
 
         createStatusTaskNotification()
         updateTaskStatus(to: .running)
 
         let view = output ?? CEActiveTaskTerminalView(activeTask: self)
-        view.startProcess(workspaceURL: workspaceURL, shell: shell)
-
         output = view
+        if !view.startProcess(workspaceURL: workspaceURL, shell: shell) {
+            recordFailure()
+            deleteStatusTaskNotification()
+        }
+    }
+
+    nonisolated enum Outcome: Equatable {
+        case finished
+        case cancelled
+        case failed
+
+        private static let cancellationSignals: Set<Int32> = [SIGINT, SIGTERM, SIGKILL, SIGHUP]
+        private static let shellSignalOffset: Int32 = 128
+
+        init(exit: ProcessExit, stopRequested: Bool) {
+            switch exit {
+            case let .exited(code) where code == 0:
+                self = .finished
+            case let .exited(code) where Self.cancellationSignals.contains(code - Self.shellSignalOffset):
+                self = .cancelled
+            case let .signaled(signal) where Self.cancellationSignals.contains(signal):
+                self = .cancelled
+            case .exited where stopRequested:
+                self = .cancelled
+            default:
+                self = .failed
+            }
+        }
     }
 
     @MainActor
-    func handleProcessFinished(terminationStatus: Int32) {
-        // Shells add 128 to non-zero exit codes.
-        var terminationStatus = terminationStatus
-        if terminationStatus > 128 {
-            terminationStatus -= 128
-        }
-
-        switch terminationStatus {
-        case 0:
+    func handleProcessFinished(exit: ProcessExit) {
+        switch Outcome(exit: exit, stopRequested: isStopRequested) {
+        case .finished:
             output?.newline()
             output?.sendOutputMessage("Finished running \(task.name).")
             output?.newline()
@@ -78,7 +100,7 @@ class CEActiveTask: Identifiable, Hashable {
                 message: "",
                 isLoading: false
             )
-        case 2, 9, 15: // SIGINT or SIGTERM
+        case .cancelled:
             output?.newline()
             output?.sendOutputMessage("\(task.name) cancelled.")
             output?.newline()
@@ -89,22 +111,24 @@ class CEActiveTask: Identifiable, Hashable {
                 message: "",
                 isLoading: false
             )
-        case 17: // SIGSTOP
-            updateTaskStatus(to: .stopped)
-        default:
+        case .failed:
             output?.newline()
             output?.sendOutputMessage("Failed to run \(task.name)")
             output?.newline()
 
-            updateTaskStatus(to: .failed)
-            updateTaskNotification(
-                title: "Failed Running \(task.name)",
-                message: "",
-                isLoading: false
-            )
+            recordFailure()
         }
 
         deleteStatusTaskNotification()
+    }
+
+    private func recordFailure() {
+        updateTaskStatus(to: .failed)
+        updateTaskNotification(
+            title: "Failed Running \(task.name)",
+            message: "",
+            isLoading: false
+        )
     }
 
     @MainActor
@@ -124,23 +148,30 @@ class CEActiveTask: Identifiable, Hashable {
     }
 
     @MainActor
+    func hangUp() {
+        send(SIGHUP)
+    }
+
+    @MainActor
     func terminate() {
-        guard let shellPID = output?.runningPID() else { return }
-        ProcessTree.send(SIGTERM, to: shellPID)
-        resume()
+        send(SIGTERM)
     }
 
     @MainActor
     func forceTerminate() {
-        guard let shellPID = output?.runningPID() else { return }
-        ProcessTree.send(SIGKILL, to: shellPID)
-        resume()
+        send(SIGKILL)
     }
 
     @MainActor
     func interrupt() {
+        send(SIGINT)
+    }
+
+    @MainActor
+    private func send(_ signal: Int32) {
         guard let shellPID = output?.runningPID() else { return }
-        ProcessTree.send(SIGINT, to: shellPID)
+        isStopRequested = true
+        ProcessTree.send(signal, to: shellPID)
         resume()
     }
 
@@ -150,18 +181,30 @@ class CEActiveTask: Identifiable, Hashable {
 
     @MainActor
     func terminateAndWait() async {
-        guard isActive else { return }
-        terminate()
-        if await waitUntilInactive(within: terminationGrace) { return }
-        forceTerminate()
-        _ = await waitUntilInactive(within: terminationGrace)
+        let run = activeTaskID
+        let escalation = [hangUp, terminate, forceTerminate]
+        for signalProcess in escalation {
+            guard !Task.isCancelled, isRunActive(run) else { return }
+            signalProcess()
+            if await waitUntilInactive(run: run, within: terminationGrace) { return }
+        }
     }
 
     @MainActor
-    private func waitUntilInactive(within timeout: Duration) async -> Bool {
+    func waitUntilInactive() async {
+        _ = await becameInactive(run: activeTaskID)
+    }
+
+    @MainActor
+    private func isRunActive(_ run: UUID) -> Bool {
+        activeTaskID == run && isActive
+    }
+
+    @MainActor
+    private func waitUntilInactive(run: UUID, within timeout: Duration) async -> Bool {
         let sleeper = self.sleep
         return await withTaskGroup(of: Bool.self) { group in
-            group.addTask { await self.becameInactive() }
+            group.addTask { await self.becameInactive(run: run) }
             group.addTask {
                 try? await sleeper(timeout)
                 return false
@@ -173,8 +216,8 @@ class CEActiveTask: Identifiable, Hashable {
     }
 
     @MainActor
-    private func becameInactive() async -> Bool {
-        for await active in Observations({ self.isActive }) where !active {
+    private func becameInactive(run: UUID) async -> Bool {
+        for await active in Observations({ self.isRunActive(run) }) where !active {
             return true
         }
         return false

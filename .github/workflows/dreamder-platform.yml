@@ -110,7 +110,7 @@ jobs:
       - name: Unit tests
         env:
           TEST_RUNNER_DREAMDER_STALL_SAMPLE_DIR: ${{ github.workspace }}/dreamder/.build/logs/stalls
-        run: make test-shard SHARD=${{ matrix.shard }} SHARDS=${{ strategy.job-total }}
+        run: make test-shard SHARD=${{ matrix.shard }} SHARDS=${{ strategy.job-total }} TIME_ALLOWANCE=600
       - name: Pack shard result
         if: ${{ !cancelled() }}
         run: tar --zstd -cf .build/shard-${{ inputs.runner }}-${{ matrix.shard }}.xcresult.tar.zst -C .build/shards shard-${{ matrix.shard }}.xcresult

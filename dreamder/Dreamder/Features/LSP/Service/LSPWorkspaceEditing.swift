@@ -22,6 +22,9 @@ nonisolated enum LSPWorkspaceEditError: Error, Equatable, LocalizedError {
     case notFound(String)
     case directoryNotEmpty(String)
     case creationFailed(String)
+    case outsideWorkspace(String)
+    case staleDocument(String)
+    case unsyncedLocalEdits(String)
 
     var errorDescription: String? {
         switch self {
@@ -43,6 +46,12 @@ nonisolated enum LSPWorkspaceEditError: Error, Equatable, LocalizedError {
             return "The directory is not empty: \(uri)"
         case let .creationFailed(uri):
             return "The file could not be created: \(uri)"
+        case let .outsideWorkspace(uri):
+            return "The file is outside the workspace: \(uri)"
+        case let .staleDocument(uri):
+            return "The document changed after the edit was computed: \(uri)"
+        case let .unsyncedLocalEdits(uri):
+            return "The document has local edits the language server has not seen yet: \(uri)"
         }
     }
 }
@@ -141,7 +150,7 @@ nonisolated enum LSPTextEditApplier {
 }
 
 nonisolated enum LSPWorkspaceEditOperation: Sendable, Equatable {
-    case editText(uri: String, edits: [TextEdit])
+    case editText(uri: String, edits: [TextEdit], version: Int?)
     case createFile(uri: String, overwrite: Bool, ignoreIfExists: Bool)
     case renameFile(oldURI: String, newURI: String, overwrite: Bool, ignoreIfExists: Bool)
     case deleteFile(uri: String, recursive: Bool, ignoreIfNotExists: Bool)
@@ -154,13 +163,13 @@ nonisolated enum LSPWorkspaceEditPlan {
         }
         return (edit.changes ?? [:])
             .sorted { $0.key < $1.key }
-            .map { .editText(uri: $0.key, edits: $0.value) }
+            .map { .editText(uri: $0.key, edits: $0.value, version: nil) }
     }
 
     private static func operation(for change: WorkspaceEditDocumentChange) -> LSPWorkspaceEditOperation {
         switch change {
         case let .textDocumentEdit(edit):
-            return .editText(uri: edit.textDocument.uri, edits: edit.edits)
+            return .editText(uri: edit.textDocument.uri, edits: edit.edits, version: edit.textDocument.version)
         case let .createFile(create) where create.kind == "delete":
             return .deleteFile(uri: create.uri, recursive: false, ignoreIfNotExists: false)
         case let .createFile(create):
@@ -186,124 +195,17 @@ nonisolated enum LSPWorkspaceEditPlan {
     }
 }
 
-nonisolated struct LSPWorkspaceEditExecutor: Sendable {
-    typealias OpenDocumentEditor = @Sendable (_ uri: String, _ edits: [TextEdit]) async throws -> Bool
+nonisolated struct LSPOpenDocumentEdit: Sendable, Equatable {
+    let index: Int
+    let uri: String
+    let edits: [TextEdit]
+    let version: Int?
+}
 
-    var editOpenDocument: OpenDocumentEditor
-
-    init(editOpenDocument: @escaping OpenDocumentEditor = { _, _ in false }) {
-        self.editOpenDocument = editOpenDocument
-    }
-
-    @concurrent
-    func apply(_ edit: WorkspaceEdit) async -> ApplyWorkspaceEditResult {
-        let operations = LSPWorkspaceEditPlan.operations(for: edit)
-        for (index, operation) in operations.enumerated() {
-            do {
-                try await perform(operation)
-            } catch {
-                return ApplyWorkspaceEditResult(
-                    applied: false,
-                    failureReason: error.localizedDescription,
-                    failedChange: UInt(index)
-                )
-            }
-        }
-        return ApplyWorkspaceEditResult(applied: true)
-    }
-
-    private func perform(_ operation: LSPWorkspaceEditOperation) async throws {
-        switch operation {
-        case let .editText(uri, edits):
-            if try await editOpenDocument(uri, edits) {
-                return
-            }
-            try Self.editFile(uri: uri, edits: edits)
-        case let .createFile(uri, overwrite, ignoreIfExists):
-            try Self.createFile(uri: uri, overwrite: overwrite, ignoreIfExists: ignoreIfExists)
-        case let .renameFile(oldURI, newURI, overwrite, ignoreIfExists):
-            try Self.renameFile(oldURI: oldURI, newURI: newURI, overwrite: overwrite, ignoreIfExists: ignoreIfExists)
-        case let .deleteFile(uri, recursive, ignoreIfNotExists):
-            try Self.deleteFile(uri: uri, recursive: recursive, ignoreIfNotExists: ignoreIfNotExists)
-        }
-    }
-
-    private static func fileURL(_ uri: String) throws -> URL {
-        guard let url = LSPFileURI.fileURL(from: uri) else {
-            throw LSPWorkspaceEditError.unsupportedURI(uri)
-        }
-        return url
-    }
-
-    private static func editFile(uri: String, edits: [TextEdit]) throws {
-        let url = try fileURL(uri)
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            throw LSPWorkspaceEditError.notFound(uri)
-        }
-        let data = try Data(contentsOf: url)
-        guard let text = String(data: data, encoding: .utf8) else {
-            throw LSPWorkspaceEditError.undecodableText(uri)
-        }
-        let updated = try LSPTextEditApplier.apply(edits, to: text)
-        try Data(updated.utf8).write(to: url, options: .atomic)
-    }
-
-    private static func createFile(uri: String, overwrite: Bool, ignoreIfExists: Bool) throws {
-        let url = try fileURL(uri)
-        let manager = FileManager.default
-        if manager.fileExists(atPath: url.path) {
-            if overwrite {
-                try manager.removeItem(at: url)
-            } else if ignoreIfExists {
-                return
-            } else {
-                throw LSPWorkspaceEditError.alreadyExists(uri)
-            }
-        }
-        try manager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        guard manager.createFile(atPath: url.path, contents: Data()) else {
-            throw LSPWorkspaceEditError.creationFailed(uri)
-        }
-    }
-
-    private static func renameFile(oldURI: String, newURI: String, overwrite: Bool, ignoreIfExists: Bool) throws {
-        let source = try fileURL(oldURI)
-        let destination = try fileURL(newURI)
-        let manager = FileManager.default
-        guard manager.fileExists(atPath: source.path) else {
-            throw LSPWorkspaceEditError.notFound(oldURI)
-        }
-        if manager.fileExists(atPath: destination.path) {
-            if overwrite {
-                try manager.removeItem(at: destination)
-            } else if ignoreIfExists {
-                return
-            } else {
-                throw LSPWorkspaceEditError.alreadyExists(newURI)
-            }
-        }
-        try manager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try manager.moveItem(at: source, to: destination)
-    }
-
-    private static func deleteFile(uri: String, recursive: Bool, ignoreIfNotExists: Bool) throws {
-        let url = try fileURL(uri)
-        let manager = FileManager.default
-        var isDirectory: ObjCBool = false
-        guard manager.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
-            if ignoreIfNotExists {
-                return
-            }
-            throw LSPWorkspaceEditError.notFound(uri)
-        }
-        if isDirectory.boolValue, !recursive {
-            let contents = try manager.contentsOfDirectory(atPath: url.path)
-            if !contents.isEmpty {
-                throw LSPWorkspaceEditError.directoryNotEmpty(uri)
-            }
-        }
-        try manager.removeItem(at: url)
-    }
+nonisolated enum LSPOpenDocumentOutcome: Sendable {
+    case handled
+    case notOpen
+    case failed(any Error)
 }
 
 nonisolated enum LSPShowDocumentPlan: Sendable, Equatable {

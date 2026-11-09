@@ -142,8 +142,9 @@ final class LSPService {
     @ObservationIgnored var restartTasks: [ClientKey: Task<Void, Never>] = [:]
     @ObservationIgnored var intentionalStops: Set<ClientKey> = []
     @ObservationIgnored var automaticRestarts: [ClientKey: Int] = [:]
-    @ObservationIgnored var lostDocuments: [ClientKey: [CodeFileDocument]] = [:]
-    @ObservationIgnored var documentOperations: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored var pendingDocuments: [ClientKey: [String: CodeFileDocument]] = [:]
+    @ObservationIgnored var documentOperations: [String: DocumentOperation] = [:]
+    @ObservationIgnored var nextDocumentOperationID = 0
     @ObservationIgnored var watchedFilesForwarders: [ClientKey: LSPWatchedFilesForwarder] = [:]
     @ObservationIgnored var notifiedMissingLanguages: Set<LSPLanguage> = []
     @ObservationIgnored private var notificationObservers: [any NSObjectProtocol] = []
@@ -282,6 +283,18 @@ final class LSPService {
             notifyToInstallLanguageServer(language: languageId)
             throw LSPError.binaryNotFound
         }
+        let permitted = UntrustedWorkspaceServerPolicy.permitsServer(
+            for: languageId,
+            executable: serverBinary.execPath,
+            workspaceTrusted: dependencies.isWorkspaceTrusted(key.workspacePath)
+        )
+        guard permitted else {
+            logger.notice("Safe Mode: not starting \(languageId.rawValue, privacy: .public) language server")
+            let message = UntrustedWorkspaceServerPolicy.failureMessage(forExecutable: serverBinary.execPath)
+            serverStates[key] = .failed(message)
+            dependencies.untrustedNotice.note(workspacePath: key.workspacePath, executable: serverBinary.execPath)
+            throw UntrustedWorkspaceServerError(language: languageId)
+        }
 
         logger.info("Starting \(languageId.rawValue) language server")
         let server: LanguageServerType
@@ -294,13 +307,33 @@ final class LSPService {
             throw error
         }
         languageClients[key] = server
-        lostDocuments.removeValue(forKey: key)
         serverStates[key] = .running
         logger.info("Successfully started \(languageId.rawValue) language server")
 
         self.startListeningToEvents(for: key)
         watchTermination(of: server, key: key)
+        await reopenPendingDocuments(on: server, key: key)
         return server
+    }
+
+    private func reopenPendingDocuments(on server: LanguageServerType, key: ClientKey) async {
+        for uri in pendingDocuments[key, default: [:]].keys.sorted() {
+            await enqueueDocumentOperation(uri: uri) {
+                await self.reopenPendingDocument(uri: uri, on: server, key: key)
+            }.value
+        }
+    }
+
+    private func reopenPendingDocument(uri: String, on server: LanguageServerType, key: ClientKey) async {
+        guard languageClients[key] === server, let document = pendingDocuments[key]?[uri] else { return }
+        if let fileManager = document.findWorkspace()?.workspaceFileManager {
+            watchFiles(of: fileManager, key: key, client: server)
+        }
+        openDocumentURIs[key, default: []].insert(uri)
+        try? await server.openDocument(document)
+        if languageClients[key] === server {
+            pendingDocuments[key]?[uri] = nil
+        }
     }
 }
 

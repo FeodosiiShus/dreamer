@@ -53,9 +53,7 @@ enum MergeToolPresenter {
         return controller?.workspace
     }
 
-    static func showConflictsForActiveWorkspace(
-        resolve: () -> WorkspaceDocument? = { MergeToolPresenter.activeWorkspace() }
-    ) {
+    static func showConflictsForActiveWorkspace(resolve: () -> WorkspaceDocument?) {
         guard let workspace = resolve() else { return }
         showConflicts(workspace: workspace)
     }

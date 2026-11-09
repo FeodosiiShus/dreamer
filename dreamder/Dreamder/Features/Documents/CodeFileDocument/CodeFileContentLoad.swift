@@ -40,6 +40,7 @@ nonisolated enum CodeFileNotice: Equatable, Sendable {
 nonisolated enum FileSizeLimit {
     static let intelligence = 10 * 1024 * 1024
     static let binaryPreview = 1024 * 1024
+    static let synchronousOpen = 1024 * 1024
 
     static func exceedsIntelligenceLimit(byteCount: Int) -> Bool {
         byteCount >= intelligence

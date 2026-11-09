@@ -33,16 +33,11 @@ extension SettingsData {
         /// Explicit decoder init for setting default values when key is not present in `JSON`
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-
-            self.lspBinaries = try container.decodeIfPresent(
-                [String: String].self,
-                forKey: .lspBinaries
-            ) ?? [:]
-
-            self.showInternalDevelopmentInspector = try container.decodeIfPresent(
-                Bool.self,
-                forKey: .showInternalDevelopmentInspector
-            ) ?? false
+            self.lspBinaries = container.lenient(.lspBinaries, default: [:])
+            self.showInternalDevelopmentInspector = container.lenient(
+                .showInternalDevelopmentInspector,
+                default: false
+            )
         }
     }
 }

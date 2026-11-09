@@ -535,7 +535,7 @@ struct ProjectNavigatorExclusionAndSortTests {
         try await Harness.run(folders: Self.treeFolders, files: Self.treeFiles, loadsTree: true) { harness in
             harness.workspace.navigatorFilter = ".js"
 
-            harness.controller.handleFilterChange()
+            await harness.applyFilter()
 
             let modules = try harness.file("node_modules")
             #expect(harness.outlineView.isItemExpanded(try harness.file("src")))

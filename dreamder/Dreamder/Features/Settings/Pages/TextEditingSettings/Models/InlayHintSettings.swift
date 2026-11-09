@@ -17,10 +17,10 @@ nonisolated struct InlayHintSettings: Codable, Hashable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
-        parameterNames = try container.decodeIfPresent(ParameterNameHints.self, forKey: .parameterNames) ?? .literals
-        types = try container.decodeIfPresent(Bool.self, forKey: .types) ?? true
-        returnTypes = try container.decodeIfPresent(Bool.self, forKey: .returnTypes) ?? true
+        enabled = container.lenient(.enabled, default: true)
+        parameterNames = container.lenient(.parameterNames, default: .literals)
+        types = container.lenient(.types, default: true)
+        returnTypes = container.lenient(.returnTypes, default: true)
     }
 
     func shows(kind: InlayHintKind?, followsClosingParenthesis: Bool) -> Bool {

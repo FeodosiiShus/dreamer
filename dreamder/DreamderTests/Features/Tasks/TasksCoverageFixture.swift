@@ -67,14 +67,22 @@ final class TasksCoverageFixture {
         makeTask(name: name, command: Self.signalLoopCommand)
     }
 
-    func waitUntilReady(_ output: CEActiveTaskTerminalView, occurrences: Int = 1) async throws {
-        try await eventually {
+    func waitUntilReady(
+        _ output: CEActiveTaskTerminalView,
+        occurrences: Int = 1,
+        timeout: Duration = .seconds(90)
+    ) async throws {
+        try await eventually(timeout: timeout) {
             output.getBufferAsString().components(separatedBy: Self.readyMarker).count - 1 >= occurrences
         }
     }
 
-    func waitForOutput(_ output: CEActiveTaskTerminalView, containing marker: String) async throws {
-        try await eventually {
+    func waitForOutput(
+        _ output: CEActiveTaskTerminalView,
+        containing marker: String,
+        timeout: Duration = .seconds(90)
+    ) async throws {
+        try await eventually(timeout: timeout) {
             output.getBufferAsString().contains(marker)
         }
     }

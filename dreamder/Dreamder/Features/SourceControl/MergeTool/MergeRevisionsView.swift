@@ -180,26 +180,32 @@ struct MergeRevisionsView: View {
     }
 
     func handle(_ chip: MergePaneChip) {
+        let resolution: ThreeWayMerge.Resolution
         switch chip.kind {
         case .acceptLeft:
-            model.resolve(chip.blockID, with: .left)
+            resolution = .left
         case .acceptRight:
-            model.resolve(chip.blockID, with: .right)
+            resolution = .right
         case .ignore:
-            model.resolve(chip.blockID, with: .ignored)
+            resolution = .ignored
         }
+        Task { await model.requestResolve(chip.blockID, with: resolution, window: NSApp.keyWindow) }
     }
 
     func applyLeft() {
-        model.applyNonConflicting(.left)
+        applyNonConflicting(.left)
     }
 
     func applyAll() {
-        model.applyNonConflicting(.all)
+        applyNonConflicting(.all)
     }
 
     func applyRight() {
-        model.applyNonConflicting(.right)
+        applyNonConflicting(.right)
+    }
+
+    private func applyNonConflicting(_ mode: ThreeWayMerge.NonConflictingMode) {
+        Task { await model.requestApplyNonConflicting(mode, window: NSApp.keyWindow) }
     }
 
     func acceptLeft() {

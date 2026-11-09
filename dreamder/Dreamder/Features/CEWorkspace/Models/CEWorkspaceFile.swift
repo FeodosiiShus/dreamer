@@ -249,21 +249,21 @@ final class CEWorkspaceFile: Codable, Comparable, Hashable, Identifiable, Editor
 
     func validateFileName(for newName: String) -> Bool {
         // Name must be: new, nonempty, valid characters, and not exist in the filesystem.
-        guard newName != labelFileName() &&
-                !newName.isEmpty &&
-                newName.isValidFilename &&
-                !FileManager.default.fileExists(
-                    atPath: self.url.deletingLastPathComponent().appending(path: newName).path
-                ) else {
-            return false
-        }
-
-        return true
+        newName != labelFileName() &&
+            !newName.isEmpty &&
+            newName.isValidFilename &&
+            FileManager.default.destinationIsFree(
+                url.deletingLastPathComponent().appending(path: newName),
+                whenMoving: url
+            )
     }
 
     /// Loads the ``fileDocument`` property with a new ``CodeFileDocument`` and registers it with the shared
     /// ``DreamderDocumentController``.
-    func loadCodeFile() throws {
+    func loadCodeFile(
+        loader: @escaping CodeFileDiskLoader.Loader = CodeFileDiskLoader.live,
+        synchronousLimit: Int = FileSizeLimit.synchronousOpen
+    ) throws {
         let documentURL = resolvedURL.standardizedFileURL
         let openDocument = DreamderDocumentController.shared.documents
             .lazy
@@ -273,9 +273,25 @@ final class CEWorkspaceFile: Codable, Comparable, Hashable, Identifiable, Editor
             self.fileDocument = openDocument
             return
         }
-        let codeFile = try CodeFileDocument(contentsOf: resolvedURL, ofType: contentType?.identifier ?? "")
+        let typeName = contentType?.identifier ?? ""
+        let codeFile: CodeFileDocument
+        if byteCount > synchronousLimit {
+            codeFile = CodeFileDocument.loading(
+                contentsOf: resolvedURL,
+                ofType: typeName,
+                loader: loader
+            ) { [weak self] _ in
+                self?.fileDocument = nil
+            }
+        } else {
+            codeFile = try CodeFileDocument(contentsOf: resolvedURL, ofType: typeName)
+        }
         DreamderDocumentController.shared.addDocument(codeFile)
         self.fileDocument = codeFile
+    }
+
+    var byteCount: Int {
+        (try? resolvedURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
     }
 
     // MARK: Statics
@@ -313,4 +329,19 @@ final class CEWorkspaceFile: Codable, Comparable, Hashable, Identifiable, Editor
         hasher.combine(id)
     }
 
+}
+
+nonisolated extension FileManager {
+    func destinationIsFree(_ destination: URL, whenMoving source: URL) -> Bool {
+        guard fileExists(atPath: destination.path(percentEncoded: false)) else { return true }
+        let sourceName = source.lastPathComponent
+        let destinationName = destination.lastPathComponent
+        return sourceName != destinationName
+            && sourceName.compare(destinationName, options: .caseInsensitive) == .orderedSame
+            && Self.resourceIdentifier(of: source)?.isEqual(Self.resourceIdentifier(of: destination)) == true
+    }
+
+    private static func resourceIdentifier(of url: URL) -> (any NSObjectProtocol)? {
+        (try? url.resourceValues(forKeys: [.fileResourceIdentifierKey]))?.fileResourceIdentifier
+    }
 }

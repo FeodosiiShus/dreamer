@@ -9,6 +9,7 @@ final class MergeConflictsCenter {
     struct WorkspaceState: Equatable {
         var entries: [MergeConflictEntry]
         var context: MergeConflictContext?
+        var failure: String?
     }
 
     private(set) var states: [String: WorkspaceState] = [:]
@@ -61,8 +62,24 @@ final class MergeConflictsCenter {
     func refresh(manager: SourceControlManager, allowAutoOpen: Bool = false) async {
         let key = Self.workspaceKey(manager.workspaceURL)
         let repository = makeRepository(manager)
-        let entries = await repository.entries()
+        let entries: [MergeConflictEntry]
+        var failure: String?
+        do {
+            entries = try await repository.entries()
+        } catch {
+            entries = []
+            failure = MergeToolErrorText.describeStatusFailure(error)
+        }
         if Task.isCancelled {
+            return
+        }
+        if let failure {
+            let previous = states[key]
+            states[key] = WorkspaceState(
+                entries: previous?.entries ?? [],
+                context: previous?.context,
+                failure: failure
+            )
             return
         }
         var context: MergeConflictContext?

@@ -60,7 +60,7 @@ final class SearchEverywhereViewModel {
         let symbolIndex = workspace?.symbolIndex
         symbolsObservation = Task { [weak self] in
             var isInitialValue = true
-            for await _ in Observations({ symbolIndex?.symbols }) {
+            for await _ in Observations({ symbolIndex?.store.revision }) {
                 if isInitialValue {
                     isInitialValue = false
                     continue
@@ -85,6 +85,9 @@ final class SearchEverywhereViewModel {
         symbolsObservation?.cancel()
         changesObservation?.cancel()
         indexTask?.cancel()
+        debounceTask?.cancel()
+        textTask?.cancel()
+        previewTask?.cancel()
     }
 
     var flatItems: [SearchEverywhereItem] {

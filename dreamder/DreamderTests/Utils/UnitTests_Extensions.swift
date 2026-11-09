@@ -192,11 +192,6 @@ final class DreamderUtilsExtensionsUnitTests: XCTestCase {
         XCTAssertEqual(string.escapedQuotes(), #"this/is/\"a path/Hello \"world"#)
     }
 
-    func testEscapedDirectory() {
-        let path = #"/Hello World/ With Spaces/ And " Characters "#
-        XCTAssertEqual(path.escapedDirectory(), #""/Hello World/ With Spaces/ And \" Characters ""#)
-    }
-
     // MARK: - URL + Contains
 
     func testURLContainsSubPath() {

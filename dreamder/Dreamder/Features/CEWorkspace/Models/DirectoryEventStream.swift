@@ -10,7 +10,7 @@ import Synchronization
 
 nonisolated enum FSEvent: String, Sendable {
     case changeInDirectory
-    case rootChanged
+    case mustRescan
     case itemChangedOwner
     case itemCreated
     case itemCloned
@@ -96,37 +96,40 @@ nonisolated final class DirectoryEventStream: Sendable {
             },
             copyDescription: nil
         )
-        let contextPtr = withUnsafeMutablePointer(to: &context) { ptr in UnsafeMutablePointer(ptr) }
-
         let pathsToWatch = directories as CFArray
 
-        guard let ref = withExtendedLifetime(box, { FSEventStreamCreate(
-            kCFAllocatorDefault,
-            // swiflint:ignore:next opening_brace
-            { streamRef, clientCallBackInfo, numEvents, eventPaths, eventFlags, eventIds in
-                guard let clientCallBackInfo,
-                      let stream = Unmanaged<DirectoryEventStreamOwner>
-                        .fromOpaque(clientCallBackInfo)
-                        .takeUnretainedValue()
-                        .stream else { return }
-                stream.eventStreamHandler(streamRef, numEvents, eventPaths, eventFlags, eventIds)
-            },
-            contextPtr,
-            pathsToWatch,
-            UInt64(kFSEventStreamEventIdSinceNow),
-            debounceDuration,
-            FSEventStreamCreateFlags(
-                kFSEventStreamCreateFlagUseCFTypes
-                // This will listen for file changes
-                | kFSEventStreamCreateFlagFileEvents
-                // This provides additional information, like fileId,
-                // it is useful when file renamed, because it's firing to separate events with old and new path,
-                // but they can be linked by file id
-                | kFSEventStreamCreateFlagUseExtendedData
-                // Useful for us, always sends after the debounce duration.
-                | kFSEventStreamCreateFlagNoDefer
-            )
-        ) }) else {
+        let created = withExtendedLifetime(box) {
+            withUnsafeMutablePointer(to: &context) { contextPointer in
+                FSEventStreamCreate(
+                    kCFAllocatorDefault,
+                    // swiflint:ignore:next opening_brace
+                    { streamRef, clientCallBackInfo, numEvents, eventPaths, eventFlags, eventIds in
+                        guard let clientCallBackInfo,
+                              let stream = Unmanaged<DirectoryEventStreamOwner>
+                                .fromOpaque(clientCallBackInfo)
+                                .takeUnretainedValue()
+                                .stream else { return }
+                        stream.eventStreamHandler(streamRef, numEvents, eventPaths, eventFlags, eventIds)
+                    },
+                    contextPointer,
+                    pathsToWatch,
+                    UInt64(kFSEventStreamEventIdSinceNow),
+                    debounceDuration,
+                    FSEventStreamCreateFlags(
+                        kFSEventStreamCreateFlagUseCFTypes
+                        // This will listen for file changes
+                        | kFSEventStreamCreateFlagFileEvents
+                        // This provides additional information, like fileId,
+                        // it is useful when file renamed, because it's firing to separate events with old and new path,
+                        // but they can be linked by file id
+                        | kFSEventStreamCreateFlagUseExtendedData
+                        // Useful for us, always sends after the debounce duration.
+                        | kFSEventStreamCreateFlagNoDefer
+                    )
+                )
+            }
+        }
+        guard let ref = created else {
             return nil
         }
         if !exclusionPaths.isEmpty {
@@ -195,6 +198,13 @@ nonisolated final class DirectoryEventStream: Sendable {
         return events
     }
 
+    private static let rescanMask = FSEventStreamEventFlags(
+        kFSEventStreamEventFlagMustScanSubDirs
+            | kFSEventStreamEventFlagUserDropped
+            | kFSEventStreamEventFlagKernelDropped
+            | kFSEventStreamEventFlagRootChanged
+    )
+
     /// Parses ``FSEvent`` from the raw flag value.
     ///
     /// There can be multiple events in the raw flag value,
@@ -210,8 +220,8 @@ nonisolated final class DirectoryEventStream: Sendable {
         if raw == 0 {
             events.insert(.changeInDirectory)
         }
-        if raw & UInt32(kFSEventStreamEventFlagRootChanged) > 0 {
-            events.insert(.rootChanged)
+        if raw & Self.rescanMask > 0 {
+            events.insert(.mustRescan)
         }
         if raw & UInt32(kFSEventStreamEventFlagItemChangeOwner) > 0 {
             events.insert(.itemChangedOwner)

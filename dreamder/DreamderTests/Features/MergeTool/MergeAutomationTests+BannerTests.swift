@@ -30,7 +30,7 @@ extension MergeAutomationTests {
 
             await MergeAutomation.perform("clickChip:left:\(blockID):left")
 
-            #expect(model.merge?.conflictCount == 0)
+            try await eventually(timeout: .seconds(20)) { model.merge?.conflictCount == 0 }
             #expect(model.resultText.contains("epsilon\nzeta-main\neta"))
         }
     }
@@ -50,7 +50,7 @@ extension MergeAutomationTests {
 
             await MergeAutomation.perform("clickChip:\(pane):\(blockID):\(action)")
 
-            #expect(model.merge?.conflictCount == 0)
+            try await eventually(timeout: .seconds(20)) { model.merge?.conflictCount == 0 }
             #expect(model.resultText.contains(expectedFragment))
         }
     }

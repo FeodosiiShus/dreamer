@@ -23,22 +23,30 @@ nonisolated enum LSPDefinitionPreview {
     }
 }
 
+@MainActor
+enum LSPDefinitionWindowLookup {
+    static func windowController(of view: NSView) -> DreamderWindowController? {
+        view.window?.windowController as? DreamderWindowController
+    }
+
+    static func showUsages(in controller: DreamderWindowController) {
+        ShowUsagesController.present(in: controller)
+    }
+}
+
 final class LSPJumpToDefinitionDelegate<DocumentType: LanguageServerDocument>: JumpToDefinitionDelegate {
     private weak var languageServer: LanguageServer<DocumentType>?
     private var documentURI: String?
     private var documentURL: URL?
-    private weak var capturedController: DreamderWindowController?
+    private(set) weak var capturedController: DreamderWindowController?
     private var selfLinkKey: LSPLinkKey?
-    private let controllerProvider: @MainActor (TextViewController) -> DreamderWindowController?
+    private let controllerProvider: @MainActor (NSView) -> DreamderWindowController?
     private let showUsages: @MainActor (DreamderWindowController) -> Void
 
     init(
-        controllerProvider: @escaping @MainActor (TextViewController) -> DreamderWindowController? = {
-            $0.view.window?.windowController as? DreamderWindowController
-        },
-        showUsages: @escaping @MainActor (DreamderWindowController) -> Void = {
-            ShowUsagesController.present(in: $0)
-        }
+        controllerProvider: @escaping @MainActor (NSView) -> DreamderWindowController? =
+            LSPDefinitionWindowLookup.windowController(of:),
+        showUsages: @escaping @MainActor (DreamderWindowController) -> Void = LSPDefinitionWindowLookup.showUsages(in:)
     ) {
         self.controllerProvider = controllerProvider
         self.showUsages = showUsages
@@ -58,6 +66,14 @@ final class LSPJumpToDefinitionDelegate<DocumentType: LanguageServerDocument>: J
         selfLinkKey = nil
     }
 
+    func attach(to view: NSView) {
+        capturedController = controllerProvider(view)
+    }
+
+    func rememberSelfLink(_ destination: LSPNavigationDestination?) {
+        selfLinkKey = destination.map { LSPLinkKey(fileURL: $0.fileURL, line: $0.line, column: $0.column) }
+    }
+
     func queryLinks(forRange range: NSRange, textView: TextViewController) async -> [JumpToDefinitionLink]? {
         guard let server = languageServer, let documentURI, let documentURL else { return nil }
         let origin = await MainActor.run { () -> (position: Position, symbol: String)? in
@@ -68,14 +84,14 @@ final class LSPJumpToDefinitionDelegate<DocumentType: LanguageServerDocument>: J
         guard let origin else { return nil }
 
         selfLinkKey = nil
-        capturedController = controllerProvider(textView)
+        attach(to: textView.view)
         let targets = await server.navigationTargets(for: .declaration, uri: documentURI, position: origin.position)
         let destinations = LSPNavigationPlanner.destinations(from: targets)
         guard !destinations.isEmpty else { return nil }
 
         let navigationOrigin = LSPNavigationOrigin(fileURL: documentURL, position: origin.position)
         let selfDestination = LSPNavigationPlanner.selfDestination(in: destinations, origin: navigationOrigin)
-        selfLinkKey = selfDestination.map { LSPLinkKey(fileURL: $0.fileURL, line: $0.line, column: $0.column) }
+        rememberSelfLink(selfDestination)
 
         let linked = selfDestination.map { [$0] } ?? destinations
         var links: [JumpToDefinitionLink] = []

@@ -77,13 +77,11 @@ struct ProjectNavigatorSourceControlMenuTests {
             #expect(harness.menuItem(titled: "Open in New Window", in: menu)?.isEnabled == true)
 
             try harness.perform("Open in New Window", in: menu)
+            try await eventually(timeout: .seconds(20)) { documents(for: a).count == 1 && documents(for: b).count == 1 }
 
             let aDocuments = documents(for: a)
             let bDocuments = documents(for: b)
-            defer {
-                discard(aDocuments)
-                discard(bDocuments)
-            }
+            defer { discard(aDocuments + bDocuments) }
             let aDocument = try #require(aDocuments.first)
             let bDocument = try #require(bDocuments.first)
             #expect(aDocuments.count == 1)
@@ -106,6 +104,7 @@ struct ProjectNavigatorSourceControlMenuTests {
             #expect(harness.menuItem(titled: "Open in New Window", in: menu)?.isEnabled == false)
 
             menu.openInNewWindow()
+            try await eventually(timeout: .seconds(20)) { documents(for: a).count == 1 }
 
             let aDocuments = documents(for: a)
             defer { discard(aDocuments) }
@@ -142,15 +141,15 @@ struct ProjectNavigatorSourceControlMenuTests {
             let menu = harness.buildMenu(clicking: a)
 
             try harness.perform("Open in New Window", in: menu)
+            try await eventually(timeout: .seconds(20)) { tabDocument.windowControllers.count == 1 }
 
             let opened = documents(for: a)
             defer { discard(opened) }
             #expect(opened.count == 1)
             #expect(opened.first === tabDocument)
             #expect(a.fileDocument === tabDocument)
-            #expect(tabDocument.windowControllers.count == 1)
 
-            try harness.perform("Open in New Window", in: menu)
+            await menu.openInNewWindows([a])
 
             #expect(tabDocument.windowControllers.count == 1)
             #expect(documents(for: a).count == 1)
@@ -168,6 +167,7 @@ struct ProjectNavigatorSourceControlMenuTests {
             let modalsBefore = DreamderHeadless.suppressedModals.count
 
             menu.openInNewWindow()
+            try await eventually(timeout: .seconds(20)) { !documents(for: b).isEmpty }
 
             let bDocuments = documents(for: b)
             defer { discard(bDocuments) }
@@ -183,8 +183,8 @@ struct ProjectNavigatorSourceControlMenuTests {
         try await Harness.run(folders: Self.folders, files: Self.files) { harness in
             let ghost = CEWorkspaceFile(url: harness.url("ghost-window"))
 
-            #expect(throws: (any Error).self) {
-                try NSDocumentController.shared.openInNewEditorWindow(ghost)
+            await #expect(throws: (any Error).self) {
+                try await NSDocumentController.shared.openInNewEditorWindow(ghost)
             }
 
             #expect(ghost.fileDocument == nil)

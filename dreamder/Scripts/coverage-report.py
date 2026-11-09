@@ -16,6 +16,7 @@ ALL_SCOPES = LOGIC_SCOPES + ("view",)
 UNCLASSIFIED = "unclassified"
 
 TARGET_PERCENT = 100.0
+MAX_LISTED_LINES = 20
 
 EXIT_REGRESSION = 1
 EXIT_CONFIGURATION = 2
@@ -48,25 +49,26 @@ def read_json(path, description):
         fail(f"cannot read {description} {os.path.relpath(path, ROOT)}: {error}")
 
 
-def load_rows(bundle):
+def load_executed_lines(bundle):
     if not os.path.exists(bundle):
         fail(f"coverage bundle {bundle} not found; run `make coverage` first")
     completed = subprocess.run(
-        ["xcrun", "xccov", "view", "--report", "--json", bundle],
+        ["xcrun", "xccov", "view", "--archive", "--json", bundle],
         capture_output=True, text=True,
     )
     if completed.returncode != 0:
         fail(f"xccov failed for {bundle}: {completed.stderr.strip()}")
-    report = json.loads(completed.stdout)
-    rows = {}
-    for target in report.get("targets", []):
-        if not target.get("name", "").startswith("Dreamder.app"):
+    executed = {}
+    for path, records in json.loads(completed.stdout).items():
+        if not path.startswith(SOURCES):
             continue
-        for file in target.get("files", []):
-            if file["path"].startswith(SOURCES) and file["executableLines"] > 0:
-                path = os.path.relpath(file["path"], ROOT)
-                rows.setdefault(path, (file["coveredLines"], file["executableLines"]))
-    return rows
+        lines = {
+            record["line"]: record.get("executionCount", 0) > 0
+            for record in records if record.get("isExecutable")
+        }
+        if lines:
+            executed[os.path.relpath(path, ROOT)] = lines
+    return executed
 
 
 def glob_to_regex(pattern):
@@ -128,11 +130,11 @@ def load_classifier(path):
     return Classifier(scopes)
 
 
-def classify_rows(rows, classifier):
+def classify_rows(executed, classifier):
     files = {}
-    for path, (covered, executable) in rows.items():
+    for path, lines in executed.items():
         scope = classifier.classify(path) if classifier else None
-        files[path] = {"covered": covered, "executable": executable, "scope": scope or UNCLASSIFIED}
+        files[path] = {"covered": sum(lines.values()), "executable": len(lines), "scope": scope or UNCLASSIFIED}
     return files
 
 
@@ -187,7 +189,13 @@ def below_target(entry):
     return entry["covered"] * 100 < TARGET_PERCENT * entry["executable"]
 
 
-def check(snapshot):
+def uncovered_lines(lines):
+    missing = [str(number) for number, hit in sorted(lines.items()) if not hit]
+    shown = ", ".join(missing[:MAX_LISTED_LINES])
+    return shown + (f" and {len(missing) - MAX_LISTED_LINES} more" if len(missing) > MAX_LISTED_LINES else "")
+
+
+def check(snapshot, executed):
     violations = []
     files = snapshot["files"]
 
@@ -202,7 +210,8 @@ def check(snapshot):
     for path, entry in sorted(files.items()):
         if below_target(entry):
             violations.append(
-                f"{path} has {entry_percent(entry):.1f}% coverage ({entry['covered']}/{entry['executable']} lines), every file must be {TARGET_PERCENT:.0f}%"
+                f"{path} has {entry_percent(entry):.1f}% coverage ({entry['covered']}/{entry['executable']} lines, "
+                f"uncovered: {uncovered_lines(executed[path])}), every file must be {TARGET_PERCENT:.0f}%"
             )
     return violations
 
@@ -283,7 +292,8 @@ def main():
     if classifier is None and (arguments.check or arguments.write_baseline):
         fail(f"scopes file {os.path.relpath(arguments.scopes, ROOT)} not found")
 
-    snapshot = summarize(classify_rows(load_rows(arguments.bundle), classifier))
+    executed = load_executed_lines(arguments.bundle)
+    snapshot = summarize(classify_rows(executed, classifier))
     quiet = arguments.check or arguments.write_baseline or arguments.summary
 
     if not quiet:
@@ -302,7 +312,7 @@ def main():
     violations = None
     exit_code = 0
     if arguments.check:
-        violations = check(snapshot)
+        violations = check(snapshot, executed)
         if violations:
             print(f"Coverage check failed ({len(violations)} violation{'s' if len(violations) != 1 else ''}):")
             for violation in violations:

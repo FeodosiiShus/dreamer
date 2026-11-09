@@ -58,25 +58,16 @@ struct SettingsData: Codable, Hashable {
     /// Explicit decoder init for setting default values when key is not present in `JSON`
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.general = try container.decodeIfPresent(GeneralSettings.self, forKey: .general) ?? .init()
-        self.navigation = try container.decodeIfPresent(NavigationSettings.self, forKey: .navigation) ?? .init()
-        self.theme = try container.decodeIfPresent(ThemeSettings.self, forKey: .theme) ?? .init()
-        self.terminal = try container.decodeIfPresent(TerminalSettings.self, forKey: .terminal) ?? .init()
-        self.textEditing = try container.decodeIfPresent(TextEditingSettings.self, forKey: .textEditing) ?? .init()
-        self.search = try container.decodeIfPresent(SearchSettings.self, forKey: .search) ?? .init()
-        self.sourceControl = try container.decodeIfPresent(
-            SourceControlSettings.self,
-            forKey: .sourceControl
-        ) ?? .init()
-        self.languageServers = try container.decodeIfPresent(
-            LanguageServerSettings.self, forKey: .languageServers
-        ) ?? .init()
-        self.developerSettings = try container.decodeIfPresent(
-            DeveloperSettings.self, forKey: .developerSettings
-        ) ?? .init()
-        self.markdownPreview = try container.decodeIfPresent(
-            MarkdownPreviewSettings.self, forKey: .markdownPreview
-        ) ?? .init()
+        self.general = container.lenient(.general, default: .init())
+        self.navigation = container.lenient(.navigation, default: .init())
+        self.theme = container.lenient(.theme, default: .init())
+        self.terminal = container.lenient(.terminal, default: .init())
+        self.textEditing = container.lenient(.textEditing, default: .init())
+        self.search = container.lenient(.search, default: .init())
+        self.sourceControl = container.lenient(.sourceControl, default: .init())
+        self.languageServers = container.lenient(.languageServers, default: .init())
+        self.developerSettings = container.lenient(.developerSettings, default: .init())
+        self.markdownPreview = container.lenient(.markdownPreview, default: .init())
     }
 
     // swiftlint:disable cyclomatic_complexity

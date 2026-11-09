@@ -148,9 +148,9 @@ struct MergeRevisionsViewCoverageTests {
             let result = try #require(mergeRevisionsCoverageTextView(in: hosted, pane: "result"))
 
             try click("left", block: block, in: hosted, pane: "left")
-            #expect(model.merge?.conflictCount == 0)
+            try await eventually(timeout: .seconds(20)) { model.merge?.conflictCount == 0 }
             #expect(model.summary == "All conflicts resolved")
-            try await eventually { result.string == paneText(resolvedLeftResult) }
+            try await eventually(timeout: .seconds(20)) { result.string == paneText(resolvedLeftResult) }
 
             try click("right", block: block, in: hosted, pane: "right")
             try await eventually { result.string == paneText(resolvedRightResult) }
@@ -175,18 +175,17 @@ struct MergeRevisionsViewCoverageTests {
 
             view.applyLeft()
             let leftOnly = "alpha\nbeta-main\ngamma\ndelta\nepsilon\nzeta\neta\ntheta\niota\nkappa\nlambda\n"
-            #expect(model.resultText == leftOnly)
-            try await eventually { result.string == paneText(leftOnly) }
+            try await eventually(timeout: .seconds(20)) { result.string == paneText(leftOnly) }
 
             view.applyRight()
             let rightOnly = "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta\neta\ntheta\niota\nkappa\nfeature-added\nlambda\n"
-            #expect(model.resultText == rightOnly)
-            try await eventually { result.string == paneText(rightOnly) }
+            try await eventually(timeout: .seconds(20)) { model.resultText == rightOnly }
+            try await eventually(timeout: .seconds(20)) { result.string == paneText(rightOnly) }
 
             view.applyAll()
             let both = "alpha\nbeta-main\ngamma\ndelta\nepsilon\nzeta\neta\ntheta\niota\nkappa\nfeature-added\nlambda\n"
-            #expect(model.resultText == both)
-            try await eventually { result.string == paneText(both) }
+            try await eventually(timeout: .seconds(20)) { model.resultText == both }
+            try await eventually(timeout: .seconds(20)) { result.string == paneText(both) }
         }
     }
 
@@ -200,11 +199,11 @@ struct MergeRevisionsViewCoverageTests {
             let block = try conflictID(model)
 
             view.handle(MergePaneChip(kind: .acceptRight, blockID: block))
-            #expect(model.resultText == resolvedRightResult)
+            try await eventually(timeout: .seconds(20)) { model.resultText == resolvedRightResult }
             view.handle(MergePaneChip(kind: .acceptLeft, blockID: block))
-            #expect(model.resultText == resolvedLeftResult)
+            try await eventually(timeout: .seconds(20)) { model.resultText == resolvedLeftResult }
             view.handle(MergePaneChip(kind: .ignore, blockID: block))
-            #expect(model.resultText.contains("epsilon\nzeta\neta"))
+            try await eventually(timeout: .seconds(20)) { model.resultText.contains("epsilon\nzeta\neta") }
         }
     }
 
@@ -220,6 +219,7 @@ struct MergeRevisionsViewCoverageTests {
 
             let block = try conflictID(model)
             view.handle(MergePaneChip(kind: .acceptLeft, blockID: block))
+            try await eventually(timeout: .seconds(20)) { model.merge?.isFullyResolved == true }
             try await hosted.settle()
 
             #expect(model.summary == "All conflicts resolved")

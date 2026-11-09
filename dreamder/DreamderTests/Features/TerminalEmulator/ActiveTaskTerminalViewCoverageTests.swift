@@ -43,20 +43,6 @@ struct ActiveTaskTerminalViewCoverageTests {
     }
 
     @Test
-    func startingWithAnUnsupportedSystemShellWritesNothing() async throws {
-        await withTerminalCoverageSettings({ $0.shell = .system }) {
-            let activeTask = CEActiveTask(task: fixture.makeTask(command: "true"))
-            let view = CEActiveTaskTerminalView(activeTask: activeTask)
-            view.systemShell = { "/opt/homebrew/bin/fish" }
-
-            view.startProcess(workspaceURL: nil)
-
-            #expect(view.runningPID() == nil)
-            #expect(view.getBufferAsString().isEmpty)
-        }
-    }
-
-    @Test
     func tasksFallBackToAPlainShellWhenTheIntegrationScriptsAreMissing() async throws {
         try await withTempDir { directory in
             try await withTerminalCoverageSettings({ $0.useShellIntegration = true }) {

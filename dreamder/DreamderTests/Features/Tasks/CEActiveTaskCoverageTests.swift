@@ -4,6 +4,12 @@ import SwiftUI
 import Testing
 @testable import Dreamder
 
+private struct OutcomeCase {
+    let exit: ProcessExit
+    let stopRequested: Bool
+    let expected: CEActiveTask.Outcome
+}
+
 @MainActor
 @Suite(.serialized, .uiGate)
 struct CEActiveTaskCoverageTests {
@@ -28,48 +34,50 @@ struct CEActiveTaskCoverageTests {
     }
 
     @Test
-    func terminationStatusMapsToTheTaskStatus() {
-        let cases: [(Int32, CETaskStatus)] = [
-            (0, .finished),
-            (2, .notRunning),
-            (9, .notRunning),
-            (15, .notRunning),
-            (130, .notRunning),
-            (143, .notRunning),
-            (17, .stopped),
-            (145, .stopped),
-            (1, .failed),
-            (7, .failed),
-            (768, .failed)
+    func exitMapsToTheTaskStatus() {
+        let cases: [(ProcessExit, CETaskStatus)] = [
+            (.exited(code: 0), .finished),
+            (.exited(code: 128 + SIGINT), .notRunning),
+            (.exited(code: 128 + SIGTERM), .notRunning),
+            (.exited(code: 128 + SIGKILL), .notRunning),
+            (.exited(code: 128 + SIGHUP), .notRunning),
+            (.signaled(signal: SIGINT), .notRunning),
+            (.signaled(signal: SIGTERM), .notRunning),
+            (.signaled(signal: SIGKILL), .notRunning),
+            (.signaled(signal: SIGHUP), .notRunning),
+            (.exited(code: 1), .failed),
+            (.exited(code: 2), .failed),
+            (.exited(code: 7), .failed),
+            (.exited(code: 15), .failed),
+            (.exited(code: 128), .failed),
+            (.exited(code: 128 + SIGSEGV), .failed),
+            (.exited(code: 255), .failed),
+            (.signaled(signal: SIGSEGV), .failed),
+            (.signaled(signal: SIGSTOP), .failed)
         ]
-        for (terminationStatus, expected) in cases {
+        for (exit, expected) in cases {
             let activeTask = CEActiveTask(task: fixture.makeTask(command: "true"))
-            activeTask.handleProcessFinished(terminationStatus: terminationStatus)
-            #expect(activeTask.status == expected, "termination status \(terminationStatus)")
+            activeTask.handleProcessFinished(exit: exit)
+            #expect(activeTask.status == expected, "exit \(exit)")
         }
     }
 
     @Test
     func finishedTasksWriteTheirOutcomeIntoTheTaskTerminal() {
-        let outcomes: [(Int32, String?)] = [
-            (0, "Finished running Coverage Task."),
-            (2, "Coverage Task cancelled."),
-            (15, "Coverage Task cancelled."),
-            (3, "Failed to run Coverage Task"),
-            (17, nil)
+        let outcomes: [(ProcessExit, String)] = [
+            (.exited(code: 0), "Finished running Coverage Task."),
+            (.exited(code: 128 + SIGINT), "Coverage Task cancelled."),
+            (.signaled(signal: SIGTERM), "Coverage Task cancelled."),
+            (.exited(code: 3), "Failed to run Coverage Task")
         ]
-        for (terminationStatus, message) in outcomes {
+        for (exit, message) in outcomes {
             let activeTask = CEActiveTask(task: fixture.makeTask(command: "true"))
             let view = CEActiveTaskTerminalView(activeTask: activeTask)
             activeTask.output = view
 
-            activeTask.handleProcessFinished(terminationStatus: terminationStatus)
+            activeTask.handleProcessFinished(exit: exit)
 
-            if let message {
-                #expect(view.getBufferAsString().contains(message), "termination status \(terminationStatus)")
-            } else {
-                #expect(view.getBufferAsString().isEmpty)
-            }
+            #expect(view.getBufferAsString().contains(message), "exit \(exit)")
         }
     }
 
@@ -77,17 +85,17 @@ struct CEActiveTaskCoverageTests {
     func finishedTasksPostActivityNotifications() async throws {
         let recorder = TasksCoverageNotificationRecorder()
         defer { recorder.stop() }
-        let expectations: [(Int32, String)] = [
-            (0, "Finished Running Coverage Task"),
-            (2, "Coverage Task cancelled"),
-            (9, "Coverage Task cancelled"),
-            (3, "Failed Running Coverage Task")
+        let expectations: [(ProcessExit, String)] = [
+            (.exited(code: 0), "Finished Running Coverage Task"),
+            (.exited(code: 128 + SIGINT), "Coverage Task cancelled"),
+            (.signaled(signal: SIGKILL), "Coverage Task cancelled"),
+            (.exited(code: 3), "Failed Running Coverage Task")
         ]
-        for (terminationStatus, title) in expectations {
+        for (exit, title) in expectations {
             let activeTask = CEActiveTask(task: fixture.makeTask(command: "true"))
-            activeTask.handleProcessFinished(terminationStatus: terminationStatus)
+            activeTask.handleProcessFinished(exit: exit)
 
-            try await eventually {
+            try await eventually(timeout: Self.stepTimeout) {
                 recorder.entries(for: activeTask.taskId).contains { $0.action == "deleteWithDelay" }
             }
             let entries = recorder.entries(for: activeTask.taskId)
@@ -96,17 +104,12 @@ struct CEActiveTaskCoverageTests {
     }
 
     @Test
-    func stoppedTasksDoNotPostAnOutcomeUpdate() async throws {
-        let recorder = TasksCoverageNotificationRecorder()
-        defer { recorder.stop() }
+    func hangUpWithoutAProcessChangesNothing() {
         let activeTask = CEActiveTask(task: fixture.makeTask(command: "true"))
 
-        activeTask.handleProcessFinished(terminationStatus: 17)
+        activeTask.hangUp()
 
-        try await eventually {
-            recorder.entries(for: activeTask.taskId).contains { $0.action == "deleteWithDelay" }
-        }
-        #expect(!recorder.entries(for: activeTask.taskId).contains { $0.action == "update" })
+        #expect(activeTask.status == .notRunning)
     }
 
     @Test
@@ -232,5 +235,70 @@ struct CEActiveTaskCoverageTests {
             activeTask.status == .finished
                 && output.getBufferAsString().components(separatedBy: "again-2").count - 1 >= 2
         }
+    }
+
+    @Test(arguments: [
+        ("exit 0", CETaskStatus.finished),
+        ("exit 130", CETaskStatus.notRunning),
+        ("exit 143", CETaskStatus.notRunning),
+        ("exit 3", CETaskStatus.failed),
+        ("exit 2", CETaskStatus.failed)
+    ])
+    func aShellsExitCodeDecidesTheOutcomeOfTheRun(_ command: String, _ expected: CETaskStatus) async throws {
+        let activeTask = CEActiveTask(task: fixture.makeTask(command: command), settings: fixture.settingsStore)
+        activeTask.run(workspaceURL: nil, shell: .zsh)
+
+        try await eventually(timeout: Self.statusTimeout) { !activeTask.isActive }
+
+        #expect(activeTask.status == expected, "\(command)")
+    }
+
+    @Test
+    func aShellKilledBySigkillAfterStartingCountsAsCancelled() async throws {
+        let activeTask = CEActiveTask(task: fixture.makeSignalTask(), settings: fixture.settingsStore)
+        activeTask.run(workspaceURL: nil, shell: .zsh)
+        try await fixture.waitUntilSignalTaskIsReady(timeout: Self.readinessTimeout)
+        let output = try #require(activeTask.output)
+        let shell = try #require(output.runningPID())
+
+        ProcessTree.send(SIGKILL, to: shell)
+
+        try await eventually(timeout: Self.statusTimeout) { activeTask.status == .notRunning }
+    }
+
+    @Test
+    func aRequestedStopTurnsNonZeroExitsIntoCancellations() {
+        let cases = [
+            OutcomeCase(exit: .exited(code: 1), stopRequested: true, expected: .cancelled),
+            OutcomeCase(exit: .exited(code: 1), stopRequested: false, expected: .failed),
+            OutcomeCase(exit: .exited(code: 0), stopRequested: true, expected: .finished),
+            OutcomeCase(exit: .exited(code: 0), stopRequested: false, expected: .finished),
+            OutcomeCase(exit: .exited(code: 130), stopRequested: false, expected: .cancelled),
+            OutcomeCase(exit: .signaled(signal: SIGHUP), stopRequested: false, expected: .cancelled),
+            OutcomeCase(exit: .signaled(signal: SIGSEGV), stopRequested: true, expected: .failed),
+            OutcomeCase(exit: .signaled(signal: SIGSEGV), stopRequested: false, expected: .failed)
+        ]
+        for outcome in cases {
+            #expect(
+                CEActiveTask.Outcome(exit: outcome.exit, stopRequested: outcome.stopRequested) == outcome.expected,
+                "exit \(outcome.exit) stopRequested \(outcome.stopRequested)"
+            )
+        }
+    }
+
+    @Test(arguments: [Shell.zsh, Shell.bash])
+    func aStopEndsAsCancelledEvenWhenTheShellExitsWithAnErrorCode(_ shell: Shell) async throws {
+        let command = """
+        trap 'exit 5' HUP; m=ready-$((40+2)); echo $m >> "$\(TasksCoverageFixture.markersDirectoryVariable)/\
+        \(TasksCoverageFixture.readyFile)"; echo $m; \
+        i=0; while [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done
+        """
+        let activeTask = CEActiveTask(task: fixture.makeTask(command: command), settings: fixture.settingsStore)
+        activeTask.run(workspaceURL: nil, shell: shell)
+        try await fixture.waitUntilSignalTaskIsReady(timeout: Self.readinessTimeout)
+
+        await activeTask.terminateAndWait()
+
+        try await eventually(timeout: Self.statusTimeout) { activeTask.status == .notRunning }
     }
 }

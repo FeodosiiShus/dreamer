@@ -34,10 +34,7 @@ extension SettingsData {
         /// Explicit decoder init for setting default values when key is not present in `JSON`
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.installedLanguageServers = try container.decodeIfPresent(
-                [String: InstalledLanguageServer].self,
-                forKey: .installedLanguageServers
-            ) ?? [:]
+            self.installedLanguageServers = container.lenient(.installedLanguageServers, default: [:])
         }
     }
 

@@ -20,7 +20,8 @@ nonisolated extension GitClient {
     static let protectedBranchNames: Set<String> = ["master", "main"]
 
     func isCommitPublished(_ hash: String) async throws -> Bool {
-        let output = try await run(arguments: ["branch", "-r", "--contains", hash, "--format=%(refname:short)"])
+        try Self.requireRefNames(hash)
+        let output = try await run(arguments: ["branch", "-r", "--contains=\(hash)", "--format=%(refname:short)"])
         return output
             .split(whereSeparator: \.isNewline)
             .contains { reference in
@@ -34,6 +35,7 @@ nonisolated extension GitClient {
         addSuffix: Bool,
         mainlineParent: Int = 1
     ) async throws -> GitCherryPickOutcome {
+        try Self.requireRefNames(commit.hash)
         let state = await branchOpsOperationState()
         if let operation = state.ongoingOperationName {
             throw GitClientError.outputError("Cannot cherry-pick during \(operation)")
@@ -45,7 +47,7 @@ nonisolated extension GitClient {
         if commit.isMerge {
             arguments += ["-m", String(mainlineParent)]
         }
-        arguments.append(commit.hash)
+        arguments += ["--end-of-options", commit.hash]
         let result = try await runResult(arguments: arguments)
         if result.success {
             return .success

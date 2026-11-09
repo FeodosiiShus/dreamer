@@ -41,7 +41,10 @@ nonisolated extension GitClient {
     }
 
     func getCommitChangedFiles(commitSHA: String) async throws -> [GitChangedFile] {
-        let output = try await run(arguments: ["diff-tree", "--no-commit-id", "--name-status", "-r", commitSHA])
+        try Self.requireRefNames(commitSHA)
+        let output = try await run(arguments: [
+            "diff-tree", "--no-commit-id", "--name-status", "-r", "--end-of-options", commitSHA
+        ])
         return output
             .trimmingCharacters(in: .newlines)
             .components(separatedBy: "\n")

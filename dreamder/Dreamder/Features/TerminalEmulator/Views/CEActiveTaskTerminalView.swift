@@ -31,19 +31,26 @@ class CEActiveTaskTerminalView: CELocalShellTerminalView {
         nil
     }
 
+    @discardableResult
     override func startProcess(
         workspaceURL url: URL?,
         shell: Shell? = nil,
         environment: [String] = [],
         interactive: Bool = true
-    ) {
+    ) -> Bool {
         let terminalSettings = settings.preferences.terminal
 
         var terminalEnvironment: [String] = Terminal.getEnvironmentVariables()
         terminalEnvironment.append("TERM_PROGRAM=DreamderApp_Terminal")
 
-        guard let (shell, shellPath) = getShell(shell, userSetting: terminalSettings.shell) else {
-            return
+        guard let (shell, shellPath) = resolveShellOrReport(shell, userSetting: terminalSettings.shell) else {
+            return false
+        }
+
+        let workingDirectory = URL(filePath: activeTask.task.workingDirectory, relativeTo: url).absolutePath
+        guard LaunchPaths.isExistingDirectory(atPath: workingDirectory) else {
+            reportLaunchNotice("Working directory does not exist: \(workingDirectory)")
+            return false
         }
 
         terminalEnvironment.append(contentsOf: environment)
@@ -70,13 +77,19 @@ class CEActiveTaskTerminalView: CELocalShellTerminalView {
         sendOutputMessage(self.activeTask.task.command)
         newline()
 
-        process.startProcess(
-            executable: shellPath,
-            args: shellArgs,
-            environment: terminalEnvironment,
-            execName: shell.rawValue,
-            currentDirectory: URL(filePath: activeTask.task.workingDirectory, relativeTo: url).absolutePath
+        return spawn(
+            ProcessSpawn(
+                executable: shellPath,
+                arguments: shellArgs,
+                environment: terminalEnvironment,
+                executableName: shell.rawValue,
+                currentDirectory: workingDirectory
+            )
         )
+    }
+
+    override func reportLaunchNotice(_ message: String) {
+        sendOutputMessage(message)
     }
 
     override func dataReceived(slice: ArraySlice<UInt8>) {
@@ -84,12 +97,12 @@ class CEActiveTaskTerminalView: CELocalShellTerminalView {
         super.dataReceived(slice: slice)
     }
 
-    override func processTerminated(_ source: LocalProcess, exitCode: Int32?) {
-        let status = exitCode ?? 1
+    override func handleProcessExit(_ exit: ProcessExit?) {
+        let exit = exit ?? .exited(code: 1)
         Task { @MainActor [weak self] in
             await self?.drainUntilEndOfOutput()
             self?.drainProcessEvents()
-            self?.activeTask.handleProcessFinished(terminationStatus: status)
+            self?.activeTask.handleProcessFinished(exit: exit)
         }
     }
 

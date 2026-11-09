@@ -57,8 +57,15 @@ nonisolated extension GitClient {
         return state
     }
 
+    static func requireRefNames(_ names: String?...) throws {
+        if let name = names.compactMap({ $0 }).first(where: { $0.hasPrefix("-") }) {
+            throw GitClientError.outputError("Invalid reference name '\(name)': it must not start with '-'")
+        }
+    }
+
     func branchOpsRevision(_ revision: String) async throws -> String {
-        try await run(arguments: ["rev-parse", revision])
+        try Self.requireRefNames(revision)
+        return try await run(arguments: ["rev-parse", "--verify", "--end-of-options", revision])
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -71,7 +78,8 @@ nonisolated extension GitClient {
     }
 
     func branchOpsCheckoutLocal(_ name: String) async throws {
-        try await branchOpsCheckedRun(["checkout", name])
+        try Self.requireRefNames(name)
+        try await branchOpsCheckedRun(["checkout", "--end-of-options", name])
     }
 
     func branchOpsCheckoutRemote(_ shortName: String) async throws {
@@ -80,6 +88,7 @@ nonisolated extension GitClient {
             throw GitClientError.outputError("Invalid remote branch '\(shortName)'")
         }
         let localName = parts[1]
+        try Self.requireRefNames(shortName, localName)
         if try await branchOpsBranchExists(localName) {
             try await branchOpsCheckoutLocal(localName)
         } else {
@@ -92,28 +101,33 @@ nonisolated extension GitClient {
         remote: String,
         overwrite: Bool = false
     ) async throws {
+        try Self.requireRefNames(localName, remote)
         let flags = overwrite ? ["-B"] : ["--track", "-b"]
-        try await branchOpsCheckedRun(["checkout"] + flags + [localName, remote])
+        try await branchOpsCheckedRun(["checkout"] + flags + [localName, "--end-of-options", remote])
     }
 
     func branchOpsResetLocalBranchToRemote(localName: String, remote: String) async throws {
-        try await branchOpsCheckedRun(["checkout", "-B", localName, remote])
+        try Self.requireRefNames(localName, remote)
+        try await branchOpsCheckedRun(["checkout", "-B", localName, "--end-of-options", remote])
     }
 
     func branchOpsCommitCount(branch: String, notIn base: String) async throws -> Int {
-        let output = try await branchOpsCheckedRun(["rev-list", "--count", "\(base)..\(branch)"])
+        try Self.requireRefNames(branch, base)
+        let output = try await branchOpsCheckedRun(["rev-list", "--count", "--end-of-options", "\(base)..\(branch)"])
         return Int(output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
     }
 
     func branchOpsCommits(branch: String, notIn base: String) async throws -> [BranchesCompareCommit] {
+        try Self.requireRefNames(branch, base)
         let output = try await run(arguments: [
-            "log", "--format=%h|%s|%an|%ad", "--date=short", "\(base)..\(branch)"
+            "log", "--format=%h|%s|%an|%ad", "--date=short", "--end-of-options", "\(base)..\(branch)"
         ])
         return BranchesCompareCommit.list(from: output)
     }
 
     func branchOpsCheckoutRevision(_ revision: String) async throws {
-        try await branchOpsCheckedRun(["checkout", revision])
+        try Self.requireRefNames(revision)
+        try await branchOpsCheckedRun(["checkout", "--end-of-options", revision])
     }
 
     func branchOpsCreateBranch(
@@ -139,14 +153,16 @@ nonisolated extension GitClient {
         newName: String,
         unsetUpstream: Bool = false
     ) async throws {
-        try await branchOpsCheckedRun(["branch", "-m", oldName, newName])
+        try Self.requireRefNames(oldName, newName)
+        try await branchOpsCheckedRun(["branch", "-m", "--end-of-options", oldName, newName])
         if unsetUpstream {
-            try await branchOpsCheckedRun(["branch", "--unset-upstream", newName])
+            try await branchOpsCheckedRun(["branch", "--unset-upstream", "--end-of-options", newName])
         }
     }
 
     func branchOpsDeleteLocalBranch(_ name: String, force: Bool = false) async throws {
-        let result = try await runResult(arguments: ["branch", force ? "-D" : "-d", name])
+        try Self.requireRefNames(name)
+        let result = try await runResult(arguments: ["branch", force ? "-D" : "-d", "--end-of-options", name])
         guard result.success else {
             let text = result.combinedText
             if !force, text.contains("not fully merged") || text.contains("not merged") {
@@ -157,7 +173,8 @@ nonisolated extension GitClient {
     }
 
     func branchOpsUnmergedCommits(branch: String, base: String) async throws -> [String] {
-        let output = try await run(arguments: ["log", "--format=%h  %s", "\(base)..\(branch)"])
+        try Self.requireRefNames(branch, base)
+        let output = try await run(arguments: ["log", "--format=%h  %s", "--end-of-options", "\(base)..\(branch)"])
         return output
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -165,23 +182,30 @@ nonisolated extension GitClient {
     }
 
     func branchOpsRestoreBranch(name: String, at revision: String) async throws {
-        try await branchOpsCheckedRun(["branch", name, revision])
+        try Self.requireRefNames(name, revision)
+        try await branchOpsCheckedRun(["branch", "--end-of-options", name, revision])
     }
 
     func branchOpsRestoreTag(name: String, at revision: String) async throws {
-        try await branchOpsCheckedRun(["tag", name, revision])
+        try Self.requireRefNames(name, revision)
+        try await branchOpsCheckedRun(["tag", "--end-of-options", name, revision])
     }
 
     func branchOpsDeleteRemoteBranch(remote: String, branch: String) async throws {
-        try await branchOpsCheckedRun(["push", remote, "--delete", branch])
+        try Self.requireRefNames(remote, branch)
+        try await branchOpsCheckedRun(["push", "--delete", "--end-of-options", remote, branch])
     }
 
     func branchOpsDeleteTag(_ name: String) async throws {
-        try await branchOpsCheckedRun(["tag", "-d", name])
+        try Self.requireRefNames(name)
+        try await branchOpsCheckedRun(["tag", "-d", "--end-of-options", name])
     }
 
     func branchOpsMerge(_ ref: String) async throws -> Bool {
-        let result = try await runResult(arguments: ["-c", "core.editor=true", "merge", "--no-edit", ref])
+        try Self.requireRefNames(ref)
+        let result = try await runResult(arguments: [
+            "-c", "core.editor=true", "merge", "--no-edit", "--end-of-options", ref
+        ])
         let state = await branchOpsOperationState()
         if state.isMerging || result.combinedText.contains("CONFLICT") {
             return true
@@ -193,7 +217,8 @@ nonisolated extension GitClient {
     }
 
     func branchOpsRebase(onto ref: String) async throws -> Bool {
-        let result = try await runResult(arguments: ["rebase", ref])
+        try Self.requireRefNames(ref)
+        let result = try await runResult(arguments: ["rebase", "--end-of-options", ref])
         let state = await branchOpsOperationState()
         let text = result.combinedText
         if state.isRebasing || text.contains("CONFLICT") || text.contains("could not apply") {
@@ -206,6 +231,7 @@ nonisolated extension GitClient {
     }
 
     func branchOpsCheckoutAndRebase(_ branch: String, onto ref: String) async throws -> Bool {
+        try Self.requireRefNames(branch, ref)
         try await branchOpsCheckoutLocal(branch)
         return try await branchOpsRebase(onto: ref)
     }
@@ -247,15 +273,17 @@ nonisolated extension GitClient {
         guard parts.count == 2, !parts[1].isEmpty else {
             throw GitClientError.outputError("Invalid remote branch '\(ref)'")
         }
+        try Self.requireRefNames(parts[0], parts[1])
         let mode = rebase ? "--rebase" : "--no-rebase"
-        try await branchOpsCheckedRun(["-c", "core.editor=true", "pull", mode, parts[0], parts[1]])
+        try await branchOpsCheckedRun(["-c", "core.editor=true", "pull", mode, "--end-of-options", parts[0], parts[1]])
     }
 
     func branchOpsSetUpstream(branch: String, upstream: String?) async throws {
+        try Self.requireRefNames(branch, upstream)
         if let upstream {
-            try await branchOpsCheckedRun(["branch", "--set-upstream-to=\(upstream)", branch])
+            try await branchOpsCheckedRun(["branch", "--set-upstream-to=\(upstream)", "--end-of-options", branch])
         } else {
-            try await branchOpsCheckedRun(["branch", "--unset-upstream", branch])
+            try await branchOpsCheckedRun(["branch", "--unset-upstream", "--end-of-options", branch])
         }
     }
 
@@ -266,20 +294,22 @@ nonisolated extension GitClient {
         }
         let remote = parts[0]
         let remoteBranch = parts[1]
+        try Self.requireRefNames(name, remote, remoteBranch)
         if isCurrent {
-            try await branchOpsCheckedRun(["fetch", remote])
-            try await branchOpsCheckedRun(["merge", "--ff-only", upstream])
+            try await branchOpsCheckedRun(["fetch", "--end-of-options", remote])
+            try await branchOpsCheckedRun(["merge", "--ff-only", "--end-of-options", upstream])
         } else {
-            try await branchOpsCheckedRun(["fetch", remote, "\(remoteBranch):\(name)"])
+            try await branchOpsCheckedRun(["fetch", "--end-of-options", remote, "\(remoteBranch):\(name)"])
         }
     }
 
     func branchOpsAddWorktree(path: String, ref: String?) async throws {
+        try Self.requireRefNames(ref)
         let directory = Self.worktreeDirectory(path)
         if let ref {
-            try await branchOpsCheckedRun(["worktree", "add", directory, ref])
+            try await branchOpsCheckedRun(["worktree", "add", "--end-of-options", directory, ref])
         } else {
-            try await branchOpsCheckedRun(["worktree", "add", directory])
+            try await branchOpsCheckedRun(["worktree", "add", "--end-of-options", directory])
         }
     }
 
@@ -292,15 +322,20 @@ nonisolated extension GitClient {
     }
 
     func branchOpsPushTag(name: String, remote: String) async throws {
-        try await branchOpsCheckedRun(["push", remote, "refs/tags/\(name)"])
+        try Self.requireRefNames(name, remote)
+        try await branchOpsCheckedRun(["push", "--end-of-options", remote, "refs/tags/\(name)"])
     }
 
     private func branchOpsCreateCheckedOutBranch(name: String, from ref: String?, flag: String) async throws {
-        try await branchOpsCheckedRun(["checkout", flag, name] + (ref.map { [$0] } ?? []))
+        try Self.requireRefNames(name, ref)
+        try await branchOpsCheckedRun(["checkout", flag, name] + (ref.map { ["--end-of-options", $0] } ?? []))
     }
 
     private func branchOpsCreateUncheckedBranch(name: String, from ref: String?, flag: String?) async throws {
-        try await branchOpsCheckedRun(["branch"] + (flag.map { [$0] } ?? []) + [name] + (ref.map { [$0] } ?? []))
+        try Self.requireRefNames(name, ref)
+        try await branchOpsCheckedRun(
+            ["branch"] + (flag.map { [$0] } ?? []) + ["--end-of-options", name] + (ref.map { [$0] } ?? [])
+        )
     }
 
     @discardableResult

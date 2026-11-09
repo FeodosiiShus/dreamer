@@ -72,17 +72,24 @@ struct CETaskCoverageTests {
     }
 
     @Test
-    func fullCommandChangesIntoTheQuotedWorkingDirectoryFirst() {
+    func fullCommandChangesIntoTheSingleQuotedWorkingDirectoryFirst() {
         let task = CETask(name: "Build", workingDirectory: "/tmp/my project", command: "make all")
 
-        #expect(task.fullCommand == "cd \"/tmp/my project\" && make all")
+        #expect(task.fullCommand == "cd -- '/tmp/my project' && make all")
     }
 
     @Test
-    func fullCommandEscapesQuotesInTheWorkingDirectory() {
-        let task = CETask(name: "Build", workingDirectory: "/tmp/a\"b", command: "ls")
+    func fullCommandLeavesAPlainWorkingDirectoryBare() {
+        let task = CETask(name: "Build", workingDirectory: "/tmp/plain-dir", command: "make all")
 
-        #expect(task.fullCommand == "cd \"/tmp/a\\\"b\" && ls")
+        #expect(task.fullCommand == "cd -- /tmp/plain-dir && make all")
+    }
+
+    @Test
+    func fullCommandKeepsQuotesAndShellSyntaxInTheWorkingDirectoryLiteral() {
+        let task = CETask(name: "Build", workingDirectory: "/tmp/a\"b'c$d", command: "ls")
+
+        #expect(task.fullCommand == "cd -- '/tmp/a\"b'\\''c$d' && ls")
     }
 
     @Test

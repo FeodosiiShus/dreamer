@@ -14,7 +14,6 @@ import CodeEditTextView
 /// Undo stacks aren't stored on `CEWorkspaceFile` or `CodeFileDocument` because:
 /// - `CEWorkspaceFile` can be refreshed and reloaded at any point.
 /// - `CodeFileDocument` is released once there are no editors viewing it.
-/// Undo stacks need to be retained for the duration of a workspace session, enduring editor closes..
 @Observable
 final class UndoManagerRegistration {
     @ObservationIgnored private var managerMap: [String: CEUndoManager] = [:]
@@ -46,6 +45,10 @@ final class UndoManagerRegistration {
     /// - Returns: The undo manager for the given file.
     func managerIfExists(forFile path: URL) -> CEUndoManager? {
         managerMap[path.absolutePath]
+    }
+
+    func removeManager(forFile path: URL) {
+        managerMap.removeValue(forKey: path.absolutePath)
     }
 }
 

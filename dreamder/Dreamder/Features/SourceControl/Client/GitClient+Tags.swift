@@ -9,6 +9,7 @@ nonisolated extension GitClient {
         message: String? = nil,
         force: Bool = false
     ) async throws {
+        try Self.requireRefNames(name, revision)
         guard try await isValidTagName(name) else {
             throw GitClientError.outputError("'\(name)' is not a valid tag name.")
         }
@@ -23,7 +24,7 @@ nonisolated extension GitClient {
         if !trimmedMessage.isEmpty {
             arguments += ["-a", "-m", trimmedMessage]
         }
-        arguments += ["--", name, revision]
+        arguments += ["--end-of-options", name, revision]
         _ = try await run(arguments: arguments)
     }
 

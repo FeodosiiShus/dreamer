@@ -84,15 +84,16 @@ def test_run_specification(flavor):
     return found[0]
 
 
-def shard_command(flavor, shards, index, bundle):
+def shard_command(flavor, shards, index, bundle, allowance):
     coverage = ["-enableCodeCoverage", "YES"] if flavor == "coverage" else []
+    time_limit = ["-default-test-execution-time-allowance", str(allowance)] if allowance else []
     return [
         "xcodebuild", "test-without-building", "-xctestrun", test_run_specification(flavor),
         "-destination", DESTINATION, "-collect-test-diagnostics", "never", "-resultBundlePath", bundle,
-    ] + coverage + selection(shards, index)
+    ] + coverage + time_limit + selection(shards, index)
 
 
-def start(flavor, shards, index):
+def start(flavor, shards, index, allowance):
     bundle = os.path.join(SHARDS_DIR, f"shard-{index}.xcresult")
     shutil.rmtree(bundle, ignore_errors=True)
     log_path = os.path.join(LOGS, f"shard-{index}.log")
@@ -104,7 +105,8 @@ def start(flavor, shards, index):
     )
     with open(log_path, "w") as log:
         process = subprocess.Popen(
-            shard_command(flavor, shards, index, bundle), cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=environment
+            shard_command(flavor, shards, index, bundle, allowance),
+            cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=environment,
         )
     return process, log_path, time.monotonic()
 
@@ -140,6 +142,7 @@ def main():
     parser.add_argument("--result", default=os.path.join(ROOT, ".build", "sharded.xcresult"))
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--merge", action="store_true")
+    parser.add_argument("--time-allowance", type=int, default=0)
     arguments = parser.parse_args()
 
     if arguments.merge:
@@ -160,7 +163,8 @@ def main():
     if arguments.only is not None:
         if not 0 <= arguments.only < count:
             sys.exit(f"--only must be between 0 and {count - 1}")
-        return 0 if finish(arguments.only, *start(arguments.flavor, shards, arguments.only)) else 1
+        launched = start(arguments.flavor, shards, arguments.only, arguments.time_allowance)
+        return 0 if finish(arguments.only, *launched) else 1
 
     shutil.rmtree(SHARDS_DIR, ignore_errors=True)
     os.makedirs(SHARDS_DIR)
@@ -170,7 +174,7 @@ def main():
             continue
         if running:
             time.sleep(STAGGER_SECONDS)
-        running.append((index, *start(arguments.flavor, shards, index)))
+        running.append((index, *start(arguments.flavor, shards, index, arguments.time_allowance)))
 
     results = [finish(index, process, log_path, started) for index, process, log_path, started in running]
     merge(arguments.result)

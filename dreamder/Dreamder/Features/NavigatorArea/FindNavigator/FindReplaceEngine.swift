@@ -87,10 +87,15 @@ nonisolated enum FindReplaceEngine {
 nonisolated enum FindFileRewriter {
     typealias Writer = @Sendable (FileHandle, Data) throws -> Void
 
+    private struct NotWritable: LocalizedError {
+        var errorDescription: String? { "The file is read-only." }
+    }
+
     static let defaultWriter: Writer = { handle, data in try handle.write(contentsOf: data) }
 
     static func rewrite(_ job: FindReplaceJob, writer: Writer = FindFileRewriter.defaultWriter) -> FindReplaceOutcome {
-        guard let original = try? Data(contentsOf: job.url),
+        let target = job.url.resolvingSymlinksInPath()
+        guard let original = try? Data(contentsOf: target),
               let text = String(data: original, encoding: .utf8) else {
             return .failed("Cannot read \(job.url.lastPathComponent)")
         }
@@ -98,24 +103,32 @@ nonisolated enum FindFileRewriter {
         guard !edits.isEmpty else { return .stale }
         let updated = FindReplaceEngine.apply(edits, to: text)
         do {
-            try overwrite(job.url, with: Data(updated.utf8), restoring: original, writer: writer)
+            guard try replace(target, expecting: original, with: Data(updated.utf8), writer: writer) else {
+                return .stale
+            }
         } catch {
             return .failed("Cannot write \(job.url.lastPathComponent): \(error.localizedDescription)")
         }
         return .replaced(FindReplaceResult(text: updated, applied: edits, missing: missing))
     }
 
-    private static func overwrite(_ url: URL, with data: Data, restoring original: Data, writer: Writer) throws {
-        let handle = try FileHandle(forWritingTo: url)
-        defer { try? handle.close() }
-        do {
-            try handle.truncate(atOffset: 0)
-            try writer(handle, data)
-        } catch {
-            try? handle.truncate(atOffset: 0)
-            try? handle.write(contentsOf: original)
-            throw error
+    private static func replace(_ url: URL, expecting original: Data, with data: Data, writer: Writer) throws -> Bool {
+        guard FileManager.default.isWritableFile(atPath: url.path(percentEncoded: false)) else {
+            throw NotWritable()
         }
+        let temporary = url.deletingLastPathComponent()
+            .appending(path: ".\(url.lastPathComponent).\(UUID().uuidString).replace")
+        try Data().write(to: temporary, options: .withoutOverwriting)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        do {
+            let handle = try FileHandle(forWritingTo: temporary)
+            defer { try? handle.close() }
+            try writer(handle, data)
+            try handle.synchronize()
+        }
+        guard (try? Data(contentsOf: url)) == original else { return false }
+        _ = try FileManager.default.replaceItemAt(url, withItemAt: temporary)
+        return true
     }
 
     @concurrent

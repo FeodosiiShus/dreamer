@@ -3,15 +3,19 @@ import CodeEditTextView
 import Foundation
 
 final class CodeFileTextViewBinder: TextViewCoordinator, TextViewDelegate {
+    private struct BoundController {
+        weak var controller: TextViewController?
+    }
+
     private weak var document: CodeFileDocument?
-    private weak var boundController: TextViewController?
+    private var boundControllers: [BoundController] = []
 
     init(document: CodeFileDocument) {
         self.document = document
     }
 
     func prepareCoordinator(controller: TextViewController) {
-        boundController = controller
+        boundControllers.append(BoundController(controller: controller))
         document?.attachedController = controller
     }
 
@@ -24,9 +28,9 @@ final class CodeFileTextViewBinder: TextViewCoordinator, TextViewDelegate {
     }
 
     func destroy() {
-        if let document, document.attachedController === boundController {
-            document.attachedController = nil
+        boundControllers.removeAll { $0.controller == nil }
+        if document?.attachedController == nil {
+            document?.attachedController = boundControllers.last?.controller
         }
-        boundController = nil
     }
 }

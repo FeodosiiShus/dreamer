@@ -19,6 +19,7 @@ struct AppDelegateTests {
         var documentToReturn: NSDocument?
         var errorToReturn: (any Error)?
         var closeAllCompletes = true
+        var closesDocumentsOnCloseAll = false
         private(set) var openedURLs: [URL] = []
         private(set) var openPanelCalls = 0
         private(set) var newDocumentCalls = 0
@@ -49,10 +50,15 @@ struct AppDelegateTests {
             contextInfo: UnsafeMutableRawPointer?
         ) {
             closeAllCalls += 1
+            if closesDocumentsOnCloseAll {
+                let closing = stubbedDocuments
+                stubbedDocuments = []
+                closing.forEach { $0.close() }
+            }
             (delegate as? AppDelegate)?.documentController(
                 NSDocumentController.shared,
                 didCloseAll: closeAllCompletes,
-                contextInfo: nil
+                contextInfo: contextInfo
             )
         }
     }

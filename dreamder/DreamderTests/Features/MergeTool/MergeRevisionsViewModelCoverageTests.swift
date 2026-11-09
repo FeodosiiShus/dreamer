@@ -72,8 +72,8 @@ struct MergeRevisionsViewModelCoverageTests {
         #expect(model.hasNonConflictingChanges(.all) == false)
         #expect(model.canApplyNonConflicting(.all) == false)
 
-        model.resolve(0, with: .left)
-        model.applyNonConflicting(.all)
+        await model.requestResolve(0, with: .left, window: nil)
+        await model.requestApplyNonConflicting(.all, window: nil)
         #expect(model.contentRevision == 0)
         #expect(await model.requestApply(window: nil) == false)
         #expect(await model.requestAcceptSide(.yours, window: nil) == false)
@@ -175,7 +175,7 @@ struct MergeRevisionsViewModelCoverageTests {
             #expect(model.canApplyNonConflicting(.left))
             let conflict = try #require(model.merge?.blocks.first { $0.kind == .conflict })
 
-            model.resolve(conflict.id, with: .right)
+            await model.requestResolve(conflict.id, with: .right, window: nil)
 
             #expect(model.summary == "All conflicts resolved")
             #expect(model.hasUnresolvedConflicts == false)

@@ -28,11 +28,7 @@ extension SettingsData {
         /// Explicit decoder init for setting default values when key is not present in `JSON`
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-
-            self.ignoreGlobPatterns = try container.decodeIfPresent(
-                [GlobPattern].self,
-                forKey: .ignoreGlobPatterns
-            ) ?? []
+            self.ignoreGlobPatterns = container.lenient(.ignoreGlobPatterns, default: [])
         }
     }
 }

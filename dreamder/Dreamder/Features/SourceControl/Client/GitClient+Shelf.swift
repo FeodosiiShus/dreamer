@@ -37,6 +37,7 @@ nonisolated enum GitShelfError: Error, Equatable, Sendable {
     case notFound
     case untrackedFileExists(String)
     case wouldOverwriteLocalChanges(String)
+    case unsavedChanges(String)
 
     var message: String {
         switch self {
@@ -50,6 +51,9 @@ nonisolated enum GitShelfError: Error, Equatable, Sendable {
             "Cannot unshelve because untracked files already exist:\n\(detail)\n\nThe shelf was kept."
         case .wouldOverwriteLocalChanges(let detail):
             "Unshelving would overwrite local changes:\n\(detail)\n\nCommit, roll back or shelve them first. The shelf was kept."
+        case .unsavedChanges(let detail):
+            "These files have unsaved changes in the editor:\n\(detail)\n\n"
+                + "Save or revert them first. Nothing was changed."
         }
     }
 
@@ -175,8 +179,39 @@ nonisolated extension GitClient {
         guard let parts = entry.shelfParts else { throw GitShelfError.notFound }
         let newName = GitShelf.normalizedName(name)
         guard newName != parts.name else { return }
-        _ = try await run(arguments: ["stash", "drop", "stash@{\(entry.index)}"])
-        _ = try await run(arguments: ["stash", "store", "--message", parts.prefix + GitShelf.marker + newName, hash])
+        let message = parts.prefix + GitShelf.marker + newName
+        if entry.index == 0 {
+            try await renameTopShelf(entry, to: message)
+        } else {
+            try await storeShelf(hash: hash, message: message)
+            try await dropStaleShelf(entry)
+        }
+    }
+
+    private func renameTopShelf(_ entry: GitShelfStashEntry, to message: String) async throws {
+        try await dropStashEntry(at: entry.index)
+        do {
+            try await storeShelf(hash: entry.hash, message: message)
+        } catch {
+            try? await storeShelf(hash: entry.hash, message: entry.subject)
+            throw error
+        }
+    }
+
+    private func dropStaleShelf(_ entry: GitShelfStashEntry) async throws {
+        let entries = try await shelfStashEntries()
+        guard let stale = entries.first(where: { $0.hash == entry.hash && $0.subject == entry.subject }) else {
+            throw GitShelfError.notFound
+        }
+        try await dropStashEntry(at: stale.index)
+    }
+
+    private func storeShelf(hash: String, message: String) async throws {
+        _ = try await run(arguments: ["stash", "store", "--message", message, hash])
+    }
+
+    private func dropStashEntry(at index: Int) async throws {
+        _ = try await run(arguments: ["stash", "drop", "stash@{\(index)}"])
     }
 
     func deleteShelf(hash: String) async throws {

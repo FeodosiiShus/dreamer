@@ -18,6 +18,7 @@ nonisolated extension GitClient {
     ) async throws {
         var arguments = ["push"]
         if let remote, let branch {
+            try Self.requireRefNames(remote, branch)
             if setUpstream == true {
                 arguments.append("--set-upstream")
             }
@@ -27,7 +28,7 @@ nonisolated extension GitClient {
             if tags == true {
                 arguments.append("--tags")
             }
-            arguments += [remote, branch]
+            arguments += ["--end-of-options", remote, branch]
         }
 
         _ = try await self.run(arguments: arguments)

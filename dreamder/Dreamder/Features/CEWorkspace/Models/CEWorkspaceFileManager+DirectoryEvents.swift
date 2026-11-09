@@ -18,7 +18,7 @@ extension CEWorkspaceFileManager {
         guard !relocated.events.isEmpty else { return }
 
         let listings = await Self.readListings(
-            of: loadedDirectories(among: relocated.treeParents),
+            of: loadedDirectories(among: relocated.treeParents, rescanning: relocated.rescanRoots),
             ignoring: ignoredFilesAndFolders,
             diagnostics: diagnostics
         )
@@ -72,9 +72,12 @@ extension CEWorkspaceFileManager {
         return listings
     }
 
-    func loadedDirectories(among ids: Set<String>) -> [String: URL] {
+    func loadedDirectories(among ids: Set<String>, rescanning roots: Set<String>) -> [String: URL] {
+        let rescanned = roots.isEmpty ? [] : childrenMap.keys.filter { key in
+            roots.contains { key == $0 || key.hasPrefix($0 + "/") }
+        }
         var loaded: [String: URL] = [:]
-        for id in ids where childrenMap[id] != nil {
+        for id in ids.union(rescanned) where childrenMap[id] != nil {
             if let directory = flattenedFileItems[id] {
                 loaded[id] = directory.resolvedURL
             }

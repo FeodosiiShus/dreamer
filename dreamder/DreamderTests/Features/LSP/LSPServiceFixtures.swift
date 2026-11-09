@@ -28,6 +28,7 @@ final class LSPServiceExitSignalingConnection: ServerConnection, Sendable {
     private let onExit: @Sendable () -> Void
     private let shutdownError: (any Error)?
     private let shutdownGate: LSPServiceGate?
+    private let didOpenGate: LSPServiceGate?
 
     var eventSequence: EventSequence {
         scripted.eventSequence
@@ -37,15 +38,20 @@ final class LSPServiceExitSignalingConnection: ServerConnection, Sendable {
         scripted: ScriptedServerConnection,
         shutdownError: (any Error)? = nil,
         shutdownGate: LSPServiceGate? = nil,
+        didOpenGate: LSPServiceGate? = nil,
         onExit: @escaping @Sendable () -> Void
     ) {
         self.scripted = scripted
         self.shutdownError = shutdownError
         self.shutdownGate = shutdownGate
+        self.didOpenGate = didOpenGate
         self.onExit = onExit
     }
 
     func sendNotification(_ notif: ClientNotification) async throws {
+        if notif.method == .textDocumentDidOpen {
+            await didOpenGate?.wait()
+        }
         try await scripted.sendNotification(notif)
         if notif.method == .exit {
             onExit()
@@ -165,14 +171,27 @@ final class LSPServiceFixture {
     var shutdownFailure: (any Error)?
     var shutdownGate: LSPServiceGate?
     var discoveryGate: LSPServiceGate?
+    var didOpenGate: LSPServiceGate?
     var createGate: LSPServiceGate?
     var terminatesOnExit = true
     var capabilities = ScriptedServerConnection.incrementalCapabilities()
     var restartBackoff: Duration = .milliseconds(20)
     var alertResponse: NSApplication.ModalResponse = .abort
     var opensExternalURLs = false
+    var workspaceTrusted = true
+
+    let untrustedNotices: UntrustedNoticeRecorder
+    var untrustedNotice: UntrustedWorkspaceServerNotice
 
     let notificationManager = NotificationManager(center: NotificationsFakeCenter(), notificationCenter: NotificationCenter())
+
+    init() {
+        let recorder = UntrustedNoticeRecorder()
+        untrustedNotices = recorder
+        untrustedNotice = UntrustedWorkspaceServerNotice(report: { path, executable in
+            recorder.record(path, executable)
+        })
+    }
 
     func makeService(
         observesDocumentNotifications: Bool = false,
@@ -185,6 +204,8 @@ final class LSPServiceFixture {
             discoverBinary: { [self] language, workspacePath in
                 await discoverBinary(language: language, workspacePath: workspacePath)
             },
+            isWorkspaceTrusted: { [self] _ in workspaceTrusted },
+            untrustedNotice: untrustedNotice,
             restartBackoff: restartBackoff,
             observesDocumentNotifications: observesDocumentNotifications,
             notifications: { [self] in notificationManager },
@@ -232,7 +253,8 @@ final class LSPServiceFixture {
         let connection = LSPServiceExitSignalingConnection(
             scripted: scripted,
             shutdownError: shutdownFailure,
-            shutdownGate: shutdownGate
+            shutdownGate: shutdownGate,
+            didOpenGate: didOpenGate
         ) {
             if signalsExit {
                 continuation.yield()
