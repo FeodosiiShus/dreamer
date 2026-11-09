@@ -4,12 +4,32 @@ struct BranchesPopupRowView: View {
     let row: BranchesPopupRow
     let isSelected: Bool
     let isExpanded: Bool
-    let onActivate: () -> Void
-    let onToggle: () -> Void
-    let onOpenMenu: () -> Void
-    let onToggleFavorite: () -> Void
+    let onActivate: @MainActor () -> Void
+    let onToggle: @MainActor () -> Void
+    let onOpenMenu: @MainActor () -> Void
+    let onToggleFavorite: @MainActor () -> Void
 
-    @State private var isHovering = false
+    @State private var isHovering: Bool
+
+    init(
+        row: BranchesPopupRow,
+        isSelected: Bool,
+        isExpanded: Bool,
+        isHovering: Bool = false,
+        onActivate: @escaping @MainActor () -> Void,
+        onToggle: @escaping @MainActor () -> Void,
+        onOpenMenu: @escaping @MainActor () -> Void,
+        onToggleFavorite: @escaping @MainActor () -> Void
+    ) {
+        self.row = row
+        self.isSelected = isSelected
+        self.isExpanded = isExpanded
+        self.onActivate = onActivate
+        self.onToggle = onToggle
+        self.onOpenMenu = onOpenMenu
+        self.onToggleFavorite = onToggleFavorite
+        _isHovering = State(initialValue: isHovering)
+    }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -43,9 +63,7 @@ struct BranchesPopupRowView: View {
             }
             if row.kind == .ref {
                 if row.isFavorite || isHovering {
-                    Button {
-                        onToggleFavorite()
-                    } label: {
+                    Button(action: onToggleFavorite) {
                         Image(row.isFavorite ? "nodes/star" : "nodes/starEmpty")
                             .resizable()
                             .interpolation(.high)
@@ -55,9 +73,7 @@ struct BranchesPopupRowView: View {
                     .buttonStyle(.plain)
                     .help(row.isFavorite ? "Remove from Favorites" : "Add to Favorites")
                 }
-                Button {
-                    onOpenMenu()
-                } label: {
+                Button(action: onOpenMenu) {
                     Image("general/chevronRight")
                         .resizable()
                         .interpolation(.high)
@@ -76,17 +92,23 @@ struct BranchesPopupRowView: View {
                 .fill(backgroundColor)
         )
         .contentShape(Rectangle())
-        .onTapGesture {
-            switch row.kind {
-            case .section, .group:
-                onToggle()
-            case .separator:
-                break
-            default:
-                onActivate()
-            }
+        .onTapGesture(perform: handleTap)
+        .onHover(perform: setHovering)
+    }
+
+    func handleTap() {
+        switch row.kind {
+        case .section, .group:
+            onToggle()
+        case .separator:
+            break
+        default:
+            onActivate()
         }
-        .onHover { isHovering = $0 }
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
     }
 
     private var titleText: Text {

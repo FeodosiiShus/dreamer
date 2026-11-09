@@ -160,4 +160,12 @@ struct RegistryItemTemplateParserTests {
     func aLeadingPipeLeavesAnEmptyVariablePath() {
         #expect(failure("{{ | strip_prefix \"x\" }}", ["version": "v1"]) == "missingKey:")
     }
+
+    @Test
+    func valuesOfOtherTypesFallBackToTheirDescription() throws {
+        struct Opaque: CustomStringConvertible {
+            var description: String { "opaque-value" }
+        }
+        #expect(try render("tool-{{ marker }}", ["marker": Opaque()]) == "tool-opaque-value")
+    }
 }

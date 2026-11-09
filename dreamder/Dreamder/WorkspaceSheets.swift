@@ -7,80 +7,93 @@
 
 import SwiftUI
 
+@MainActor
+@Observable
+final class WorkspaceSheetPresentation {
+    private let manager: SourceControlManager
+
+    init(manager: SourceControlManager) {
+        self.manager = manager
+    }
+
+    var isPushPresented: Bool {
+        get { manager.pushSheetIsPresented && !manager.addExistingRemoteSheetIsPresented }
+        set { manager.pushSheetIsPresented = newValue }
+    }
+
+    var isPullPresented: Bool {
+        get {
+            manager.pullSheetIsPresented
+                && !manager.addExistingRemoteSheetIsPresented
+                && !manager.stashSheetIsPresented
+        }
+        set { manager.pullSheetIsPresented = newValue }
+    }
+
+    var switchBranch: GitBranch? {
+        get { manager.switchToBranch != nil && manager.stashSheetIsPresented ? nil : manager.switchToBranch }
+        set { manager.switchToBranch = newValue }
+    }
+}
+
+private struct NoUncommittedChangesAlert: ViewModifier {
+    let title: LocalizedStringKey
+    @Binding var isPresented: Bool
+
+    func body(content: Content) -> some View {
+        content.alert(title, isPresented: $isPresented) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("There are no uncommitted changes in the local repository for this project.")
+        }
+    }
+}
+
+private extension View {
+    func noUncommittedChangesAlert(_ title: LocalizedStringKey, isPresented: Binding<Bool>) -> some View {
+        modifier(NoUncommittedChangesAlert(title: title, isPresented: isPresented))
+    }
+}
+
 struct WorkspaceSheets: View {
     @Environment(SourceControlManager.self) private var sourceControlManager
 
     var body: some View {
         @Bindable var sourceControlManager = sourceControlManager
+        @Bindable var presentation = WorkspaceSheetPresentation(manager: sourceControlManager)
         EmptyView()
-            .sheet(isPresented: Binding<Bool>(
-                get: { sourceControlManager.pushSheetIsPresented &&
-                       !sourceControlManager.addExistingRemoteSheetIsPresented },
-                set: { sourceControlManager.pushSheetIsPresented = $0 }
-            )) {
-                SourceControlPushView()
-            }
-            .sheet(isPresented: Binding<Bool>(
-                get: { sourceControlManager.pullSheetIsPresented &&
-                       !sourceControlManager.addExistingRemoteSheetIsPresented &&
-                       !sourceControlManager.stashSheetIsPresented },
-                set: { sourceControlManager.pullSheetIsPresented = $0 }
-            )) {
-                if sourceControlManager.addExistingRemoteSheetIsPresented == true {
-                    SourceControlAddExistingRemoteView()
-                } else {
-                    SourceControlPullView()
-                }
-            }
-            .sheet(isPresented: $sourceControlManager.fetchSheetIsPresented) {
-                SourceControlFetchView()
-            }
-            .sheet(isPresented: $sourceControlManager.stashSheetIsPresented) {
-                SourceControlStashView()
-            }
+            .sheet(isPresented: $presentation.isPushPresented) { SourceControlPushView() }
+            .sheet(isPresented: $presentation.isPullPresented) { SourceControlPullView() }
+            .sheet(isPresented: $sourceControlManager.fetchSheetIsPresented) { SourceControlFetchView() }
+            .sheet(isPresented: $sourceControlManager.stashSheetIsPresented) { SourceControlStashView() }
             .sheet(isPresented: $sourceControlManager.addExistingRemoteSheetIsPresented) {
                 SourceControlAddExistingRemoteView()
             }
-            .sheet(item: Binding<GitBranch?>(
-                get: {
-                    sourceControlManager.switchToBranch != nil
-                    && sourceControlManager.stashSheetIsPresented
-                    ? nil
-                    : sourceControlManager.switchToBranch
-                },
-                set: { sourceControlManager.switchToBranch = $0 }
-            )) { branch in
-                SourceControlSwitchView(branch: branch)
-            }
-            .alert(isPresented: $sourceControlManager.discardAllAlertIsPresented) {
-                Alert(
-                    title: Text("Do you want to discard all uncommitted, local changes?"),
-                    message: Text("This action cannot be undone."),
-                    primaryButton: .destructive(Text("Discard")) {
-                        sourceControlManager.discardAllChanges()
-                    },
-                    secondaryButton: .cancel()
-                )
-            }
-            .alert("Cannot Stage Changes", isPresented: $sourceControlManager.noChangesToStageAlertIsPresented) {
-                Button("OK", role: .cancel) {}
+            .sheet(item: $presentation.switchBranch) { branch in SourceControlSwitchView(branch: branch) }
+            .alert(
+                "Do you want to discard all uncommitted, local changes?",
+                isPresented: $sourceControlManager.discardAllAlertIsPresented
+            ) {
+                Button("Discard", role: .destructive) { sourceControlManager.discardAllChanges() }
+                Button("Cancel", role: .cancel) {}
             } message: {
-                Text("There are no uncommitted changes in the local repository for this project.")
+                Text("This action cannot be undone.")
             }
-            .alert("Cannot Unstage Changes", isPresented: $sourceControlManager.noChangesToUnstageAlertIsPresented) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text("There are no uncommitted changes in the local repository for this project.")
-            }
-            .alert("Cannot Stash Changes", isPresented: $sourceControlManager.noChangesToStashAlertIsPresented) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text("There are no uncommitted changes in the local repository for this project.")
-            }
-            .alert("Cannot Discard Changes", isPresented: $sourceControlManager.noChangesToDiscardAlertIsPresented) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text("There are no uncommitted changes in the local repository for this project.")
-            }
+            .noUncommittedChangesAlert(
+                "Cannot Stage Changes",
+                isPresented: $sourceControlManager.noChangesToStageAlertIsPresented
+            )
+            .noUncommittedChangesAlert(
+                "Cannot Unstage Changes",
+                isPresented: $sourceControlManager.noChangesToUnstageAlertIsPresented
+            )
+            .noUncommittedChangesAlert(
+                "Cannot Stash Changes",
+                isPresented: $sourceControlManager.noChangesToStashAlertIsPresented
+            )
+            .noUncommittedChangesAlert(
+                "Cannot Discard Changes",
+                isPresented: $sourceControlManager.noChangesToDiscardAlertIsPresented
+            )
     }
 }

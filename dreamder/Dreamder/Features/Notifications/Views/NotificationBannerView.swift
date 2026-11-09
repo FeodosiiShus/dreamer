@@ -11,14 +11,28 @@ struct NotificationBannerView: View {
     @Environment(\.colorScheme)
     private var colorScheme
 
-    @Environment(WorkspaceDocument.self) private var workspace
-    private let notificationManager = NotificationManager.shared
-
     let notification: CENotification
     let onDismiss: () -> Void
     let onAction: () -> Void
 
-    @State private var isHovering = false
+    @State private var hover: NotificationBannerHover
+
+    init(
+        notification: CENotification,
+        panel: NotificationPanelViewModel,
+        hover: NotificationBannerHover? = nil,
+        onDismiss: @escaping () -> Void,
+        onAction: @escaping () -> Void
+    ) {
+        self.notification = notification
+        self.onDismiss = onDismiss
+        self.onAction = onAction
+        _hover = State(initialValue: hover ?? NotificationBannerHover(panel: panel))
+    }
+
+    private var showsHoverControls: Bool {
+        !notification.isSticky && hover.isHovering
+    }
 
     var body: some View {
         VStack(spacing: 10) {
@@ -59,8 +73,8 @@ struct NotificationBannerView: View {
                             colors: [
                                 .black,
                                 .black,
-                                !notification.isSticky && isHovering ? .clear : .black,
-                                !notification.isSticky && isHovering ? .clear : .black
+                                !notification.isSticky && hover.isHovering ? .clear : .black,
+                                !notification.isSticky && hover.isHovering ? .clear : .black
                             ]
                         ),
                         startPoint: .leading,
@@ -95,26 +109,14 @@ struct NotificationBannerView: View {
             y: 2
         )
         .overlay(alignment: .bottomTrailing) {
-            if !notification.isSticky && isHovering {
-                Button(action: onAction, label: {
-                    Text(notification.actionButtonTitle)
-                })
-                .buttonStyle(.secondaryBlur)
-                .controlSize(.small)
-                .padding(10)
-                .transition(.opacity)
-            }
+            NotificationBannerActionButton(
+                isVisible: showsHoverControls,
+                title: notification.actionButtonTitle,
+                action: onAction
+            )
         }
         .overlay(alignment: .topLeading) {
-            if !notification.isSticky && isHovering {
-                Button(action: onDismiss) {
-                    Image(systemName: "xmark")
-                }
-                .buttonStyle(.overlay)
-                .padding(.top, -5)
-                .padding(.leading, -5)
-                .transition(.opacity)
-            }
+            NotificationBannerDismissButton(isVisible: showsHoverControls, action: onDismiss)
         }
         .frame(width: 300)
         .transition(.asymmetric(
@@ -130,17 +132,60 @@ struct NotificationBannerView: View {
                 )
             )
         ))
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.2)) {
-                isHovering = hovering
-            }
+        .onHover(perform: hover.changed)
+    }
+}
 
-            if hovering {
-                workspace.notificationPanel.pauseTimer()
-            } else {
-                workspace.notificationPanel.resumeTimer()
-            }
+struct NotificationBannerActionButton: View {
+    let isVisible: Bool
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        if isVisible {
+            Button(action: action, label: {
+                Text(title)
+            })
+            .buttonStyle(.secondaryBlur)
+            .controlSize(.small)
+            .padding(10)
+            .transition(.opacity)
         }
+    }
+}
+
+struct NotificationBannerDismissButton: View {
+    let isVisible: Bool
+    let action: () -> Void
+
+    var body: some View {
+        if isVisible {
+            Button(action: action) {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.overlay)
+            .padding(.top, -5)
+            .padding(.leading, -5)
+            .transition(.opacity)
+        }
+    }
+}
+
+@Observable
+final class NotificationBannerHover {
+    private(set) var isHovering = false
+
+    private let panel: NotificationPanelViewModel
+
+    init(panel: NotificationPanelViewModel) {
+        self.panel = panel
+    }
+
+    func changed(_ hovering: Bool) {
+        withAnimation(.easeOut(duration: 0.2)) {
+            isHovering = hovering
+        }
+        panel.hoverChanged(hovering)
     }
 }
 

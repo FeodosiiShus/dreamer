@@ -7,141 +7,176 @@
 
 import SwiftUI
 
-private let f7Key = KeyEquivalent("\u{F70A}")
+enum MenuResponderChain {
+    static func send(_ selector: Selector) {
+        NSApp.sendAction(selector, to: nil, from: nil)
+    }
+}
 
 struct NavigateCommands: Commands {
 
     @UpdatingWindowController var windowController: DreamderWindowController?
-    @Service private var lspService: LSPService
+
+    var body: some Commands {
+        CommandMenu("Navigate") {
+            NavigateMenu(windowController: windowController)
+        }
+    }
+}
+
+struct NavigateMenu: View {
+    let windowController: DreamderWindowController?
+    let sendAction: @MainActor (Selector) -> Void
+    private var lspService: LSPService { .shared }
+
+    init(
+        windowController: DreamderWindowController?,
+        sendAction: @escaping @MainActor (Selector) -> Void = MenuResponderChain.send
+    ) {
+        self.windowController = windowController
+        self.sendAction = sendAction
+    }
 
     private var editor: Editor? {
         windowController?.workspace?.editorManager?.activeEditor
     }
 
-    private var canNavigate: Bool {
+    var canNavigate: Bool {
         guard let url = editor?.selectedTab?.file.url else { return false }
         return lspService.languageClient(forDocument: url) != nil
     }
 
-    var body: some Commands {
-        CommandMenu("Navigate") {
-            Group {
-                Button("Search Everywhere") {
-                    NSApp.sendAction(#selector(DreamderWindowController.openSearchEverywhere(_:)), to: nil, from: nil)
-                }
+    var body: some View {
+        Group {
+            Button("Search Everywhere", action: searchEverywhere)
+                .keymapShortcut(.searchEverywhere)
 
-                Button("Go to Class…") {
-                    NSApp.sendAction(
-                        #selector(DreamderWindowController.openSearchEverywhereClasses(_:)),
-                        to: nil,
-                        from: nil
-                    )
-                }
+            Button("Go to Class…", action: goToClass)
+                .keymapShortcut(.goToClass)
 
-                Button("Go to File…") {
-                    NSApp.sendAction(
-                        #selector(DreamderWindowController.openSearchEverywhereFiles(_:)),
-                        to: nil,
-                        from: nil
-                    )
-                }
-                .keyboardShortcut("o", modifiers: [.command, .shift])
+            Button("Go to File…", action: goToFile)
+                .keymapShortcut(.goToFile)
 
-                Button("Go to Symbol…") {
-                    NSApp.sendAction(
-                        #selector(DreamderWindowController.openSearchEverywhereSymbols(_:)),
-                        to: nil,
-                        from: nil
-                    )
-                }
-                .keyboardShortcut("o", modifiers: [.option, .command])
+            Button("Go to Symbol…", action: goToSymbol)
+                .keymapShortcut(.goToSymbol)
 
-                Button("Find Action…") {
-                    NSApp.sendAction(
-                        #selector(DreamderWindowController.openSearchEverywhereActions(_:)),
-                        to: nil,
-                        from: nil
-                    )
-                }
-                .keyboardShortcut("a", modifiers: [.command, .shift])
+            Button("Find Action…", action: findAction)
+                .keymapShortcut(.findAction)
 
-                Button("Recent Files") {
-                    NSApp.sendAction(#selector(DreamderWindowController.openRecentFiles(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut("e", modifiers: [.command])
+            Button("Recent Files", action: recentFiles)
+                .keymapShortcut(.recentFiles)
 
-                Divider()
-            }
-            Group {
-                Button("Go to Declaration or Usages") {
-                    LSPNavigationCommands.goToDefinition(
-                        workspace: windowController?.workspace,
-                        typeDeclaration: false
-                    )
-                }
-                .keyboardShortcut("b", modifiers: [.command])
-                .disabled(!canNavigate)
-
-                Button("Go to Type Declaration") {
-                    LSPNavigationCommands.goToDefinition(
-                        workspace: windowController?.workspace,
-                        typeDeclaration: true
-                    )
-                }
-                .keyboardShortcut("b", modifiers: [.shift, .command])
-                .disabled(!canNavigate)
-
-                Button("Show Usages") {
-                    NSApp.sendAction(#selector(DreamderWindowController.showUsages(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut(f7Key, modifiers: [.option, .command])
-                .disabled(!canNavigate)
-
-                Button("Find Usages") {
-                    NSApp.sendAction(#selector(DreamderWindowController.findUsages(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut(f7Key, modifiers: [.option])
-                .disabled(!canNavigate)
-
-                Divider()
-            }
-            Group {
-                Button("Reveal in Project Navigator") {
-                    NSApp.sendAction(#selector(ProjectNavigatorViewController.revealFile(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut("j", modifiers: [.shift, .command])
-
-
-                Divider()
-
-            }
-            Group {
-                Button("Show Previous Tab") {
-                    editor?.selectPreviousTab()
-                }
-                .keyboardShortcut("{", modifiers: [.command])
-                .disabled(editor?.tabs.count ?? 0 <= 1)  // Disable if there's one or no tabs
-
-                Button("Show Next Tab") {
-                    editor?.selectNextTab()
-                }
-                .keyboardShortcut("}", modifiers: [.command])
-                .disabled(editor?.tabs.count ?? 0 <= 1)  // Disable if there's one or no tabs
-            }
-            Group {
-                Divider()
-
-                Button("Go Forward") {
-                    editor?.goForwardInHistory()
-                }
-                .disabled(!(editor?.canGoForwardInHistory ?? false))
-
-                Button("Go Back") {
-                    editor?.goBackInHistory()
-                }
-                .disabled(!(editor?.canGoBackInHistory ?? false))
-            }
-            .disabled(editor == nil)
+            Divider()
         }
+        Group {
+            Button("Go to Declaration or Usages", action: goToDeclaration)
+                .keymapShortcut(.goToDeclaration)
+                .disabled(!canNavigate)
+
+            Button("Go to Type Declaration", action: goToTypeDeclaration)
+                .keymapShortcut(.goToTypeDeclaration)
+                .disabled(!canNavigate)
+
+            NavigationExtrasMenuItems(windowController: windowController, sendAction: sendAction)
+
+            Button("Show Usages", action: showUsages)
+                .keymapShortcut(.showUsages)
+                .disabled(!canNavigate)
+
+            Button("Find Usages", action: findUsages)
+                .keymapShortcut(.findUsages)
+                .disabled(!canNavigate)
+
+            Divider()
+        }
+        Group {
+            Button("Reveal in Project Navigator", action: revealInProjectNavigator)
+                .keymapShortcut(.revealInProjectNavigator)
+
+
+            Divider()
+
+        }
+        Group {
+            Button("Show Previous Tab", action: showPreviousTab)
+                .keymapShortcut(.previousTab)
+                .disabled(editor?.tabs.count ?? 0 <= 1)  // Disable if there's one or no tabs
+
+            Button("Show Next Tab", action: showNextTab)
+                .keymapShortcut(.nextTab)
+                .disabled(editor?.tabs.count ?? 0 <= 1)  // Disable if there's one or no tabs
+        }
+        Group {
+            Divider()
+
+            Button("Go Forward", action: goForward)
+                .keymapShortcut(.goForward)
+                .disabled(!EditorLocationHistoryCommands.canGoForward(workspace: windowController?.workspace))
+
+            Button("Go Back", action: goBack)
+                .keymapShortcut(.goBack)
+                .disabled(!EditorLocationHistoryCommands.canGoBack(workspace: windowController?.workspace))
+        }
+        .disabled(editor == nil)
+    }
+
+    func searchEverywhere() {
+        sendAction(#selector(DreamderWindowController.openSearchEverywhere(_:)))
+    }
+
+    func goToClass() {
+        sendAction(#selector(DreamderWindowController.openSearchEverywhereClasses(_:)))
+    }
+
+    func goToFile() {
+        sendAction(#selector(DreamderWindowController.openSearchEverywhereFiles(_:)))
+    }
+
+    func goToSymbol() {
+        sendAction(#selector(DreamderWindowController.openSearchEverywhereSymbols(_:)))
+    }
+
+    func findAction() {
+        sendAction(#selector(DreamderWindowController.openSearchEverywhereActions(_:)))
+    }
+
+    func recentFiles() {
+        sendAction(#selector(DreamderWindowController.openRecentFiles(_:)))
+    }
+
+    func goToDeclaration() {
+        LSPNavigationCommands.goToDefinition(workspace: windowController?.workspace, typeDeclaration: false)
+    }
+
+    func goToTypeDeclaration() {
+        LSPNavigationCommands.goToDefinition(workspace: windowController?.workspace, typeDeclaration: true)
+    }
+
+    func showUsages() {
+        sendAction(#selector(DreamderWindowController.showUsages(_:)))
+    }
+
+    func findUsages() {
+        sendAction(#selector(DreamderWindowController.findUsages(_:)))
+    }
+
+    func revealInProjectNavigator() {
+        sendAction(#selector(ProjectNavigatorViewController.revealFile(_:)))
+    }
+
+    func showPreviousTab() {
+        editor?.selectPreviousTab()
+    }
+
+    func showNextTab() {
+        editor?.selectNextTab()
+    }
+
+    func goForward() {
+        EditorLocationHistoryCommands.goForward(workspace: windowController?.workspace)
+    }
+
+    func goBack() {
+        EditorLocationHistoryCommands.goBack(workspace: windowController?.workspace)
     }
 }

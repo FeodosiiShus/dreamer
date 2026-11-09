@@ -7,6 +7,10 @@ struct BackgroundImageLayer: View {
     @AppStorage(Islands.BackgroundImageKey.fill)
     private var fill = BackgroundImageFill.fill.rawValue
 
+    init(image: NSImage?) {
+        self.image = image
+    }
+
     var body: some View {
         GeometryReader { geometry in
             if let image {

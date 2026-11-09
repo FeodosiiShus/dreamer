@@ -9,13 +9,17 @@ import SwiftUI
 import AboutWindow
 
 struct AboutFooterView: View {
+    static func copyrightText(_ copyright: String?) -> String {
+        copyright ?? ""
+    }
+
     var body: some View {
         FooterView(
             primaryView: {
                 Text("MIT License")
             },
             secondaryView: {
-                Text(Bundle.copyrightString ?? "")
+                Text(Self.copyrightText(Bundle.copyrightString))
             }
         )
     }

@@ -63,8 +63,8 @@ nonisolated struct MyersLCS {
         try execute(threshold: count1 + count2, throwsWhenTooBig: false)
     }
 
-    mutating func executeWithThreshold() throws {
-        let threshold = max(20000 + 10 * Int(Double(count1 + count2).squareRoot()), Self.deltaThresholdSize)
+    mutating func executeWithThreshold(limit: Int = Self.deltaThresholdSize) throws {
+        let threshold = max(limit + 10 * Int(Double(count1 + count2).squareRoot()), limit)
         try execute(threshold: threshold, throwsWhenTooBig: true)
     }
 

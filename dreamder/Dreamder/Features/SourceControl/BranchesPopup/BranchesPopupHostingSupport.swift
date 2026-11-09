@@ -34,13 +34,20 @@ struct ToolbarPopupAnchorView: NSViewRepresentable {
     }
 }
 
+enum BranchesPopupMenuTracking {
+    static let begin = Notification.Name("NSMenuDidBeginTrackingNotification")
+    static let end = Notification.Name("NSMenuDidEndTrackingNotification")
+}
+
 final class BranchesPopupPanel: NSPanel, NSWindowDelegate {
     var onClose: (() -> Void)?
 
     private var menuTracking = false
     private var menuObservers: [NSObjectProtocol] = []
+    private let notificationCenter: NotificationCenter
 
-    init(size: NSSize) {
+    init(size: NSSize, notificationCenter: NotificationCenter = .default) {
+        self.notificationCenter = notificationCenter
         super.init(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .fullSizeContentView],
@@ -100,9 +107,9 @@ final class BranchesPopupPanel: NSPanel, NSWindowDelegate {
     }
 
     private func observeMenuTracking() {
-        let center = NotificationCenter.default
+        let center = notificationCenter
         menuObservers.append(center.addObserver(
-            forName: Notification.Name("NSMenuDidBeginTrackingNotification"),
+            forName: BranchesPopupMenuTracking.begin,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -111,26 +118,30 @@ final class BranchesPopupPanel: NSPanel, NSWindowDelegate {
             }
         })
         menuObservers.append(center.addObserver(
-            forName: Notification.Name("NSMenuDidEndTrackingNotification"),
+            forName: BranchesPopupMenuTracking.end,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                self.menuTracking = false
-                DispatchQueue.main.async {
-                    MainActor.assumeIsolated {
-                        guard self.isVisible, !self.isKeyWindow else { return }
-                        self.close()
-                    }
-                }
+                self?.menuTrackingEnded()
             }
         })
     }
 
+    private func menuTrackingEnded() {
+        menuTracking = false
+        Task { self.closeWhenBackgrounded() }
+    }
+
+    private func closeWhenBackgrounded() {
+        if isVisible && !isKeyWindow {
+            close()
+        }
+    }
+
     isolated deinit {
         for observer in menuObservers {
-            NotificationCenter.default.removeObserver(observer)
+            notificationCenter.removeObserver(observer)
         }
     }
 }
@@ -225,9 +236,11 @@ final class BranchesPopupKeyMonitor {
     private let handler: (NSEvent) -> Bool
     private var menuTrackingCount = 0
     private var menuObservers: [NSObjectProtocol] = []
+    private let notificationCenter: NotificationCenter
 
-    init(handler: @escaping (NSEvent) -> Bool) {
+    init(handler: @escaping (NSEvent) -> Bool, notificationCenter: NotificationCenter = .default) {
         self.handler = handler
+        self.notificationCenter = notificationCenter
     }
 
     func install(on window: NSWindow) {
@@ -255,15 +268,15 @@ final class BranchesPopupKeyMonitor {
     isolated deinit {
         remove()
         for observer in menuObservers {
-            NotificationCenter.default.removeObserver(observer)
+            notificationCenter.removeObserver(observer)
         }
     }
 
     private func observeMenuTracking() {
         guard menuObservers.isEmpty else { return }
-        let center = NotificationCenter.default
+        let center = notificationCenter
         menuObservers.append(center.addObserver(
-            forName: Notification.Name("NSMenuDidBeginTrackingNotification"),
+            forName: BranchesPopupMenuTracking.begin,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -272,20 +285,42 @@ final class BranchesPopupKeyMonitor {
             }
         })
         menuObservers.append(center.addObserver(
-            forName: Notification.Name("NSMenuDidEndTrackingNotification"),
+            forName: BranchesPopupMenuTracking.end,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                self.menuTrackingCount = max(0, self.menuTrackingCount - 1)
+                self?.menuTrackingEnded()
             }
         })
     }
+
+    private func menuTrackingEnded() {
+        menuTrackingCount = max(0, menuTrackingCount - 1)
+    }
+}
+
+struct BranchesPopupMenuPresentation {
+    var popUp: (NSMenu, NSPoint, NSView) -> Void
+    var fallbackView: () -> NSView?
+
+    static let live = BranchesPopupMenuPresentation(
+        popUp: { menu, point, view in
+            _ = menu.popUp(positioning: nil, at: point, in: view)
+        },
+        fallbackView: {
+            NSApp.keyWindow?.contentView ?? NSApp.mainWindow?.contentView
+        }
+    )
 }
 
 enum BranchesPopupMenuPresenter {
-    static func present(row: BranchesPopupRow, anchors: BranchesPopupRowAnchors, model: BranchesPopupViewModel) {
+    static func present(
+        row: BranchesPopupRow,
+        anchors: BranchesPopupRowAnchors,
+        model: BranchesPopupViewModel,
+        presentation: BranchesPopupMenuPresentation = .live
+    ) {
         guard row.kind == .ref, let ref = row.ref else {
             model.toggleExpansion(row.id)
             return
@@ -294,12 +329,12 @@ enum BranchesPopupMenuPresenter {
         model.isBlockingInput = true
         defer { model.isBlockingInput = false }
         if let anchor = anchors.view(for: row.id) {
-            _ = menu.popUp(positioning: nil, at: NSPoint(x: anchor.bounds.width + 2, y: 0), in: anchor)
-        } else if let content = NSApp.keyWindow?.contentView ?? NSApp.mainWindow?.contentView {
-            _ = menu.popUp(
-                positioning: nil,
-                at: NSPoint(x: max(content.bounds.width - 380, 0), y: max(content.bounds.height - 40, 0)),
-                in: content
+            presentation.popUp(menu, NSPoint(x: anchor.bounds.width + 2, y: 0), anchor)
+        } else if let content = presentation.fallbackView() {
+            presentation.popUp(
+                menu,
+                NSPoint(x: max(content.bounds.width - 380, 0), y: max(content.bounds.height - 40, 0)),
+                content
             )
         }
     }
@@ -310,6 +345,7 @@ enum BranchesPopupKeyboard {
         _ event: NSEvent,
         model: BranchesPopupViewModel,
         anchors: BranchesPopupRowAnchors,
+        presentation: BranchesPopupMenuPresentation = .live,
         dismiss: () -> Void
     ) -> Bool {
         guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty else { return false }
@@ -326,7 +362,12 @@ enum BranchesPopupKeyboard {
             return true
         case 124:
             if let row = model.selectedRow, row.kind == .ref {
-                BranchesPopupMenuPresenter.present(row: row, anchors: anchors, model: model)
+                BranchesPopupMenuPresenter.present(
+                    row: row,
+                    anchors: anchors,
+                    model: model,
+                    presentation: presentation
+                )
             } else {
                 model.toggleSelectionExpansion()
             }
@@ -372,7 +413,7 @@ final class BranchesPopupWindowReaderView: BranchesPopupNonInteractiveView {
 
     func report() {
         let window = window
-        DispatchQueue.main.async { [weak self] in
+        Task { [weak self] in
             self?.onWindowChange?(window)
         }
     }

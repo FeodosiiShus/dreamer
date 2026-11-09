@@ -16,8 +16,11 @@ import UserNotifications
 /// - Broadcasting notifications to workspaces
 @Observable
 final class NotificationManager: NSObject {
-    /// Shared instance for accessing the notification manager
     static let shared = NotificationManager()
+
+    let center: any SystemNotificationCenter
+
+    let notificationCenter: NotificationCenter
 
     /// Collection of all notifications, both read and unread
     private(set) var notifications: [CENotification] = []
@@ -132,7 +135,7 @@ final class NotificationManager: NSObject {
         // Remove system notification if it exists
         removeSystemNotification(notification)
 
-        NotificationCenter.default.post(
+        notificationCenter.post(
             name: .init("NotificationDismissed"),
             object: notification
         )
@@ -152,19 +155,24 @@ final class NotificationManager: NSObject {
         }
     }
 
-    override init() {
+    init(
+        center: any SystemNotificationCenter = LiveSystemNotificationCenter(),
+        notificationCenter: NotificationCenter = .default
+    ) {
+        self.center = center
+        self.notificationCenter = notificationCenter
         super.init()
         setupNotificationDelegate()
 
         // Observe app active state
-        NotificationCenter.default.addObserver(
+        notificationCenter.addObserver(
             self,
             selector: #selector(handleAppDidBecomeActive),
             name: NSApplication.didBecomeActiveNotification,
             object: nil
         )
 
-        NotificationCenter.default.addObserver(
+        notificationCenter.addObserver(
             self,
             selector: #selector(handleAppDidResignActive),
             name: NSApplication.didResignActiveNotification,
@@ -176,7 +184,7 @@ final class NotificationManager: NSObject {
     private func handleAppDidBecomeActive() {
         isAppActive = true
         // Remove any system notifications when app becomes active
-        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+        center.removeAllDeliveredNotifications()
     }
 
     @objc
@@ -186,18 +194,17 @@ final class NotificationManager: NSObject {
 
     /// Posts a notification to workspaces and system
     private func postNotification(_ notification: CENotification) {
-        DispatchQueue.main.async { [weak self] in
-            self?.notifications.append(notification)
+        Task { [weak self] in
+            guard let self else { return }
+            notifications.append(notification)
 
-            // Always notify workspaces of new notification
-            NotificationCenter.default.post(
+            notificationCenter.post(
                 name: .init("NewNotificationAdded"),
                 object: notification
             )
 
-            // Additionally show system notification when app is in background
-            if self?.isAppActive != true {
-                self?.showSystemNotification(notification)
+            if !isAppActive {
+                showSystemNotification(notification)
             }
         }
     }

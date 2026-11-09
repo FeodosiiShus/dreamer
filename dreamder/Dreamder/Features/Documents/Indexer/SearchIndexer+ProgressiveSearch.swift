@@ -114,14 +114,9 @@ nonisolated extension SearchIndexer {
                 let hasMore = SKSearchFindMatches(search, limit, &documentIDs, &scores, timeout, &foundCount)
                 SKIndexCopyDocumentURLsForDocumentIDs(skIndex, foundCount, &documentIDs, &urls)
 
-                let partialResult: [SearchResult] = zip(urls[0..<foundCount], scores)
-                    .compactMap { (cfurl, score) -> SearchResult? in
-                        guard let url  = cfurl?.takeRetainedValue() as URL? else {
-                            return nil
-                        }
-
-                        return SearchResult(url: url, score: score)
-                    }
+                let partialResult = zip(urls[0..<foundCount], scores).compactMap { cfurl, score in
+                    cfurl.map { SearchResult(url: $0.takeRetainedValue() as URL, score: score) }
+                }
 
                 return Results(moreResultsAvailable: hasMore, results: partialResult)
             }

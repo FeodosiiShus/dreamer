@@ -8,6 +8,11 @@
 import Foundation
 import SwiftUI
 import Observation
+import Synchronization
+
+nonisolated enum AutosavePreference {
+    static let isEnabled = Mutex(false)
+}
 
 /// The Preferences View Model. Accessible via the singleton "``SettingsModel/shared``".
 @Observable
@@ -22,11 +27,12 @@ final class Settings {
     @ObservationIgnored private var pendingSave: Task<Void, Never>?
 
     private convenience init() {
-        self.init(baseURL: Self.defaultBaseURL)
+        self.init(baseURL: Self.defaultBaseURL(), drivesAutosavePreference: true)
     }
 
-    init(baseURL: URL) {
+    init(baseURL: URL, drivesAutosavePreference: Bool = false) {
         self.baseURL = baseURL
+        self.drivesAutosavePreference = drivesAutosavePreference
         self.preferences = .init()
         self.preferences = loadSettings()
 
@@ -64,7 +70,14 @@ final class Settings {
     /// Published instance of the ``Settings`` model.
     ///
     /// Changes are saved automatically.
-    var preferences: SettingsData
+    var preferences: SettingsData {
+        didSet {
+            guard drivesAutosavePreference else { return }
+            AutosavePreference.isEnabled.withLock { $0 = preferences.general.isAutoSaveOn }
+        }
+    }
+
+    private let drivesAutosavePreference: Bool
 
     /// Load and construct ``Settings`` model from
     /// `~/Library/Application Support/Dreamder/settings.json`
@@ -99,12 +112,15 @@ final class Settings {
     /// Points to `~/Library/Application Support/Dreamder/` unless the instance was created with a custom location.
     let baseURL: URL
 
-    private static var defaultBaseURL: URL {
-        let filemanager = FileManager.default
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
-            return filemanager.temporaryDirectory.appending(path: "DreamderTests", directoryHint: .isDirectory)
+    static func defaultBaseURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileManager: FileManager = .default
+    ) -> URL {
+        if environment["XCTestConfigurationFilePath"] != nil {
+            let shard = environment["DREAMDER_SHARD"].map { "-\($0)" } ?? ""
+            return fileManager.temporaryDirectory.appending(path: "DreamderTests\(shard)", directoryHint: .isDirectory)
         }
-        return filemanager
+        return fileManager
             .homeDirectoryForCurrentUser
             .appending(path: "Library/Application Support/Dreamder", directoryHint: .isDirectory)
     }

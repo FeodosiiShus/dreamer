@@ -64,7 +64,7 @@ final class LanguageServerCodeFileDocumentTests: XCTestCase {
             lspPid: -1,
             serverCapabilities: capabilities,
             rootPath: tempTestDir,
-            logContainer: LanguageServerLogContainer(language: .swift)
+            logContainer: LanguageServerLogContainer(languageID: "swift")
         )
         _ = try await server.lspInstance.initializeIfNeeded()
         return (connection: bufferingConnection, server: server)
@@ -140,8 +140,8 @@ final class LanguageServerCodeFileDocumentTests: XCTestCase {
         let (connection, server) = try await makeTestServer()
 
         // This service should receive the didOpen/didClose notifications
-        let lspService = ServiceContainer.resolve(.singleton, LSPService.self)
-        await MainActor.run { lspService?.languageClients[.init(.swift, tempTestDir.path() + "/")] = server }
+        let lspService = LSPService.shared
+        await MainActor.run { lspService.languageClients[.init(.swift, tempTestDir.path() + "/")] = server }
 
         // Set up workspace
         let (workspace, fileManager) = try makeTestWorkspace()
@@ -227,7 +227,6 @@ final class LanguageServerCodeFileDocumentTests: XCTestCase {
             // Create a CodeFileDocument to test with, attach it to the workspace and file
             let codeFile = try await openCodeFile(for: server, connection: connection, file: file, syncOption: option)
             XCTAssertNotNil(codeFile.languageServerObjects.textCoordinator.languageServer)
-            codeFile.languageServerObjects.textCoordinator.setUpUpdatesTask()
             codeFile.content?.replaceString(in: .zero, with: #"func testFunction() -> String { "Hello " }"#)
 
             let textView = TextView(string: "")
@@ -285,7 +284,6 @@ final class LanguageServerCodeFileDocumentTests: XCTestCase {
             let codeFile = try await openCodeFile(for: server, connection: connection, file: file, syncOption: option)
 
             XCTAssertNotNil(codeFile.languageServerObjects.textCoordinator.languageServer)
-            codeFile.languageServerObjects.textCoordinator.setUpUpdatesTask()
             codeFile.content?.replaceString(in: .zero, with: #"func testFunction() -> String { "Hello " }"#)
 
             let textView = TextView(string: "")

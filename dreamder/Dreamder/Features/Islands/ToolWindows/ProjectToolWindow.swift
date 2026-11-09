@@ -14,26 +14,80 @@ enum ProjectToolWindowViewMode: String, CaseIterable, Identifiable {
     }
 }
 
+@Observable
+final class ProjectToolWindowState {
+    var viewMode: ProjectToolWindowViewMode
+    @ObservationIgnored let controllerReference = ProjectNavigatorControllerReference()
+
+    init(viewMode: ProjectToolWindowViewMode = .project) {
+        self.viewMode = viewMode
+    }
+
+    func selectionBinding(for mode: ProjectToolWindowViewMode) -> Binding<Bool> {
+        Binding(
+            get: { self.viewMode == mode },
+            set: { isSelected in
+                if isSelected {
+                    self.viewMode = mode
+                }
+            }
+        )
+    }
+}
+
+struct ProjectToolWindowActions {
+    let state: ProjectToolWindowState
+
+    func revealOpenedFile() {
+        state.controllerReference.controller?.revealFile(nil)
+    }
+
+    func expandAll() {
+        state.controllerReference.controller?.expandAll(nil)
+    }
+
+    func collapseAll() {
+        state.controllerReference.controller?.collapseAll(nil)
+    }
+
+    func clearSearchFieldFocus() {
+        Task { @MainActor in
+            state.controllerReference.controller?.clearSearchFieldFocus()
+        }
+    }
+}
+
+struct ProjectToolWindowViewModeToggles: View {
+    let state: ProjectToolWindowState
+
+    var body: some View {
+        ForEach(ProjectToolWindowViewMode.allCases) { mode in
+            Toggle(mode.title, isOn: state.selectionBinding(for: mode))
+        }
+    }
+}
+
 struct ProjectToolWindow: View {
     @Environment(WorkspaceDocument.self) private var workspace
     @Environment(ToolWindowManager.self) private var toolWindowManager
 
-    @State private var controllerReference = ProjectNavigatorControllerReference()
-    @State private var viewMode: ProjectToolWindowViewMode = .project
+    @State private var state: ProjectToolWindowState
     @FocusState private var filterFocused: Bool
     @State private var clearedInitialFocus = false
 
-    init() {}
+    init(state: ProjectToolWindowState = ProjectToolWindowState()) {
+        _state = State(initialValue: state)
+    }
+
+    private var actions: ProjectToolWindowActions {
+        ProjectToolWindowActions(state: state)
+    }
 
     var body: some View {
         @Bindable var workspace = workspace
         VStack(spacing: 0) {
-            ToolWindowHeader(title: viewMode.title) {
-                Menu {
-                    ForEach(ProjectToolWindowViewMode.allCases) { mode in
-                        Toggle(mode.title, isOn: selectionBinding(for: mode))
-                    }
-                } label: {
+            ToolWindowHeader(title: state.viewMode.title) {
+                Menu { ProjectToolWindowViewModeToggles(state: state) } label: {
                     Image("general/chevronDown")
                         .resizable()
                         .interpolation(.high)
@@ -46,28 +100,32 @@ struct ProjectToolWindow: View {
                 .fixedSize()
                 .help("Views")
             } actions: {
-                if viewMode == .project {
-                    ToolWindowActionButton(icon: "general/locate", help: "Select Opened File") {
-                        controllerReference.controller?.revealFile(nil)
-                    }
-                    ToolWindowActionButton(icon: "general/expandAll", help: "Expand All") {
-                        controllerReference.controller?.expandAll(nil)
-                    }
-                    ToolWindowActionButton(icon: "general/collapseAll", help: "Collapse All") {
-                        controllerReference.controller?.collapseAll(nil)
-                    }
+                if state.viewMode == .project {
+                    ToolWindowActionButton(
+                        icon: "general/locate",
+                        help: "Select Opened File",
+                        action: actions.revealOpenedFile
+                    )
+                    ToolWindowActionButton(icon: "general/expandAll", help: "Expand All", action: actions.expandAll)
+                    ToolWindowActionButton(
+                        icon: "general/collapseAll",
+                        help: "Collapse All",
+                        action: actions.collapseAll
+                    )
                 }
-                ToolWindowActionButton(icon: "general/hide", help: "Hide") {
-                    toolWindowManager.hide(.project)
-                }
+                ToolWindowActionButton(
+                    icon: "general/hide",
+                    help: "Hide",
+                    action: toolWindowManager.hideCallback(for: .project)
+                )
             }
 
-            if viewMode == .project {
+            if state.viewMode == .project {
                 IslandSearchField("Search", text: $workspace.navigatorFilter, focus: $filterFocused)
                     .padding(.horizontal, 8)
                     .padding(.bottom, 4)
 
-                ProjectNavigatorOutlineView(controllerReference: controllerReference)
+                ProjectNavigatorOutlineView(controllerReference: state.controllerReference)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ProjectNavigatorOpenFilesView()
@@ -75,34 +133,15 @@ struct ProjectToolWindow: View {
             }
         }
         .background(Color.clear)
-        .onAppear {
-            DispatchQueue.main.async {
-                controllerReference.controller?.clearSearchFieldFocus()
-            }
-        }
+        .onAppear(perform: actions.clearSearchFieldFocus)
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             guard !clearedInitialFocus else { return }
             clearedInitialFocus = true
-            DispatchQueue.main.async {
-                controllerReference.controller?.clearSearchFieldFocus()
-            }
+            actions.clearSearchFieldFocus()
         }
-        .onChange(of: viewMode) { _, mode in
+        .onChange(of: state.viewMode) { _, mode in
             guard mode == .project else { return }
-            DispatchQueue.main.async {
-                controllerReference.controller?.clearSearchFieldFocus()
-            }
+            actions.clearSearchFieldFocus()
         }
-    }
-
-    private func selectionBinding(for mode: ProjectToolWindowViewMode) -> Binding<Bool> {
-        Binding(
-            get: { viewMode == mode },
-            set: { isSelected in
-                if isSelected {
-                    viewMode = mode
-                }
-            }
-        )
     }
 }

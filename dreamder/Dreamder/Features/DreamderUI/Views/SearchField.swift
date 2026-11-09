@@ -45,7 +45,3 @@ struct SearchField: NSViewRepresentable {
         }
     }
 }
-
-#Preview {
-    SearchField("Search", text: .constant("Test"))
-}

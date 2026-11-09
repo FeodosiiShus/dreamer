@@ -8,13 +8,13 @@
 import SwiftUI
 
 struct SettingsInjector<Content: View>: View {
-
-    private let settings = Settings.shared
+    @Environment(\.settingsStore)
+    private var store
 
     @ViewBuilder var content: Content
 
     var body: some View {
         content
-            .environment(\.settings, settings.preferences)
+            .environment(\.settings, store.preferences)
     }
 }

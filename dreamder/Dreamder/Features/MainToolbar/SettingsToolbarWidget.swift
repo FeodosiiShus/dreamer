@@ -1,16 +1,27 @@
 import SwiftUI
 
 struct SettingsToolbarWidget: View {
-    @State private var isHovering = false
-    @State private var menuAnchor = MainToolbarMenuAnchor()
+    @State private var hover: MainToolbarHoverState
+    @State private var menuAnchor: MainToolbarMenuAnchor
+
+    init(menuAnchor: MainToolbarMenuAnchor = MainToolbarMenuAnchor(), hover: MainToolbarHoverState = MainToolbarHoverState()) {
+        _menuAnchor = State(initialValue: menuAnchor)
+        _hover = State(initialValue: hover)
+    }
+
+    func showMenu() {
+        Self.presentMenu(on: menuAnchor)
+    }
+
+    static func presentMenu(on anchor: MainToolbarMenuAnchor) {
+        anchor.present(MainToolbarMenuActions.shared.settingsMenu())
+    }
 
     var body: some View {
-        MainToolbarIconContent(icon: "general/settings", isHovering: isHovering)
+        MainToolbarIconContent(icon: "general/settings", isHovering: hover.isHovering)
             .background(MainToolbarMenuAnchorView(anchor: menuAnchor))
-            .onTapGesture {
-                menuAnchor.present(MainToolbarMenuActions.shared.settingsMenu())
-            }
-            .onHover { isHovering = $0 }
+            .onTapGesture(perform: showMenu)
+            .onHover(perform: hover.setHovering)
             .help("Settings")
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Settings")

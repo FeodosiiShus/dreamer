@@ -11,59 +11,102 @@ import CodeEditSourceEditor
 import OSLog
 
 @MainActor
+protocol AppDocumentControlling: AnyObject {
+    var documents: [NSDocument] { get }
+    func openDocument(
+        withContentsOf url: URL,
+        display displayDocument: Bool,
+        completionHandler: @escaping (NSDocument?, Bool, (any Error)?) -> Void
+    )
+    func openDocument(_ sender: Any?)
+    func newDocument(_ sender: Any?)
+    func closeAllDocuments(
+        withDelegate delegate: Any?,
+        didCloseAllSelector: Selector?,
+        contextInfo: UnsafeMutableRawPointer?
+    )
+}
+
+extension NSDocumentController: AppDocumentControlling {}
+
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "AppDelegate")
+    private let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "dev.dreamder.Dreamder",
+        category: "AppDelegate"
+    )
 
     @Environment(\.openWindow)
     var openWindow
 
-    @LazyService var lspService: LSPService
+    var documentsController: any AppDocumentControlling = NSDocumentController.shared
+    var defaults: UserDefaults = .standard
+    var settings: Settings = .shared
+    var languageServiceOverride: LSPService?
+    var replyToTerminate: (Bool) -> Void = { NSApplication.shared.reply(toApplicationShouldTerminate: $0) }
+    var reopenDocument: (URL) -> Void = { url in
+        DreamderDocumentController.shared.reopenDocument(
+            for: url,
+            withContentsOf: url,
+            display: true
+        ) { document, _, _ in
+            AppDelegate.synchronizeWindowTitle(of: document)
+        }
+    }
+    var sceneOpenerOverride: ((SceneID) -> Void)?
+    var applicationWindows: () -> [NSWindow] = { NSApp.windows }
+    var finderExtensionDefaults: () -> UserDefaults? = { UserDefaults(suiteName: "dev.dreamder.Dreamder.shared") }
+    var finderExtensionPollInterval: Duration = .seconds(1)
+    var languageServerShutdownTimeout: Duration = .seconds(2)
+    private var finderExtensionPolling: Task<Void, Never>?
+
+    isolated deinit {
+        finderExtensionPolling?.cancel()
+    }
+
+    static func synchronizeWindowTitle(of document: NSDocument?) {
+        document?.windowControllers.first?.synchronizeWindowTitleWithDocumentName()
+    }
+
+    nonisolated static func openURLs(fromArguments arguments: [String]) -> [URL] {
+        arguments.indices.compactMap { index in
+            guard arguments[index] == "--open", index + 1 < arguments.count else { return nil }
+            return URL(fileURLWithPath: arguments[index + 1])
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         DreamderHeadless.install()
         DreamderAutomation.install()
         SearchEverywhereShiftMonitor.shared.install()
         enableWindowSizeSaveOnQuit()
-        Settings.shared.preferences.general.appAppearance.applyAppearance()
-        checkForFilesToOpen()
+        settings.preferences.general.appAppearance.applyAppearance()
+        startPollingFinderExtensionRequests()
 
         NSApp.closeWindow(.welcome, .about)
 
-        DispatchQueue.main.async {
-            var needToHandleOpen = true
-
+        Task { @MainActor in
             // If no windows were reopened by NSQuitAlwaysKeepsWindows, do default behavior.
             // Non-WindowGroup SwiftUI Windows are still in NSApp.windows when they are closed,
             // So we need to think about those.
-            if NSApp.windows.count > NSApp.openSwiftUIWindows {
-                needToHandleOpen = false
-            }
-
-            for index in 0..<CommandLine.arguments.count {
-                if CommandLine.arguments[index] == "--open" && (index + 1) < CommandLine.arguments.count {
-                    let path = CommandLine.arguments[index+1]
-                    let url = URL(fileURLWithPath: path)
-
-                    DreamderDocumentController.shared.reopenDocument(
-                        for: url,
-                        withContentsOf: url,
-                        display: true
-                    ) { document, _, _ in
-                        document?.windowControllers.first?.synchronizeWindowTitleWithDocumentName()
-                    }
-
-                    needToHandleOpen = false
-                }
-            }
-
-            if needToHandleOpen {
-                self.handleOpen()
-            }
+            openInitialDocuments(
+                arguments: CommandLine.arguments,
+                windowsWereReopened: NSApp.windows.count > NSApp.openSwiftUIWindows
+            )
         }
     }
 
-    func applicationWillTerminate(_ aNotification: Notification) {
+    func openInitialDocuments(arguments: [String], windowsWereReopened: Bool) {
+        var needToHandleOpen = !windowsWereReopened
 
+        for url in Self.openURLs(fromArguments: arguments) {
+            reopenDocument(url)
+            needToHandleOpen = false
+        }
+
+        if needToHandleOpen {
+            handleOpen()
+        }
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
@@ -76,11 +119,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return false
         }
 
+        restoreMiniaturizedWindow(in: sender.windows, sender: sender)
+        return false
+    }
+
+    func restoreMiniaturizedWindow(in windows: [NSWindow], sender: Any?) {
         /// Check if all windows are either miniaturized or not visible.
         /// If so, attempt to find the first miniaturized window and deminiaturize it.
-        guard sender.windows.allSatisfy({ $0.isMiniaturized || !$0.isVisible }) else { return false }
-        sender.windows.first(where: { $0.isMiniaturized })?.deminiaturize(sender)
-        return false
+        guard windows.allSatisfy({ $0.isMiniaturized || !$0.isVisible }) else { return }
+        windows.first(where: { $0.isMiniaturized })?.deminiaturize(sender)
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
@@ -88,16 +135,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func handleOpen() {
-        let behavior = Settings.shared.preferences.general.reopenBehavior
+        let behavior = settings.preferences.general.reopenBehavior
         switch behavior {
         case .welcome:
             if !tryFocusWindow(id: .welcome) {
-                openWindow(sceneID: .welcome)
+                openScene(.welcome)
             }
         case .openPanel:
-            DreamderDocumentController.shared.openDocument(self)
+            documentsController.openDocument(self)
         case .newDocument:
-            DreamderDocumentController.shared.newDocument(self)
+            documentsController.newDocument(self)
         }
     }
 
@@ -109,7 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let line = file.count > 1 ? Int(file[1]) ?? 0 : 0
             let column = file.count > 2 ? Int(file[2]) ?? 1 : 1
 
-            DreamderDocumentController.shared
+            documentsController
                 .openDocument(withContentsOf: filePath, display: true) { document, _, error in
                     if let error {
                         NSAlert(error: error).runModal()
@@ -141,14 +188,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// See ``terminateLanguageServers()`` and ``documentController(_:didCloseAll:contextInfo:)`` for deferring tasks.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        let projects: [String] = DreamderDocumentController.shared.documents
+        let projects: [String] = documentsController.documents
             .compactMap { ($0 as? WorkspaceDocument)?.fileURL?.path }
 
-        UserDefaults.standard.set(projects, forKey: AppDelegate.recoverWorkspacesKey)
+        defaults.set(projects, forKey: AppDelegate.recoverWorkspacesKey)
 
-        let areAllDocumentsClean = DreamderDocumentController.shared.documents.allSatisfy { !$0.isDocumentEdited }
+        let areAllDocumentsClean = documentsController.documents.allSatisfy { !$0.isDocumentEdited }
         guard areAllDocumentsClean else {
-            DreamderDocumentController.shared.closeAllDocuments(
+            documentsController.closeAllDocuments(
                 withDelegate: self,
                 didCloseAllSelector: #selector(documentController(_:didCloseAll:contextInfo:)),
                 contextInfo: nil
@@ -168,30 +215,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Open windows
 
-    @IBAction private func openWelcome(_ sender: Any) {
-        openWindow(sceneID: .welcome)
+    @IBAction func openWelcome(_ sender: Any) {
+        openScene(.welcome)
     }
 
-    @IBAction private func openAbout(_ sender: Any) {
-        openWindow(sceneID: .about)
+    @IBAction func openAbout(_ sender: Any) {
+        openScene(.about)
     }
 
-    /// Tries to focus a window with specified view content type.
-    /// - Parameter type: The type of viewContent which hosted in a window to be focused.
-    /// - Returns: `true` if window exist and focused, otherwise - `false`
-    private func tryFocusWindow<T: View>(of type: T.Type) -> Bool {
-        guard let window = NSApp.windows.filter({ ($0.contentView as? NSHostingView<T>) != nil }).first
-        else { return false }
-
-        window.makeKeyAndOrderFront(self)
-        return true
+    func openScene(_ id: SceneID) {
+        if let sceneOpenerOverride {
+            sceneOpenerOverride(id)
+        } else {
+            openWindow(sceneID: id)
+        }
     }
 
     /// Tries to focus a window with specified sceneId
     /// - Parameter type: Id of a window to be focused.
     /// - Returns: `true` if window exist and focused, otherwise - `false`
     private func tryFocusWindow(id: SceneID) -> Bool {
-        guard let window = NSApp.windows.filter({ $0.identifier?.rawValue == id.rawValue }).first
+        guard let window = applicationWindows().first(where: { $0.identifier?.rawValue == id.rawValue })
         else { return false }
 
         window.makeKeyAndOrderFront(self)
@@ -199,14 +243,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - Open With Dreamder (Extension) functions
-    private func checkForFilesToOpen() {
-        guard let defaults = UserDefaults.init(
-            suiteName: "dev.dreamder.Dreamder.shared"
-        ) else {
-            print("Failed to get/init shared defaults")
-            return
+    func startPollingFinderExtensionRequests() {
+        finderExtensionPolling?.cancel()
+        let interval = finderExtensionPollInterval
+        finderExtensionPolling = Task { [weak self] in
+            while !Task.isCancelled, self?.checkForFilesToOpen() == true {
+                try? await Task.sleep(for: interval)
+            }
+        }
+    }
+
+    func checkForFilesToOpen() -> Bool {
+        guard let defaults = finderExtensionDefaults() else {
+            logger.error("Failed to get/init shared defaults")
+            return false
         }
 
+        openFilesRequestedByFinderExtension(defaults: defaults)
+        return true
+    }
+
+    func openFilesRequestedByFinderExtension(defaults: UserDefaults) {
         // Register enableOpenInCE (enable Open In Dreamder
         defaults.register(defaults: ["enableOpenInCE": true])
 
@@ -214,21 +271,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let files = filesToOpen.split(separator: ";")
 
             for filePath in files {
-                let fileURL = URL(fileURLWithPath: String(filePath))
-                DreamderDocumentController.shared.reopenDocument(
-                    for: fileURL,
-                    withContentsOf: fileURL,
-                    display: true
-                ) { document, _, _ in
-                    document?.windowControllers.first?.synchronizeWindowTitleWithDocumentName()
-                }
+                reopenDocument(URL(fileURLWithPath: String(filePath)))
             }
 
             defaults.removeObject(forKey: "openInCEFiles")
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            self?.checkForFilesToOpen()
         }
     }
 
@@ -250,7 +296,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Terminates running language servers. Used during app termination to ensure resources are freed.
     private func terminateLanguageServers() {
+        let timeout = languageServerShutdownTimeout
         Task { @MainActor in
+            let service = self.languageServiceOverride ?? LSPService.shared
             let task = TaskNotificationModel(
                 id: "appdelegate.terminate_language_servers",
                 title: "Stopping Language Servers",
@@ -258,23 +306,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 isLoading: true
             )
 
-            if !lspService.languageClients.isEmpty {
+            if !service.languageClients.isEmpty {
                 TaskNotificationHandler.postTask(action: .create, model: task)
             }
 
             try? await withTimeout(
-                duration: .seconds(2.0),
+                duration: timeout,
                 onTimeout: {
                     // Stop-gap measure to ensure we don't hang on CMD-Q
-                    await self.lspService.killAllServers()
+                    await service.killAllServers()
                 },
                 operation: {
-                    await self.lspService.stopAllServers()
+                    await service.stopAllServers()
                 }
             )
 
             TaskNotificationHandler.postTask(action: .delete, model: task)
-            NSApplication.shared.reply(toApplicationShouldTerminate: true)
+            self.replyToTerminate(true)
         }
     }
 
@@ -287,7 +335,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             isLoading: true
         )
 
-        let taskManagers = DreamderDocumentController.shared.documents
+        let taskManagers = documentsController.documents
             .compactMap({ $0 as? WorkspaceDocument })
             .compactMap({ $0.taskManager })
 

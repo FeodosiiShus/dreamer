@@ -12,7 +12,7 @@ nonisolated struct LanguageServerCandidate: Equatable {
 }
 
 nonisolated enum LanguageServerDiscovery {
-    static func candidates(for language: LanguageIdentifier) -> [LanguageServerCandidate] {
+    static func candidates(for language: LSPLanguage) -> [LanguageServerCandidate] {
         switch language {
         case .swift, .objc:
             return [LanguageServerCandidate("sourcekit-lsp")]
@@ -39,6 +39,16 @@ nonisolated enum LanguageServerDiscovery {
             return [LanguageServerCandidate("vscode-css-language-server", ["--stdio"])]
         case .html:
             return [LanguageServerCandidate("vscode-html-language-server", ["--stdio"])]
+        case .java:
+            return [LanguageServerCandidate("jdtls")]
+        case .kotlin:
+            return [LanguageServerCandidate("kotlin-language-server")]
+        case .yaml:
+            return [LanguageServerCandidate("yaml-language-server", ["--stdio"])]
+        case .toml:
+            return [LanguageServerCandidate("taplo", ["lsp", "stdio"])]
+        case .shellscript:
+            return [LanguageServerCandidate("bash-language-server", ["start"])]
         default:
             return []
         }
@@ -47,7 +57,7 @@ nonisolated enum LanguageServerDiscovery {
     static var allCandidates: [LanguageServerCandidate] {
         var seen = Set<String>()
         var result: [LanguageServerCandidate] = []
-        for language in LanguageIdentifier.allCases {
+        for language in LSPLanguage.known {
             for candidate in candidates(for: language) where seen.insert(candidate.executable).inserted {
                 result.append(candidate)
             }
@@ -75,16 +85,16 @@ nonisolated enum LanguageServerDiscovery {
     }
 
     static func binary(
-        for language: LanguageIdentifier,
+        for language: LSPLanguage,
         searchPaths: [String],
         environment: [String: String]?,
         isExecutable: (String) -> Bool,
-        xcrunFind: (String) -> String? = { _ in nil }
+        sourceKitFallback: String? = nil
     ) -> LanguageServerBinary? {
         for candidate in candidates(for: language) {
             var execPath = resolve(candidate, in: searchPaths, isExecutable: isExecutable)
             if execPath == nil, candidate.executable == "sourcekit-lsp" {
-                execPath = xcrunFind(candidate.executable)
+                execPath = sourceKitFallback
             }
             if let execPath {
                 return LanguageServerBinary(execPath: execPath, args: candidate.arguments, env: environment)
@@ -93,8 +103,50 @@ nonisolated enum LanguageServerDiscovery {
         return nil
     }
 
+    static let workspaceBinDirectories = ["node_modules/.bin", ".venv/bin", "venv/bin"]
+    static let registryPackageBinDirectories = ["bin", "node_modules/.bin", "venv/bin"]
+
+    static func localSearchPaths(
+        workspacePath: String?,
+        registryInstallPath: String?,
+        disabledRegistryPackages: Set<String> = [],
+        listDirectory: (String) -> [String]
+    ) -> [String] {
+        var directories: [String] = []
+        if let workspacePath, !workspacePath.isEmpty {
+            directories.append(contentsOf: workspaceBinDirectories.map {
+                (workspacePath as NSString).appendingPathComponent($0)
+            })
+        }
+        if let registryInstallPath, !registryInstallPath.isEmpty {
+            directories.append(registryInstallPath)
+            let packages = listDirectory(registryInstallPath).sorted()
+            for package in packages where !disabledRegistryPackages.contains(package) {
+                let packagePath = (registryInstallPath as NSString).appendingPathComponent(package)
+                directories.append(contentsOf: registryPackageBinDirectories.map {
+                    (packagePath as NSString).appendingPathComponent($0)
+                })
+            }
+        }
+        return directories
+    }
+
+    static func mergedSearchPaths(local: [String], base: [String]) -> [String] {
+        var seen = Set<String>()
+        return (local + base).filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
+    static func directoryContents(atPath path: String) -> [String] {
+        (try? FileManager.default.contentsOfDirectory(atPath: path)) ?? []
+    }
+
     @concurrent
-    static func binary(for language: LanguageIdentifier) async -> LanguageServerBinary? {
+    static func binary(
+        for language: LSPLanguage,
+        workspacePath: String?,
+        registryInstallPath: String?,
+        disabledRegistryPackages: Set<String> = []
+    ) async -> LanguageServerBinary? {
         let serverCandidates = candidates(for: language)
         guard !serverCandidates.isEmpty else { return nil }
         let environment = LSPProcessEnvironment.shared
@@ -103,24 +155,35 @@ nonisolated enum LanguageServerDiscovery {
         if serverCandidates.contains(where: { $0.executable == "sourcekit-lsp" }) {
             sourceKit = await environment.xcrunFind("sourcekit-lsp")
         }
-        let sourceKitPath = sourceKit
+        let searchPaths = mergedSearchPaths(
+            local: localSearchPaths(
+                workspacePath: workspacePath,
+                registryInstallPath: registryInstallPath,
+                disabledRegistryPackages: disabledRegistryPackages,
+                listDirectory: { directoryContents(atPath: $0) }
+            ),
+            base: resolved.searchPaths
+        )
+        var processEnvironment = resolved.environment
+        processEnvironment["PATH"] = searchPaths.joined(separator: ":")
         return binary(
             for: language,
-            searchPaths: resolved.searchPaths,
-            environment: resolved.environment,
+            searchPaths: searchPaths,
+            environment: processEnvironment,
             isExecutable: { FileManager.default.isExecutableFile(atPath: $0) },
-            xcrunFind: { $0 == "sourcekit-lsp" ? sourceKitPath : nil }
+            sourceKitFallback: sourceKit
         )
     }
 
-    static let typeScriptLanguages: Set<LanguageIdentifier> = [
+    static let typeScriptLanguages: Set<LSPLanguage> = [
         .typescript, .javascript, .typescriptreact, .javascriptreact
     ]
 
     static func resolvedInitializationOptions(
-        for language: LanguageIdentifier,
+        for language: LSPLanguage,
         workspacePath: String,
         searchPaths: [String],
+        inlayHints: InlayHintSettings,
         runner: any ProcessRunning = ProcessRunner(),
         environment: [String: String]? = nil
     ) async -> LSPAny? {
@@ -141,20 +204,22 @@ nonisolated enum LanguageServerDiscovery {
             for: language,
             workspacePath: workspacePath,
             searchPaths: searchPaths,
+            inlayHints: inlayHints,
             resolveSymlinks: { launchers[$0] ?? symlinkResolved($0) }
         )
     }
 
     static func initializationOptions(
-        for language: LanguageIdentifier,
+        for language: LSPLanguage,
         workspacePath: String,
         searchPaths: [String],
+        inlayHints: InlayHintSettings,
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
         resolveSymlinks: (String) -> String = { symlinkResolved($0) }
     ) -> LSPAny? {
         guard typeScriptLanguages.contains(language) else { return nil }
         var options: [String: LSPAny] = [
-            "preferences": .hash(["includeInlayParameterNameHints": .string("literals")])
+            "preferences": InlayHintServerPreferences.preferences(for: inlayHints)
         ]
         let workspaceServer = (workspacePath as NSString).appendingPathComponent("node_modules/typescript/lib/tsserver.js")
         if !fileExists(workspaceServer),

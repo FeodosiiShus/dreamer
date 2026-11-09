@@ -62,7 +62,6 @@ nonisolated enum LSPRefreshKind: String, Sendable, CaseIterable {
     case semanticTokens
     case inlayHint
     case diagnostics
-    case codeLens
 
     init?(refreshMethod: String) {
         switch refreshMethod {
@@ -72,8 +71,6 @@ nonisolated enum LSPRefreshKind: String, Sendable, CaseIterable {
             self = .inlayHint
         case "workspace/diagnostic/refresh":
             self = .diagnostics
-        case "workspace/codeLens/refresh":
-            self = .codeLens
         default:
             return nil
         }
@@ -85,8 +82,6 @@ nonisolated enum LSPRefreshKind: String, Sendable, CaseIterable {
             self = .inlayHint
         case "textDocument/diagnostic":
             self = .diagnostics
-        case "textDocument/codeLens":
-            self = .codeLens
         default:
             return nil
         }

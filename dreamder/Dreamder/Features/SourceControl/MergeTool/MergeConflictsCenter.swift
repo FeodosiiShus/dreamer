@@ -7,7 +7,7 @@ final class MergeConflictsCenter {
     static let shared = MergeConflictsCenter()
 
     struct WorkspaceState: Equatable {
-        var entries: [MergeConflictEntry] = []
+        var entries: [MergeConflictEntry]
         var context: MergeConflictContext?
     }
 
@@ -21,8 +21,15 @@ final class MergeConflictsCenter {
     }
 
     @ObservationIgnored private var monitors: [String: Monitor] = [:]
+    @ObservationIgnored private let makeRepository: @MainActor (SourceControlManager) -> MergeConflictRepository
 
-    private init() {}
+    init(
+        makeRepository: @escaping @MainActor (SourceControlManager) -> MergeConflictRepository = {
+            MergeConflictRepository(gitClient: $0.gitClient, rootURL: $0.repositoryURL)
+        }
+    ) {
+        self.makeRepository = makeRepository
+    }
 
     func monitor(_ manager: SourceControlManager) {
         let key = Self.workspaceKey(manager.workspaceURL)
@@ -53,7 +60,7 @@ final class MergeConflictsCenter {
 
     func refresh(manager: SourceControlManager, allowAutoOpen: Bool = false) async {
         let key = Self.workspaceKey(manager.workspaceURL)
-        let repository = MergeConflictRepository(gitClient: manager.gitClient, rootURL: manager.repositoryURL)
+        let repository = makeRepository(manager)
         let entries = await repository.entries()
         if Task.isCancelled {
             return
@@ -68,8 +75,8 @@ final class MergeConflictsCenter {
 
         let monitor = monitors[key]
         let shouldAutoOpen = allowAutoOpen
-            && (monitor?.hasLoaded ?? false)
-            && (monitor?.lastHadConflicts ?? false) == false
+            && monitor?.hasLoaded == true
+            && monitor?.lastHadConflicts != true
             && !entries.isEmpty
 
         monitor?.hasLoaded = true
@@ -84,9 +91,8 @@ final class MergeConflictsCenter {
 
     private func scheduleRefresh(manager: SourceControlManager, allowAutoOpen: Bool) {
         let key = Self.workspaceKey(manager.workspaceURL)
-        guard let monitor = monitors[key] else { return }
-        monitor.task?.cancel()
-        monitor.task = Task { [weak self, weak manager] in
+        monitors[key]?.task?.cancel()
+        monitors[key]?.task = Task { [weak self, weak manager] in
             guard let self, let manager else { return }
             await self.refresh(manager: manager, allowAutoOpen: allowAutoOpen)
         }

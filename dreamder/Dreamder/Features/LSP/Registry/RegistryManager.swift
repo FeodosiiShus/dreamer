@@ -15,16 +15,25 @@ final class RegistryManager {
     static let shared = RegistryManager()
 
     let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "RegistryManager")
-    let installPath = Settings.shared.baseURL.appending(path: "Language Servers")
+    let installPath: URL
 
-    /// The URL of where the registry.json file will be downloaded from
-    let registryURL = URL(
+    static let defaultRegistryURL = URL(
         string: "https://github.com/mason-org/mason-registry/releases/latest/download/registry.json.zip"
     )
-    /// The URL of where the checksums.txt file will be downloaded from
-    let checksumURL = URL(
+    static let defaultChecksumURL = URL(
         string: "https://github.com/mason-org/mason-registry/releases/latest/download/checksums.txt"
     )
+
+    nonisolated static let cacheExpirationInterval: TimeInterval = 300
+
+    /// The URL of where the registry.json file will be downloaded from
+    let registryURL: URL?
+    /// The URL of where the checksums.txt file will be downloaded from
+    let checksumURL: URL?
+
+    let fetch: @Sendable (URL) async throws -> (Data, URLResponse)
+    let backoff: @Sendable (TimeInterval) async throws -> Void
+    let cacheExpiry: @Sendable () async throws -> Void
 
     var isDownloadingRegistry: Bool = false
     /// Holds an errors found while downloading the registry file. Needs a UI to dismiss, is logged.
@@ -42,9 +51,9 @@ final class RegistryManager {
     /// Reference to cached registry data. Will be removed from memory after a certain amount of time.
     @ObservationIgnored
     private var cachedRegistry: CachedRegistry?
-    /// Timer to clear expired cache
+    /// Task that clears the expired cache and downloads the registry again
     @ObservationIgnored
-    private var cleanupTimer: Timer?
+    private var cleanupTask: Task<Void, Never>?
     /// Public access to registry items with cache management
     public private(set) var registryItems: [RegistryItem] = []
 
@@ -52,7 +61,26 @@ final class RegistryManager {
     @AppSettings(\.languageServers.installedLanguageServers)
     var installedLanguageServers: [String: SettingsData.InstalledLanguageServer]
 
-    init() {
+    init(
+        installPath: URL = Settings.shared.baseURL.appending(path: "Language Servers"),
+        registryURL: URL? = RegistryManager.defaultRegistryURL,
+        checksumURL: URL? = RegistryManager.defaultChecksumURL,
+        fetch: @escaping @Sendable (URL) async throws -> (Data, URLResponse) = {
+            try await URLSession.shared.data(from: $0)
+        },
+        backoff: @escaping @Sendable (TimeInterval) async throws -> Void = {
+            try await Task.sleep(for: .seconds($0))
+        },
+        cacheExpiry: @escaping @Sendable () async throws -> Void = {
+            try await Task.sleep(for: .seconds(RegistryManager.cacheExpirationInterval))
+        }
+    ) {
+        self.installPath = installPath
+        self.registryURL = registryURL
+        self.checksumURL = checksumURL
+        self.fetch = fetch
+        self.backoff = backoff
+        self.cacheExpiry = cacheExpiry
         // Load the registry items from disk again after cache expires
         if let items = loadItemsFromDisk() {
             setRegistryItems(items)
@@ -64,7 +92,7 @@ final class RegistryManager {
     }
 
     isolated deinit {
-        cleanupTimer?.invalidate()
+        cleanupTask?.cancel()
     }
 
     // MARK: - Enable/Disable
@@ -96,14 +124,13 @@ final class RegistryManager {
             ]
         )
 
-        do {
-            try await Task.detached(priority: .userInitiated) {
-                try FileManager.default.removeItem(at: packageDirectory)
-            }.value
-            installedLanguageServers.removeValue(forKey: packageName)
-        } catch {
-            throw error
-        }
+        try await Self.removeItem(at: packageDirectory)
+        installedLanguageServers.removeValue(forKey: packageName)
+    }
+
+    @concurrent
+    private static func removeItem(at url: URL) async throws {
+        try FileManager.default.removeItem(at: url)
     }
 
     // MARK: - Install
@@ -214,17 +241,18 @@ final class RegistryManager {
     func setRegistryItems(_ items: [RegistryItem]) {
         cachedRegistry = CachedRegistry(items: items)
 
-        // Set up timer to clear the cache after expiration
-        cleanupTimer?.invalidate()
-        cleanupTimer = Timer.scheduledTimer(
-            withTimeInterval: CachedRegistry.expirationInterval, repeats: false
-        ) { [weak self] _ in
-            Task { @MainActor in
-                guard let self = self else { return }
-                self.cachedRegistry = nil
-                self.cleanupTimer = nil
-                await self.downloadRegistryItems()
+        cleanupTask?.cancel()
+        let expire = cacheExpiry
+        cleanupTask = Task { [weak self] in
+            do {
+                try await expire()
+            } catch {
+                return
             }
+            guard let self else { return }
+            cachedRegistry = nil
+            cleanupTask = nil
+            await downloadRegistryItems()
         }
 
         registryItems = items
@@ -236,16 +264,8 @@ final class RegistryManager {
 /// lifetime of the application and can be freed when no longer used.
 private final class CachedRegistry {
     let items: [RegistryItem]
-    let timestamp: Date
-
-    static let expirationInterval: TimeInterval = 300 // 5 minutes
 
     init(items: [RegistryItem]) {
         self.items = items
-        self.timestamp = Date()
-    }
-
-    var isExpired: Bool {
-        Date().timeIntervalSince(timestamp) > Self.expirationInterval
     }
 }

@@ -42,11 +42,12 @@ final class MergeRevisionsViewModel {
     var title: String { "Merge Revisions for \(path)" }
 
     var leftTitle: String {
-        switch context?.operation {
+        guard let context else { return "Yours" }
+        switch context.operation {
         case .merge:
-            return "Your version, branch \(context?.yoursLabel ?? "")"
+            return "Your version, branch \(context.yoursLabel)"
         case .rebase:
-            return "Your commits, branch \(context?.yoursLabel ?? "")"
+            return "Your commits, branch \(context.yoursLabel)"
         case .cherryPick, .stash:
             return "Local changes"
         default:
@@ -55,13 +56,14 @@ final class MergeRevisionsViewModel {
     }
 
     var rightTitle: String {
-        switch context?.operation {
+        guard let context else { return "Theirs" }
+        switch context.operation {
         case .merge:
-            return "Theirs, branch \(context?.theirsLabel ?? "")"
+            return "Theirs, branch \(context.theirsLabel)"
         case .rebase:
-            return "Changes from branch \(context?.theirsLabel ?? "")"
+            return "Changes from branch \(context.theirsLabel)"
         case .cherryPick:
-            return "Changes from \(context?.theirsLabel ?? "")"
+            return "Changes from \(context.theirsLabel)"
         case .stash:
             return "Changes from stash"
         default:
@@ -117,8 +119,9 @@ final class MergeRevisionsViewModel {
 
         let ours = context.swapsSides ? revisions.theirs.text : revisions.ours.text
         let theirs = context.swapsSides ? revisions.ours.text : revisions.theirs.text
-        merge = ThreeWayMerge(base: revisions.base.text, ours: ours, theirs: theirs)
-        refreshContent()
+        let computed = ThreeWayMerge(base: revisions.base.text, ours: ours, theirs: theirs)
+        merge = computed
+        refreshContent(merge: computed)
         isLoading = false
     }
 
@@ -126,14 +129,14 @@ final class MergeRevisionsViewModel {
         guard var updated = merge else { return }
         updated.resolve(blockID, with: resolution)
         merge = updated
-        refreshContent()
+        refreshContent(merge: updated)
     }
 
     func applyNonConflicting(_ mode: ThreeWayMerge.NonConflictingMode) {
         guard var updated = merge else { return }
         updated.applyNonConflicting(mode)
         merge = updated
-        refreshContent()
+        refreshContent(merge: updated)
     }
 
     func userEditedResult(_ text: String) {
@@ -205,9 +208,8 @@ final class MergeRevisionsViewModel {
     }
 
     func acceptSide(_ choice: MergeSideChoice) async -> Bool {
-        guard let merge, canAcceptSide else { return false }
-        if isSideMissing(choice) {
-            guard let entry, let context else { return false }
+        guard let merge, let entry, let context, let revisionSet, canAcceptSide else { return false }
+        if isSideMissing(choice, in: revisionSet, swapsSides: context.swapsSides) {
             isSaving = true
             defer { isSaving = false }
             do {
@@ -223,9 +225,11 @@ final class MergeRevisionsViewModel {
         return await apply()
     }
 
-    private func isSideMissing(_ choice: MergeSideChoice) -> Bool {
-        guard let revisionSet else { return false }
-        let swaps = context?.swapsSides ?? false
+    private func isSideMissing(
+        _ choice: MergeSideChoice,
+        in revisionSet: MergeConflictRepository.RevisionSet,
+        swapsSides swaps: Bool
+    ) -> Bool {
         let content: MergeConflictRepository.StageContent
         switch choice {
         case .yours:
@@ -239,8 +243,7 @@ final class MergeRevisionsViewModel {
         return false
     }
 
-    private func refreshContent() {
-        guard let merge else { return }
+    private func refreshContent(merge: ThreeWayMerge) {
         leftPane = merge.leftPane
         rightPane = merge.rightPane
         resultPane = merge.resultPane

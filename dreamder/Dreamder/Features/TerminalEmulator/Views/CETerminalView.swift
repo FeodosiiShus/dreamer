@@ -10,7 +10,21 @@ import AppKit
 
 /// # Please see dev note in ``CELocalShellTerminalView``!
 
+struct TerminalPasteboardWriter {
+    let write: (String) -> Void
+
+    static func writing(to pasteboard: any PasteboardAccess) -> TerminalPasteboardWriter {
+        TerminalPasteboardWriter { text in
+            pasteboard.replaceContents(withText: text)
+        }
+    }
+
+    static let general = writing(to: SystemPasteboard())
+}
+
 class CETerminalView: TerminalView {
+    var pasteboard: TerminalPasteboardWriter = .general
+
     override func setFrameSize(_ newSize: NSSize) {
         if newSize != .zero {
             super.setFrameSize(newSize)
@@ -32,9 +46,7 @@ class CETerminalView: TerminalView {
     override open func copy(_ sender: Any) {
         let range = selectedPositions()
         let text = terminal.getText(start: range.start, end: range.end)
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        pasteboard.write(text)
     }
 
     override open func isAccessibilityElement() -> Bool {

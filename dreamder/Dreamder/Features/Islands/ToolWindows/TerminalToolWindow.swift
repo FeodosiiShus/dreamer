@@ -1,11 +1,69 @@
 import SwiftUI
 
+struct TerminalToolWindowActions {
+    let workspace: WorkspaceDocument
+    let utilityAreaViewModel: UtilityAreaViewModel
+
+    func tabTitle(_ terminal: UtilityAreaTerminal) -> String {
+        let lastComponent = terminal.url.lastPathComponent
+        let folderName = lastComponent.isEmpty ? terminal.url.path : lastComponent
+        let shellName = terminal.shell?.rawValue
+            ?? URL(fileURLWithPath: Shell.autoDetectDefaultShell()).lastPathComponent
+        return "\(folderName) — \(shellName)"
+    }
+
+    func add() {
+        utilityAreaViewModel.addTerminal(rootURL: workspace.fileURL)
+    }
+
+    func ensure() {
+        guard let workspaceURL = workspace.fileURL else { return }
+        utilityAreaViewModel.initializeTerminals(workspaceURL: workspaceURL)
+    }
+
+    func close(_ terminal: UtilityAreaTerminal) -> () -> Void {
+        { utilityAreaViewModel.removeTerminals([terminal.id]) }
+    }
+
+    func select(_ terminal: UtilityAreaTerminal) -> () -> Void {
+        { utilityAreaViewModel.selectedTerminals = [terminal.id] }
+    }
+
+    func titleChange(_ terminal: UtilityAreaTerminal) -> (String) -> Void {
+        { newTitle in
+            Task { @MainActor in
+                utilityAreaViewModel.updateTerminal(terminal.id, title: newTitle)
+            }
+        }
+    }
+}
+
+struct TerminalToolWindowMenuItems: View {
+    let actions: TerminalToolWindowActions
+
+    var body: some View {
+        ForEach(actions.utilityAreaViewModel.terminals) { terminal in
+            Button(action: actions.select(terminal)) {
+                Text(actions.tabTitle(terminal))
+            }
+        }
+        if !actions.utilityAreaViewModel.terminals.isEmpty {
+            Divider()
+        }
+        Button("New Terminal", action: actions.add)
+    }
+}
+
 struct TerminalToolWindow: View {
     @Environment(WorkspaceDocument.self) private var workspace
     @Environment(UtilityAreaViewModel.self) private var utilityAreaViewModel
     @Environment(ToolWindowManager.self) private var toolWindowManager
 
     init() {}
+
+    private var actions: TerminalToolWindowActions {
+        TerminalToolWindowActions(workspace: workspace, utilityAreaViewModel: utilityAreaViewModel)
+    }
 
     private var selectedTerminal: UtilityAreaTerminal? {
         if let id = utilityAreaViewModel.selectedTerminals.first,
@@ -15,58 +73,21 @@ struct TerminalToolWindow: View {
         return utilityAreaViewModel.terminals.first
     }
 
-    private func tabTitle(_ terminal: UtilityAreaTerminal) -> String {
-        let lastComponent = terminal.url.lastPathComponent
-        let folderName = lastComponent.isEmpty ? terminal.url.path : lastComponent
-        let shellName = terminal.shell?.rawValue
-            ?? URL(fileURLWithPath: Shell.autoDetectDefaultShell()).lastPathComponent
-        return "\(folderName) — \(shellName)"
-    }
-
-    private func addTerminal() {
-        utilityAreaViewModel.addTerminal(rootURL: workspace.fileURL)
-    }
-
-    private func ensureTerminal() {
-        guard let workspaceURL = workspace.fileURL else { return }
-        utilityAreaViewModel.initializeTerminals(workspaceURL: workspaceURL)
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             ToolWindowHeader(title: "Terminal") {
                 ForEach(utilityAreaViewModel.terminals) { terminal in
                     ToolWindowTab(
-                        title: tabTitle(terminal),
+                        title: actions.tabTitle(terminal),
                         icon: "toolwindows/terminal",
                         isSelected: terminal.id == selectedTerminal?.id,
-                        onClose: {
-                            utilityAreaViewModel.removeTerminals([terminal.id])
-                        },
-                        action: {
-                            utilityAreaViewModel.selectedTerminals = [terminal.id]
-                        }
+                        onClose: actions.close(terminal),
+                        action: actions.select(terminal)
                     )
                 }
             } actions: {
-                ToolWindowActionButton(icon: "general/add", help: "New Terminal") {
-                    addTerminal()
-                }
-                Menu {
-                    ForEach(utilityAreaViewModel.terminals) { terminal in
-                        Button {
-                            utilityAreaViewModel.selectedTerminals = [terminal.id]
-                        } label: {
-                            Text(tabTitle(terminal))
-                        }
-                    }
-                    if !utilityAreaViewModel.terminals.isEmpty {
-                        Divider()
-                    }
-                    Button("New Terminal") {
-                        addTerminal()
-                    }
-                } label: {
+                ToolWindowActionButton(icon: "general/add", help: "New Terminal", action: actions.add)
+                Menu { TerminalToolWindowMenuItems(actions: actions) } label: {
                     Image("general/chevronDown")
                         .resizable()
                         .frame(width: 16, height: 16)
@@ -75,15 +96,17 @@ struct TerminalToolWindow: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .help("Show Terminals")
-                ToolWindowActionButton(icon: "general/hide", help: "Hide") {
-                    toolWindowManager.hide(.terminal)
-                }
+                ToolWindowActionButton(
+                    icon: "general/hide",
+                    help: "Hide",
+                    action: toolWindowManager.hideCallback(for: .terminal)
+                )
             }
 
             terminalContent
         }
         .background(Color.clear)
-        .onAppear(perform: ensureTerminal)
+        .onAppear(perform: actions.ensure)
     }
 
     @ViewBuilder private var terminalContent: some View {
@@ -92,11 +115,7 @@ struct TerminalToolWindow: View {
                 url: terminal.url,
                 terminalID: terminal.id,
                 shellType: terminal.shell,
-                onTitleChange: { newTitle in
-                    DispatchQueue.main.async {
-                        utilityAreaViewModel.updateTerminal(terminal.id, title: newTitle)
-                    }
-                }
+                onTitleChange: actions.titleChange(terminal)
             )
             .id(terminal.id)
             .padding(8)

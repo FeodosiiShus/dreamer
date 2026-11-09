@@ -15,17 +15,16 @@ final class FuzzySearchUIModel<Element: FuzzySearchable> {
     var items: [Element]?
 
     @ObservationIgnored private var allItems: [Element] = []
-    @ObservationIgnored private var textStream: AsyncStream<String>
     @ObservationIgnored private var textStreamContinuation: AsyncStream<String>.Continuation
     @ObservationIgnored private var searchTask: Task<Void, Never>?
 
     init(debounceTime: Duration = .milliseconds(50)) {
-        (textStream, textStreamContinuation) = AsyncStream<String>.makeStream()
+        let (stream, continuation) = AsyncStream<String>.makeStream()
+        textStreamContinuation = continuation
 
         searchTask = Task { [weak self] in
-            guard let self else { return }
-
-            for await text in textStream.debounce(for: debounceTime) {
+            for await text in stream.debounce(for: debounceTime) {
+                guard let self else { return }
                 await performSearch(query: text)
             }
         }

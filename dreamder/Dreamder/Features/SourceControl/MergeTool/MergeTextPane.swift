@@ -9,13 +9,14 @@ struct MergeTextPane: NSViewRepresentable {
     let paneID: String
     let onChip: (MergePaneChip) -> Void
     let onTextChange: (String) -> Void
+    var makeScrollView: @MainActor () -> NSScrollView = { NSTextView.scrollableTextView() }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
+        let scrollView = makeScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
@@ -23,9 +24,7 @@ struct MergeTextPane: NSViewRepresentable {
         scrollView.backgroundColor = NSColor(Islands.island)
         scrollView.borderType = .noBorder
 
-        guard let textView = scrollView.documentView as? NSTextView else {
-            return scrollView
-        }
+        guard let textView = scrollView.documentView as? NSTextView else { return scrollView }
         textView.identifier = NSUserInterfaceItemIdentifier("merge-pane-\(paneID)")
         textView.delegate = context.coordinator
         textView.isEditable = isEditable
@@ -122,9 +121,7 @@ enum MergeTextPaneRenderer {
                         .font: font,
                         .foregroundColor: NSColor(Islands.disabledForeground)
                     ]
-                    if let chip {
-                        attributes[.link] = link(for: chip)
-                    }
+                    attributes[.link] = chip.flatMap(link(for:))
                     result.append(NSAttributedString(
                         string: chip?.symbol ?? " ",
                         attributes: attributes
@@ -158,15 +155,7 @@ enum MergeTextPaneRenderer {
     }
 
     static func chip(for link: Any) -> MergePaneChip? {
-        let url: URL?
-        if let value = link as? URL {
-            url = value
-        } else if let value = link as? NSURL {
-            url = value as URL
-        } else {
-            url = nil
-        }
-        guard let url, url.scheme == "merge-block", let host = url.host,
+        guard let url = link as? URL, url.scheme == "merge-block", let host = url.host,
               let blockID = Int(url.lastPathComponent) else {
             return nil
         }
@@ -182,14 +171,14 @@ enum MergeTextPaneRenderer {
         }
     }
 
-    private static func link(for chip: MergePaneChip) -> NSURL {
+    private static func link(for chip: MergePaneChip) -> NSURL? {
         let host: String
         switch chip.kind {
         case .acceptLeft: host = "left"
         case .acceptRight: host = "right"
         case .ignore: host = "ignore"
         }
-        return NSURL(string: "merge-block://\(host)/\(chip.blockID)") ?? NSURL(fileURLWithPath: "/")
+        return NSURL(string: "merge-block://\(host)/\(chip.blockID)")
     }
 
     private static func background(for style: MergeLineStyle) -> NSColor? {

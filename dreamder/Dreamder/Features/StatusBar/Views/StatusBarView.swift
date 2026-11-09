@@ -43,10 +43,11 @@ struct StatusBarView: View {
             )
             Spacer(minLength: 12)
             HStack(spacing: 10) {
+                StatusBarProgressIndicator(handler: workspace.taskNotificationHandler)
                 StatusBarCursorPositionLabel()
                 StatusBarLineEndSelector(document: tab?.file.fileDocument)
                 StatusBarEncodingSelector(document: tab?.file.fileDocument)
-                StatusBarIndentSelector()
+                StatusBarIndentSelector(document: tab?.file.fileDocument)
                 StatusBarNotificationsButton()
             }
             .fixedSize()
@@ -70,18 +71,22 @@ struct StatusBarView: View {
             name: "Toggle Utility Area",
             title: "Toggle Utility Area",
             id: "open.drawer",
-            command: { [weak utilityAreaViewModel] in utilityAreaViewModel?.togglePanel() }
+            command: Self.togglePanelCommand(for: utilityAreaViewModel)
         )
+    }
+
+    static func togglePanelCommand(for utilityAreaViewModel: UtilityAreaViewModel) -> () -> Void {
+        { [weak utilityAreaViewModel] in utilityAreaViewModel?.togglePanel() }
     }
 }
 
-private struct StatusBarProjectBreadcrumbs: View {
+struct StatusBarProjectBreadcrumbs: View {
     @Environment(WorkspaceDocument.self) private var workspace
 
     let file: CEWorkspaceFile?
     let projectURL: URL?
 
-    private var projectName: String {
+    var projectName: String {
         projectURL?.lastPathComponent ?? "Empty"
     }
 
@@ -129,9 +134,7 @@ private struct StatusBarProjectBreadcrumbs: View {
     }
 
     private func folderCrumb(_ name: String, relativePath: String) -> some View {
-        Button {
-            reveal(relativePath: relativePath)
-        } label: {
+        Button(action: Self.revealing(relativePath: relativePath, projectURL: projectURL, workspace: workspace)) {
             Text(name)
                 .foregroundColor(Islands.secondaryForeground)
                 .lineLimit(1)
@@ -142,7 +145,11 @@ private struct StatusBarProjectBreadcrumbs: View {
         .help("Reveal in Project")
     }
 
-    private func reveal(relativePath: String) {
+    static func revealing(relativePath: String, projectURL: URL?, workspace: WorkspaceDocument) -> () -> Void {
+        { reveal(relativePath: relativePath, projectURL: projectURL, workspace: workspace) }
+    }
+
+    static func reveal(relativePath: String, projectURL: URL?, workspace: WorkspaceDocument) {
         workspace.toolWindowManager.show(.project)
         guard let projectURL,
               let item = workspace.workspaceFileManager?.getFile(
@@ -152,11 +159,17 @@ private struct StatusBarProjectBreadcrumbs: View {
         NSApp.sendAction(#selector(ProjectNavigatorViewController.revealItem(_:)), to: nil, from: item.id)
     }
 
+    static func revealingFile(workspace: WorkspaceDocument) -> () -> Void {
+        { revealFile(workspace: workspace) }
+    }
+
+    static func revealFile(workspace: WorkspaceDocument) {
+        workspace.toolWindowManager.show(.project)
+        NSApp.sendAction(#selector(ProjectNavigatorViewController.revealFile(_:)), to: nil, from: nil)
+    }
+
     private func fileCrumb(_ file: CEWorkspaceFile) -> some View {
-        Button {
-            workspace.toolWindowManager.show(.project)
-            NSApp.sendAction(#selector(ProjectNavigatorViewController.revealFile(_:)), to: nil, from: nil)
-        } label: {
+        Button(action: Self.revealingFile(workspace: workspace)) {
             HStack(spacing: 4) {
                 Image(IntelliJIcon.fileIcon(for: file.name))
                     .resizable()
@@ -174,14 +187,18 @@ private struct StatusBarProjectBreadcrumbs: View {
     }
 }
 
+extension NSCursor {
+    func setHovering(_ isHovering: Bool) {
+        if isHovering {
+            push()
+        } else {
+            pop()
+        }
+    }
+}
+
 extension View {
     func cursor(_ cursor: NSCursor) -> some View {
-        onHover {
-            if $0 {
-                cursor.push()
-            } else {
-                cursor.pop()
-            }
-        }
+        onHover(perform: cursor.setHovering)
     }
 }

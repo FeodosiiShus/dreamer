@@ -9,7 +9,7 @@ import Foundation
 
 extension SourceControlManager {
     /// Validate repository
-    func validate() async throws {
+    func validate() async {
         let isGitRepository = await gitClient.validate()
         await MainActor.run {
             self.isGitRepository = isGitRepository
@@ -52,28 +52,6 @@ extension SourceControlManager {
         await refreshCurrentBranch()
     }
 
-    /// Rename branch
-    func renameBranch(oldName: String, newName: String) async throws {
-        try await gitClient.renameBranch(oldName: oldName, newName: newName)
-        await refreshBranches()
-    }
-
-    /// Delete branch if it's local and not current
-    func deleteBranch(branch: GitBranch) async throws {
-        if !branch.isLocal || branch == currentBranch {
-            return
-        }
-
-        try await gitClient.deleteBranch(branch)
-        await refreshBranches()
-    }
-
-    /// Delete stash entry
-    func deleteStashEntry(stashEntry: GitStashEntry) async throws {
-        try await gitClient.deleteStashEntry(stashEntry.index)
-        try await refreshStashEntries()
-    }
-
     /// Apply stash entry
     func applyStashEntry(stashEntry: GitStashEntry) async throws {
         try await gitClient.applyStashEntry(stashEntry.index)
@@ -88,19 +66,12 @@ extension SourceControlManager {
         await refreshAllChangedFiles()
     }
 
-    /// Delete remote
-    func deleteRemote(remote: GitRemote) async throws {
-        try await gitClient.removeRemote(name: remote.name)
-        try await refreshRemotes()
-    }
-
     /// Discard changes for file
     func discardChanges(for file: URL) {
         Task {
             do {
                 try await gitClient.discardChanges(for: file)
-                // TODO: Refresh content of active and unmodified document,
-                // requires CodeEditSourceEditor changes
+                reloadOpenDocuments(at: [file])
             } catch {
                 logger.error("Failed to discard changes for file (\(file.lastPathComponent): \(error)")
                 await showAlertForError(title: "Failed to discard changes", error: error)
@@ -113,8 +84,7 @@ extension SourceControlManager {
         Task {
             do {
                 try await gitClient.discardAllChanges()
-                // TODO: Refresh content of active and unmodified document,
-                // requires CodeEditSourceEditor changes
+                reloadOpenDocuments(under: repositoryURL)
             } catch {
                 logger.error("Failed to discard changes: \(error)")
                 await showAlertForError(title: "Failed to discard changes", error: error)
@@ -130,39 +100,20 @@ extension SourceControlManager {
 
     /// Refresh git status for files in project navigator
     @MainActor
-    private func refreshStatusInFileManager() {
-        guard let fileManager = fileManager else {
-            return
-        }
+    private func refreshStatusInFileManager() async {
+        guard fileManager != nil else { return }
+        let plan = await Self.statusPlan(for: changedFiles)
+        fileManager?.applyGitStatuses(plan)
+    }
 
-        var updatedStatusFor: Set<CEWorkspaceFile> = []
-        // Refresh status of file manager files
-        for changedFile in changedFiles {
-            guard let file = fileManager.getFile(changedFile.ceFileKey) else {
-                continue
-            }
-            if file.gitStatus != changedFile.anyStatus() {
-                file.gitStatus = changedFile.anyStatus()
-            }
-            updatedStatusFor.insert(file)
-        }
-
-        for (_, file) in fileManager.flattenedFileItems
-        where !updatedStatusFor.contains(file) && file.gitStatus != nil {
-            file.gitStatus = nil
-            updatedStatusFor.insert(file)
-        }
-
-        if updatedStatusFor.isEmpty {
-            return
-        }
-
-        fileManager.notifyObservers(updatedItems: updatedStatusFor)
+    @concurrent
+    private static func statusPlan(for files: [GitChangedFile]) async -> GitStatusPlan {
+        GitStatusPlan(changedFiles: files)
     }
 
     /// Refresh all changed files and refresh status in file manager
-    func refreshAllChangedFiles() async {
-        await changedFilesRefresh.run { [weak self] in
+    func refreshAllChangedFiles(debounced: Bool = false) async {
+        await changedFilesRefresh.run(debounce: debounced ? Self.statusRefreshDebounce : .zero) { [weak self] in
             await self?.loadChangedFiles()
         }
     }
@@ -171,11 +122,10 @@ extension SourceControlManager {
         do {
             let status = try await gitClient.getStatus()
 
-            // TODO: Unmerged changes
-            // status.unmergedChanges
-
-            setChangedFiles(status.changedFiles + status.untrackedFiles)
-            refreshStatusInFileManager()
+            setChangedFiles(
+                status.unmergedChanges.map(Self.surfacedConflict) + status.changedFiles + status.untrackedFiles
+            )
+            await refreshStatusInFileManager()
         } catch GitClient.GitClientError.notGitRepository {
             setChangedFiles([])
         } catch {
@@ -183,6 +133,12 @@ extension SourceControlManager {
             setChangedFiles([])
         }
     }
+
+    private static func surfacedConflict(_ file: GitChangedFile) -> GitChangedFile {
+        GitChangedFile(status: .unmerged, stagedStatus: .none, fileURL: file.fileURL, originalFilename: nil)
+    }
+
+    static let statusRefreshDebounce: Duration = .milliseconds(500)
 
     /// Get all changed files for a commit
     func getCommitChangedFiles(commitSHA: String) async -> [GitChangedFile] {
@@ -231,7 +187,7 @@ extension SourceControlManager {
 
     /// Get all remotes
     func refreshRemotes() async throws {
-        let remotes = (try? await gitClient.getRemotes()) ?? []
+        let remotes = try await gitClient.getRemotes()
         await MainActor.run {
             self.remotes = remotes
         }
@@ -264,7 +220,7 @@ extension SourceControlManager {
     }
 
     func refreshStashEntries() async throws {
-        let stashEntries = (try? await gitClient.stashList()) ?? []
+        let stashEntries = try await gitClient.stashList()
         await MainActor.run {
             self.stashEntries = stashEntries
         }
@@ -297,10 +253,5 @@ extension SourceControlManager {
 
         await refreshCurrentBranch()
         await self.refreshNumberOfUnsyncedCommits()
-    }
-
-    /// Initiate repository
-    func initiate() async throws {
-        try await gitClient.initiate()
     }
 }

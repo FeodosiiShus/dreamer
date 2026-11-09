@@ -9,16 +9,29 @@ import Foundation
 import LanguageServerProtocol
 
 extension LanguageServer {
-    /// Request signature information at a given cursor position
-    func requestSignatureHelp(for documentURI: String, _ position: Position) async throws -> SignatureHelpResponse {
+    var signatureHelpCapability: SignatureHelpCapability? {
+        SignatureHelpCapability(
+            staticOptions: serverCapabilities.signatureHelpProvider,
+            isDynamicallyRegistered: dynamicCapabilities.hasCapability(SignatureHelpProtocol.method),
+            dynamicOptions: dynamicCapabilities.registerOptions(for: SignatureHelpProtocol.method, as: SignatureHelpOptions.self)
+        )
+    }
+
+    func requestSignatureHelp(
+        for documentURI: String,
+        position: Position,
+        context: SignatureHelpContext
+    ) async throws -> SignatureHelpResponse {
+        await flushPendingEdits(for: documentURI)
         do {
-            let params = TextDocumentPositionParams(
+            let params = SignatureHelpRequestParams(
                 textDocument: TextDocumentIdentifier(uri: documentURI),
-                position: position
+                position: position,
+                context: context
             )
-            return try await lspInstance.signatureHelp(params)
+            return try await lspInstance.customRequest(method: SignatureHelpProtocol.method, params: params.lspAny())
         } catch {
-            logger.warning("requestInlayHint: Error \(error)")
+            logger.warning("requestSignatureHelp: Error \(error)")
             throw error
         }
     }

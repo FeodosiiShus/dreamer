@@ -6,6 +6,7 @@ import Synchronization
 nonisolated final class InitializationGatedConnection: ServerConnection, Sendable {
     private struct State {
         var isOpen = false
+        var isClosed = false
         var pending: [ServerEvent] = []
         var forwardTask: Task<Void, Never>?
     }
@@ -53,11 +54,21 @@ nonisolated final class InitializationGatedConnection: ServerConnection, Sendabl
         try await inner.sendRequest(request)
     }
 
+    func close() {
+        state.withLock { state in
+            state.isClosed = true
+            state.pending.removeAll()
+        }
+    }
+
     private func receive(_ event: ServerEvent) {
         state.withLock { state in
-            if !state.isOpen, case .request = event {
-                state.pending.append(event)
-                return
+            if case .request = event {
+                if state.isClosed { return }
+                if !state.isOpen {
+                    state.pending.append(event)
+                    return
+                }
             }
             continuation.yield(event)
         }

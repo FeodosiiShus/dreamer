@@ -5,8 +5,116 @@
 //  Created by Lukas Pistrol on 17.03.22.
 //
 
-import Combine
 import SwiftUI
+
+struct EditorTabContext {
+    let file: CEWorkspaceFile
+    let editor: Editor
+    let editorManager: EditorManager
+    let workspace: WorkspaceDocument
+
+    var isTemporary: Bool {
+        editor.temporaryTab?.file == file
+    }
+}
+
+@MainActor
+@Observable
+final class EditorTabInteraction {
+    static let middleButtonNumber = 2
+
+    var isHovering = false
+    var isHoveringClose = false
+    private(set) var isPressing = false
+    @ObservationIgnored var context: EditorTabContext?
+
+    func hoverChanged(_ hover: Bool) {
+        isHovering = hover
+        if !hover {
+            isHoveringClose = false
+        }
+        Task {
+            if hover {
+                NSCursor.arrow.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+    }
+
+    func pressBegan() {
+        if !isHoveringClose {
+            isPressing = true
+        }
+    }
+
+    func pressEnded(_ context: EditorTabContext) {
+        if isPressing {
+            select(context)
+        }
+        isPressing = false
+    }
+
+    func select(_ context: EditorTabContext) {
+        context.editorManager.activeEditor = context.editor
+        if context.editor.selectedTab?.file != context.file {
+            let tabItem = EditorInstance(workspace: context.workspace, file: context.file)
+            context.editor.setSelectedTab(context.file)
+            context.editor.clearFuture()
+            context.editor.addToHistory(tabItem)
+        }
+    }
+
+    func close(_ context: EditorTabContext) {
+        context.editor.closeTab(file: context.file)
+    }
+
+    func unpin(_ context: EditorTabContext) {
+        context.editor.setPinned(false, file: context.file)
+    }
+
+    func unpinTab() {
+        guard let context else { return }
+        unpin(context)
+    }
+
+    func closeTab() {
+        guard let context else { return }
+        close(context)
+    }
+
+    func dragChanged(_ value: some PointerLocated) {
+        pressBegan()
+    }
+
+    func dragEnded(_ value: some PointerLocated) {
+        guard let context else { return }
+        pressEnded(context)
+    }
+
+    func doubleTapEnded(_ value: Void) {
+        guard let context else { return }
+        doubleTapped(context)
+    }
+
+    func doubleTapped(_ context: EditorTabContext) {
+        if context.isTemporary {
+            context.editor.temporaryTab = nil
+        }
+    }
+
+    func middleClicked(buttonNumber: Int, _ context: EditorTabContext) {
+        guard isHovering, buttonNumber == Self.middleButtonNumber else { return }
+        Task {
+            context.editor.closeTabUnlessPinned(file: context.file)
+        }
+    }
+
+    func monitored(_ event: NSEvent, _ context: EditorTabContext) -> NSEvent? {
+        middleClicked(buttonNumber: event.buttonNumber, context)
+        return event
+    }
+}
 
 struct EditorTabView: View {
     @Environment(\.controlActiveState)
@@ -25,15 +133,13 @@ struct EditorTabView: View {
         Islands.tabPillHeight
     }
 
-    @State private var isHovering: Bool = false
-
-    @State private var isHoveringClose: Bool = false
-
-    @State private var isPressing: Bool = false
+    @State private var interaction: EditorTabInteraction
 
     @State private var keyMonitor: Any?
 
-    @State private var isDocumentEdited: Bool = false
+    private var isDocumentEdited: Bool {
+        tabFile.fileDocument?.isEdited ?? false
+    }
 
     private var draggingTabId: CEWorkspaceFile.ID?
 
@@ -43,8 +149,16 @@ struct EditorTabView: View {
 
     var index: Int
 
+    private var context: EditorTabContext {
+        EditorTabContext(file: tabFile, editor: editor, editorManager: editorManager, workspace: workspace)
+    }
+
     private var isTemporary: Bool {
         editor.temporaryTab?.file == tabFile
+    }
+
+    private var isPinned: Bool {
+        editor.isPinned(tabFile)
     }
 
     private var isActive: Bool {
@@ -56,7 +170,7 @@ struct EditorTabView: View {
     }
 
     private var isInHoldingState: Bool {
-        isPressing || isDragging
+        interaction.isPressing || isDragging
     }
 
     private var isFocused: Bool {
@@ -64,7 +178,7 @@ struct EditorTabView: View {
     }
 
     private var showsCloseButton: Bool {
-        isActive || isHovering || isInHoldingState
+        isActive || interaction.isHovering || isInHoldingState
     }
 
     private var isTestFile: Bool {
@@ -79,7 +193,7 @@ struct EditorTabView: View {
     }
 
     private var showsHoverCapsule: Bool {
-        !isActive && (isHovering || isInHoldingState)
+        !isActive && (interaction.isHovering || isInHoldingState)
     }
 
     @ViewBuilder private var fileColorFill: some View {
@@ -98,31 +212,23 @@ struct EditorTabView: View {
         return isFocused ? Islands.tabSelectedBorder : Islands.tabInactiveSelectedBorder
     }
 
-    private func switchAction() {
-        editorManager.activeEditor = editor
-        if editor.selectedTab?.file != tabFile {
-            let tabItem = EditorInstance(workspace: workspace, file: tabFile)
-            editor.setSelectedTab(tabFile)
-            editor.clearFuture()
-            editor.addToHistory(tabItem)
-        }
-    }
-
-    func closeAction() {
-        editor.closeTab(file: tabFile)
-    }
-
     init(
         file: CEWorkspaceFile,
         index: Int,
         draggingTabId: CEWorkspaceFile.ID?,
-        closeButtonGestureActive: Binding<Bool>
+        closeButtonGestureActive: Binding<Bool>,
+        interaction: EditorTabInteraction = EditorTabInteraction()
     ) {
         self.tabFile = file
         self.index = index
         self.draggingTabId = draggingTabId
         self._closeButtonGestureActive = closeButtonGestureActive
         self._fileObserver = State(wrappedValue: EditorTabFileObserver(file: file))
+        self._interaction = State(wrappedValue: interaction)
+    }
+
+    private func middleClickMonitor() -> Any? {
+        NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { interaction.monitored($0, context) }
     }
 
     @ViewBuilder private var trailingSlot: some View {
@@ -132,15 +238,20 @@ struct EditorTabView: View {
                     .fill(Islands.secondaryForeground)
                     .frame(width: 6, height: 6)
             }
-            if showsCloseButton {
+            if isPinned {
+                EditorTabPinButton(
+                    unpinAction: interaction.unpinTab,
+                    isHoveringClose: $interaction.isHoveringClose
+                )
+            } else if showsCloseButton {
                 EditorTabCloseButton(
-                    closeAction: closeAction,
+                    closeAction: interaction.closeTab,
                     closeButtonGestureActive: $closeButtonGestureActive,
-                    isHoveringClose: $isHoveringClose
+                    isHoveringClose: $interaction.isHoveringClose
                 )
             }
         }
-        .frame(width: isDocumentEdited && showsCloseButton ? 20 : 16, height: 16)
+        .frame(width: isDocumentEdited && (showsCloseButton || isPinned) ? 20 : 16, height: 16)
     }
 
     var body: some View {
@@ -179,28 +290,9 @@ struct EditorTabView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isStaticText)
         .accessibilityLabel(tabFile.name)
-        .onHover { hover in
-            isHovering = hover
-            if !hover {
-                isHoveringClose = false
-            }
-            DispatchQueue.main.async {
-                if hover {
-                    NSCursor.arrow.push()
-                } else {
-                    NSCursor.pop()
-                }
-            }
-        }
+        .onHover(perform: interaction.hoverChanged)
         .onAppear {
-            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { event in
-                if self.isHovering && event.type == .otherMouseDown && event.buttonNumber == 2 {
-                    DispatchQueue.main.async {
-                        editor.closeTab(file: tabFile)
-                    }
-                }
-                return event
-            }
+            keyMonitor = middleClickMonitor()
         }
         .onDisappear {
             if let keyMonitor = keyMonitor {
@@ -210,42 +302,23 @@ struct EditorTabView: View {
         }
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
-                .onChanged({ _ in
-                    if !isHoveringClose {
-                        isPressing = true
-                    }
-                })
-                .onEnded({ _ in
-                    if isPressing {
-                        switchAction()
-                    }
-                    isPressing = false
-                })
+                .onChanged(interaction.dragChanged)
+                .onEnded(interaction.dragEnded)
         )
         .simultaneousGesture(
             TapGesture(count: 2)
-                .onEnded { _ in
-                    if isTemporary {
-                        editor.temporaryTab = nil
-                    }
-                }
+                .onEnded(interaction.doubleTapEnded)
         )
-        .zIndex(isActive ? 2 : (isDragging ? 3 : (isPressing ? 1 : 0)))
+        .zIndex(isActive ? 2 : (isDragging ? 3 : (interaction.isPressing ? 1 : 0)))
         .id(tabFile.id)
         .tabBarContextMenu(item: tabFile, isTemporary: isTemporary)
         .accessibilityElement(children: .contain)
         .onAppear {
+            interaction.context = context
             workspace.workspaceFileManager?.addObserver(fileObserver)
-            isDocumentEdited = tabFile.fileDocument?.isDocumentEdited ?? false
         }
         .onDisappear {
             workspace.workspaceFileManager?.removeObserver(fileObserver)
         }
-        .onReceive(tabFile.fileDocumentPublisher) { _ in
-            isDocumentEdited = tabFile.fileDocument?.isDocumentEdited ?? false
-        }
-        .onReceive(
-            tabFile.fileDocument?.isDocumentEditedPublisher.eraseToAnyPublisher() ?? Empty().eraseToAnyPublisher()
-        ) { isDocumentEdited = $0 }
     }
 }

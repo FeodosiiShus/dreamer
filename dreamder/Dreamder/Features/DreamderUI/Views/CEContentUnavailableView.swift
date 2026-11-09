@@ -28,16 +28,16 @@ struct CEContentUnavailableView<Actions: View>: View {
     var contentUnavailableView: some View {
         VStack(spacing: 14) {
             VStack(spacing: 5) {
-                if systemImage != nil {
-                    Image(systemName: systemImage ?? "questionmark.app.dashed")
+                if let systemImage {
+                    Image(systemName: systemImage)
                         .font(.system(size: 28))
                         .foregroundStyle(.tertiary)
                         .padding(.bottom, 8)
                 }
                 Text(label)
                     .font(.system(size: 16.5, weight: systemImage != nil ? .bold : .regular))
-                if description != nil {
-                    Text(description ?? "")
+                if let description {
+                    Text(description)
                         .font(.system(size: 10))
                         .multilineTextAlignment(.center)
                 }

@@ -1,5 +1,5 @@
 {
-  "originHash" : "5a947deecc8626e5bd12f03d730152435da012a2dd6f25a09e055056b7e80176",
+  "originHash" : "460d173007f8a9b370f893532945eb30cd0986e2d5c091cfec789f4c0e94f7d7",
   "pins" : [
     {
       "identity" : "aboutwindow",
@@ -200,24 +200,6 @@
       }
     },
     {
-      "identity" : "swift-snapshot-testing",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/pointfreeco/swift-snapshot-testing.git",
-      "state" : {
-        "revision" : "bb0ea08db8e73324fe6c3727f755ca41a23ff2f4",
-        "version" : "1.14.2"
-      }
-    },
-    {
-      "identity" : "swift-syntax",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/apple/swift-syntax.git",
-      "state" : {
-        "revision" : "64889f0c732f210a935a0ad7cda38f77f876262d",
-        "version" : "509.1.1"
-      }
-    },
-    {
       "identity" : "swiftlintplugin",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/lukepistrol/SwiftLintPlugin",
@@ -278,15 +260,6 @@
       "state" : {
         "revision" : "f2f197b6b27ce75c280c20f131d4f71e906b86f7",
         "version" : "0.25.8"
-      }
-    },
-    {
-      "identity" : "welcomewindow",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/CodeEditApp/WelcomeWindow",
-      "state" : {
-        "revision" : "cbd5c0d6f432449e2a8618e2b24e4691acbfcc98",
-        "version" : "1.1.0"
       }
     },
     {

@@ -8,21 +8,34 @@
 import SwiftUI
 
 struct MainCommands: Commands {
-    @Environment(\.openWindow)
-    var openWindow
-
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
-            Button("About Dreamder") {
-                openWindow(sceneID: .about)
-            }
+            SceneButton(title: "About Dreamder", scene: .about)
+                .keymapShortcut(.about)
         }
 
         CommandGroup(replacing: .appSettings) {
-            Button("Settings...") {
-                openWindow(sceneID: .settings)
+            SceneButton(title: "Settings...", scene: .settings)
+                .keymapShortcut(.settings)
+        }
+    }
+}
+
+struct SceneButton: View {
+    let title: String
+    let scene: SceneID
+    var open: (@MainActor (SceneID) -> Void)?
+
+    @Environment(\.openWindow)
+    var openWindow
+
+    var body: some View {
+        Button(title) {
+            if let open {
+                open(scene)
+            } else {
+                openWindow(sceneID: scene)
             }
-            .keyboardShortcut(",")
         }
     }
 }

@@ -9,7 +9,7 @@ import Testing
 import Foundation
 @testable import Dreamder
 
-@Suite()
+@Suite(.uiGate)
 @MainActor
 struct RegistryTests {
     private static let fixture = #"""

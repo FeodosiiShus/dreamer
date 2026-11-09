@@ -13,9 +13,7 @@
 		302AD7FF2D8054D500231E16 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 30818CB42D4E563900967860 /* ZIPFoundation */; };
 		30CB64912C16CA8100CC8A9E /* LanguageServerProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 30CB64902C16CA8100CC8A9E /* LanguageServerProtocol */; };
 		30CB64942C16CA9100CC8A9E /* LanguageClient in Frameworks */ = {isa = PBXBuildFile; productRef = 30CB64932C16CA9100CC8A9E /* LanguageClient */; };
-		583E529C29361BAB001AB554 /* SnapshotTesting in Frameworks */ = {isa = PBXBuildFile; productRef = 583E529B29361BAB001AB554 /* SnapshotTesting */; };
 		5E4485612DF600D9008BBE69 /* AboutWindow in Frameworks */ = {isa = PBXBuildFile; productRef = 5E4485602DF600D9008BBE69 /* AboutWindow */; };
-		5EACE6222DF4BF08005E08B8 /* WelcomeWindow in Frameworks */ = {isa = PBXBuildFile; productRef = 5EACE6212DF4BF08005E08B8 /* WelcomeWindow */; };
 		6C0617D62BDB4432008C9C42 /* LogStream in Frameworks */ = {isa = PBXBuildFile; productRef = 6C0617D52BDB4432008C9C42 /* LogStream */; };
 		6C0824A12C5C0C9700A0751E /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 6C0824A02C5C0C9700A0751E /* SwiftTerm */; };
 		6C147C4529A329350089B630 /* OrderedCollections in Frameworks */ = {isa = PBXBuildFile; productRef = 6C147C4429A329350089B630 /* OrderedCollections */; };
@@ -92,16 +90,6 @@
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		6C6BD6FD29CD154900235D17 /* Embed ExtensionKit ExtensionPoint */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "$(EXTENSIONS_FOLDER_PATH)";
-			dstSubfolderSpec = 16;
-			files = (
-			);
-			name = "Embed ExtensionKit ExtensionPoint";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -135,18 +123,8 @@
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
-/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
-		B62454492D78A3CC009A86D1 /* PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet */ = {
-			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
-			buildPhase = 6C6BD6FD29CD154900235D17 /* Embed ExtensionKit ExtensionPoint */;
-			membershipExceptions = (
-				Features/Extensions/dreamder.extension.appextensionpoint,
-			);
-		};
-/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		B624520B2D78A3CC009A86D1 /* Dreamder */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (B62454482D78A3CC009A86D1 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, B62454492D78A3CC009A86D1 /* PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = Dreamder; sourceTree = "<group>"; };
+		B624520B2D78A3CC009A86D1 /* Dreamder */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (B62454482D78A3CC009A86D1 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = Dreamder; sourceTree = "<group>"; };
 		B624544F2D78A3D3009A86D1 /* Configs */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Configs; sourceTree = "<group>"; };
 		B62454602D78A3D4009A86D1 /* DreamderUITests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = DreamderUITests; sourceTree = "<group>"; };
 		B62454A32D78A3D4009A86D1 /* DreamderTests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = DreamderTests; sourceTree = "<group>"; };
@@ -186,7 +164,6 @@
 				6C73A6D32D4F1E550012D95C /* CodeEditSourceEditor in Frameworks */,
 				2816F594280CF50500DD548B /* CodeEditSymbols in Frameworks */,
 				30CB64942C16CA9100CC8A9E /* LanguageClient in Frameworks */,
-				5EACE6222DF4BF08005E08B8 /* WelcomeWindow in Frameworks */,
 				6C6BD6F829CD14D100235D17 /* CodeEditKit in Frameworks */,
 				6C0824A12C5C0C9700A0751E /* SwiftTerm in Frameworks */,
 				6C81916B29B41DD300B75C92 /* DequeModule in Frameworks */,
@@ -199,7 +176,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				583E529C29361BAB001AB554 /* SnapshotTesting in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -291,7 +267,6 @@
 				04ADA0CC27E6043B00BF00B2 /* Add TODO/FIXME as warnings | Run Script */,
 				04C3255A2801B43A00C8DA2D /* Embed Frameworks */,
 				2BE487F528245162003F3F64 /* Embed Foundation Extensions */,
-				6C6BD6FD29CD154900235D17 /* Embed ExtensionKit ExtensionPoint */,
 			);
 			buildRules = (
 			);
@@ -322,7 +297,6 @@
 				6CC00A8A2CBEF150004E8134 /* CodeEditSourceEditor */,
 				30818CB42D4E563900967860 /* ZIPFoundation */,
 				6C73A6D22D4F1E550012D95C /* CodeEditSourceEditor */,
-				5EACE6212DF4BF08005E08B8 /* WelcomeWindow */,
 				5E4485602DF600D9008BBE69 /* AboutWindow */,
 				6C315FC72E05E33D0011BFC5 /* CodeEditSourceEditor */,
 				6C76D6D32E15B91E00EF52C3 /* CodeEditSourceEditor */,
@@ -351,7 +325,6 @@
 			);
 			name = DreamderTests;
 			packageProductDependencies = (
-				583E529B29361BAB001AB554 /* SnapshotTesting */,
 			);
 			productName = DreamderTests;
 			productReference = B658FB3D27DA9E1000EA4DBD /* DreamderTests.xctest */;
@@ -418,7 +391,6 @@
 			packageReferences = (
 				2816F592280CF50500DD548B /* XCRemoteSwiftPackageReference "CodeEditSymbols" */,
 				287136B1292A407E00E9F5F4 /* XCRemoteSwiftPackageReference "SwiftLintPlugin" */,
-				583E529A29361BAB001AB554 /* XCRemoteSwiftPackageReference "swift-snapshot-testing" */,
 				6C147C4329A329350089B630 /* XCRemoteSwiftPackageReference "swift-collections" */,
 				6C6BD6F229CD142C00235D17 /* XCRemoteSwiftPackageReference "collectionconcurrencykit" */,
 				6C66C31129D05CC800DE9ED2 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
@@ -429,7 +401,6 @@
 				303E88462C276FD600EEA8D9 /* XCRemoteSwiftPackageReference "LanguageServerProtocol" */,
 				6CB94D012CA1205100E8651C /* XCRemoteSwiftPackageReference "swift-async-algorithms" */,
 				30ED7B722DD299E600ACC922 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
-				5EACE6202DF4BF08005E08B8 /* XCRemoteSwiftPackageReference "WelcomeWindow" */,
 				5E44855F2DF600D9008BBE69 /* XCRemoteSwiftPackageReference "AboutWindow" */,
 				6C76D6D22E15B91E00EF52C3 /* XCRemoteSwiftPackageReference "CodeEditSourceEditor" */,
 				6CCF73CE2E26DE3200B94F75 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
@@ -1755,25 +1726,9 @@
 				minimumVersion = 0.9.19;
 			};
 		};
-		583E529A29361BAB001AB554 /* XCRemoteSwiftPackageReference "swift-snapshot-testing" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/pointfreeco/swift-snapshot-testing.git";
-			requirement = {
-				kind = upToNextMinorVersion;
-				minimumVersion = 1.14.2;
-			};
-		};
 		5E44855F2DF600D9008BBE69 /* XCRemoteSwiftPackageReference "AboutWindow" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/CodeEditApp/AboutWindow";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.0;
-			};
-		};
-		5EACE6202DF4BF08005E08B8 /* XCRemoteSwiftPackageReference "WelcomeWindow" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/CodeEditApp/WelcomeWindow";
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 1.0.0;
@@ -1882,20 +1837,10 @@
 			package = 30CB64922C16CA9100CC8A9E /* XCRemoteSwiftPackageReference "LanguageClient" */;
 			productName = LanguageClient;
 		};
-		583E529B29361BAB001AB554 /* SnapshotTesting */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 583E529A29361BAB001AB554 /* XCRemoteSwiftPackageReference "swift-snapshot-testing" */;
-			productName = SnapshotTesting;
-		};
 		5E4485602DF600D9008BBE69 /* AboutWindow */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 5E44855F2DF600D9008BBE69 /* XCRemoteSwiftPackageReference "AboutWindow" */;
 			productName = AboutWindow;
-		};
-		5EACE6212DF4BF08005E08B8 /* WelcomeWindow */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 5EACE6202DF4BF08005E08B8 /* XCRemoteSwiftPackageReference "WelcomeWindow" */;
-			productName = WelcomeWindow;
 		};
 		6C0617D52BDB4432008C9C42 /* LogStream */ = {
 			isa = XCSwiftPackageProductDependency;

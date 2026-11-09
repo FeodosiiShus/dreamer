@@ -3,13 +3,29 @@ import SwiftUI
 struct ProjectToolbarWidget: View {
     let workspace: WorkspaceDocument
 
-    @State private var isHovering = false
-    @State private var menuAnchor = MainToolbarMenuAnchor()
+    @State private var hover: MainToolbarHoverState
+    @State private var menuAnchor: MainToolbarMenuAnchor
+
+    init(
+        workspace: WorkspaceDocument,
+        menuAnchor: MainToolbarMenuAnchor = MainToolbarMenuAnchor(),
+        hover: MainToolbarHoverState = MainToolbarHoverState()
+    ) {
+        self.workspace = workspace
+        _menuAnchor = State(initialValue: menuAnchor)
+        _hover = State(initialValue: hover)
+    }
+
+    func showMenu() {
+        Self.presentMenu(on: menuAnchor)
+    }
+
+    static func presentMenu(on anchor: MainToolbarMenuAnchor) {
+        anchor.present(MainToolbarMenuActions.shared.projectMenu(window: anchor.view?.window))
+    }
 
     private var projectName: String {
-        workspace.workspaceFileManager?.folderUrl.lastPathComponent
-            ?? workspace.displayName
-            ?? "Empty"
+        workspace.workspaceFileManager?.folderUrl.lastPathComponent ?? workspace.displayName
     }
 
     var body: some View {
@@ -27,15 +43,11 @@ struct ProjectToolbarWidget: View {
         .padding(.leading, 6)
         .padding(.trailing, 10)
         .frame(height: Islands.toolbarControlHeight)
-        .mainToolbarGlass(isHovering: isHovering)
+        .mainToolbarGlass(isHovering: hover.isHovering)
         .background(MainToolbarMenuAnchorView(anchor: menuAnchor))
         .contentShape(Capsule())
-        .onTapGesture {
-            menuAnchor.present(
-                MainToolbarMenuActions.shared.projectMenu(window: menuAnchor.view?.window)
-            )
-        }
-        .onHover { isHovering = $0 }
+        .onTapGesture(perform: showMenu)
+        .onHover(perform: hover.setHovering)
         .help("Project")
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Project")

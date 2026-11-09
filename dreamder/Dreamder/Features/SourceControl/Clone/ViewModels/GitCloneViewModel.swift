@@ -8,6 +8,14 @@
 import Foundation
 import AppKit
 
+struct GitCloneServices {
+    var processRunner: any ProcessRunning = ProcessRunner()
+    var clipboardText: @MainActor () -> String? = { NSPasteboard.general.string(forType: .string) }
+    var filePanels: any FilePanelPresenting = SystemFilePanels()
+    var presentAlert: @MainActor (NSAlert) -> Void = { _ = $0.runModal() }
+    var makeGitClient: @MainActor (URL) -> GitClient = { GitClient(directoryURL: $0, shellClient: .live()) }
+}
+
 @Observable
 class GitCloneViewModel {
     var repoUrlStr = ""
@@ -15,7 +23,12 @@ class GitCloneViewModel {
     var cloningProgress: GitClient.CloneProgress = .init(progress: 0, state: .initialState)
 
     @ObservationIgnored var gitClient: GitClient?
-    @ObservationIgnored var cloningTask: Task<Void, Error>?
+    @ObservationIgnored var cloningTask: Task<Void, Never>?
+    @ObservationIgnored private let services: GitCloneServices
+
+    init(services: GitCloneServices = GitCloneServices()) {
+        self.services = services
+    }
 
     /// Check if url is valid
     /// - Parameter url: Url to check
@@ -34,33 +47,33 @@ class GitCloneViewModel {
     }
     /// Check if Git is installed
     /// - Returns: True if Git is found by running "which git" command
-    func isGitInstalled() -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-        process.arguments = ["git"]
-        let pipe = Pipe.closingOnExec()
-        process.standardOutput = pipe
-        do {
-            try process.run()
-            process.waitUntilExit()
-            return process.terminationStatus == 0
-        } catch {
-            return false
-        }
+    func isGitInstalled() async -> Bool {
+        let invocation = ProcessInvocation(executable: URL(fileURLWithPath: "/usr/bin/which"), arguments: ["git"])
+        return (try? await services.processRunner.run(invocation))?.succeeded == true
     }
 
     /// Check if clipboard contains git url
     func checkClipboard() {
-        if let url = NSPasteboard.general.pasteboardItems?.first?.string(forType: .string) {
-            if isValidUrl(url: url) {
-                self.repoUrlStr = url
-            }
+        if let url = services.clipboardText(), isValidUrl(url: url) {
+            self.repoUrlStr = url
         }
     }
 
     /// Clone repository
     func cloneRepository(completionHandler: @escaping (URL) -> Void) {
-        if !isGitInstalled() {
+        cloningTask = Task {
+            await prepareCloning(completionHandler: completionHandler)
+        }
+    }
+
+    func cancelCloning() {
+        cloningTask?.cancel()
+        cloningTask = nil
+        isCloning = false
+    }
+
+    private func prepareCloning(completionHandler: @escaping (URL) -> Void) async {
+        if await !isGitInstalled() {
             showAlert(
                 alertMsg: "Git installation not found.",
                 infoText: "Ensure Git is installed on your system and try again."
@@ -84,7 +97,7 @@ class GitCloneViewModel {
 
         // Strip .git from name if it has it.
         // Cloning repository without .git also works
-        if repoName.contains(".git") {
+        if repoName.hasSuffix(".git") {
             repoName.removeLast(4)
         }
 
@@ -92,8 +105,7 @@ class GitCloneViewModel {
             return
         }
 
-        var isDir: ObjCBool = true
-        if FileManager.default.fileExists(atPath: localPath.relativePath, isDirectory: &isDir) {
+        if FileManager.default.fileExists(atPath: localPath.relativePath) {
             showAlert(alertMsg: "Error", infoText: "Directory already exists")
             return
         }
@@ -109,15 +121,15 @@ class GitCloneViewModel {
             return
         }
 
-        gitClient = GitClient(directoryURL: localPath, shellClient: .live())
+        let gitClient = services.makeGitClient(localPath)
+        self.gitClient = gitClient
 
-        self.cloningTask = Task(priority: .background) {
-            await processCloning(
-                remoteUrl: remoteUrl,
-                localPath: localPath,
-                completionHandler: completionHandler
-            )
-        }
+        await processCloning(
+            gitClient: gitClient,
+            remoteUrl: remoteUrl,
+            localPath: localPath,
+            completionHandler: completionHandler
+        )
     }
 
     /// Process cloning
@@ -126,41 +138,34 @@ class GitCloneViewModel {
     ///   - localPath: Path to local folder
     ///   - completionHandler: Completion handler if cloning is successful
     private func processCloning(
+        gitClient: GitClient,
         remoteUrl: URL,
         localPath: URL,
         completionHandler: @escaping (URL) -> Void
     ) async {
-        guard let gitClient else { return }
-
-        setIsCloning(true)
+        isCloning = true
 
         do {
             for try await progress in gitClient.cloneRepository(remoteUrl: remoteUrl, localPath: localPath) {
-                await MainActor.run {
-                    self.cloningProgress = progress
-                }
+                cloningProgress = progress
             }
 
             if Task.isCancelled {
-                await MainActor.run {
-                    deleteTemporaryFolder(localPath: localPath)
-                }
+                deleteTemporaryFolder(localPath: localPath)
                 return
             }
 
             completionHandler(localPath)
         } catch {
-            await MainActor.run {
-                if let error = error as? GitClient.GitClientError {
-                    showAlert(alertMsg: "Failed to clone", infoText: error.description)
-                } else {
-                    showAlert(alertMsg: "Failed to clone", infoText: error.localizedDescription)
-                }
-                deleteTemporaryFolder(localPath: localPath)
+            if let error = error as? GitClient.GitClientError {
+                showAlert(alertMsg: "Failed to clone", infoText: error.description)
+            } else {
+                showAlert(alertMsg: "Failed to clone", infoText: error.localizedDescription)
             }
+            deleteTemporaryFolder(localPath: localPath)
         }
 
-        setIsCloning(false)
+        isCloning = false
     }
 
     private func deleteTemporaryFolder(localPath: URL) {
@@ -168,30 +173,18 @@ class GitCloneViewModel {
             try FileManager.default.removeItem(atPath: localPath.relativePath)
         } catch {
             showAlert(alertMsg: "Failed to delete folder", infoText: "\(error)")
-            return
         }
-    }
-
-    @MainActor
-    private func setIsCloning(_ newValue: Bool) {
-        self.isCloning = newValue
     }
 
     private func getPath(saveName: String) -> URL? {
-        let dialog = NSSavePanel()
-        dialog.showsHiddenFiles = false
-        dialog.showsTagField = false
-        dialog.prompt = "Clone"
-        dialog.nameFieldStringValue = saveName
-        dialog.nameFieldLabel = "Clone as"
-        dialog.title = "Clone a Repository"
-
-        guard dialog.runModal() == NSApplication.ModalResponse.OK,
-              let result = dialog.url else {
-            return nil
-        }
-
-        return result
+        let request = SavePanelRequest(
+            title: "Clone a Repository",
+            prompt: "Clone",
+            nameFieldLabel: "Clone as",
+            nameFieldStringValue: saveName,
+            showsTagField: false
+        )
+        return services.filePanels.chooseSaveLocation(request)
     }
 
     private func showAlert(alertMsg: String, infoText: String) {
@@ -200,6 +193,6 @@ class GitCloneViewModel {
         alert.informativeText = infoText
         alert.addButton(withTitle: "OK")
         alert.alertStyle = .warning
-        alert.runModal()
+        services.presentAlert(alert)
     }
 }

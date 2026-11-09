@@ -4,6 +4,7 @@ struct SplitDivider: View {
     static let hitThickness: CGFloat = 7
     static let nudgeStep: CGFloat = 10
     static let largeNudgeStep: CGFloat = 50
+    static let arrowKeys: Set<KeyEquivalent> = [.leftArrow, .rightArrow, .upArrow, .downArrow]
 
     let axis: Axis
     let style: DreamderDividerStyle
@@ -26,34 +27,25 @@ struct SplitDivider: View {
             .pointerStyle(isRow ? PointerStyle.columnResize : PointerStyle.rowResize)
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                    .onChanged { value in
-                        onDrag(isRow ? value.translation.width : value.translation.height)
-                    }
-                    .onEnded { _ in onDragEnd() }
+                    .onChanged(reading(\.translation, into: drag))
+                    .onEnded(discarding(onDragEnd))
             )
-            .simultaneousGesture(TapGesture(count: 2).onEnded { onEqualize() })
+            .simultaneousGesture(TapGesture(count: 2).onEnded(discarding(onEqualize)))
             .focusable()
             .focusEffectDisabled()
-            .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow], phases: [.down, .repeat]) { press in
-                handleKey(press)
-            }
+            .onKeyPress(keys: Self.arrowKeys, phases: [.down, .repeat], action: reading(\.key, \.modifiers, into: handleKey))
             .accessibilityElement()
             .accessibilityLabel("Split divider")
-            .accessibilityAdjustableAction { direction in
-                switch direction {
-                case .increment:
-                    onNudge(Self.nudgeStep)
-                case .decrement:
-                    onNudge(-Self.nudgeStep)
-                @unknown default:
-                    break
-                }
-            }
+            .accessibilityAdjustableAction(adjust)
     }
 
-    private func handleKey(_ press: KeyPress) -> KeyPress.Result {
-        let step = press.modifiers.contains(.shift) ? Self.largeNudgeStep : Self.nudgeStep
-        switch (isRow, press.key) {
+    func drag(_ translation: CGSize) {
+        onDrag(isRow ? translation.width : translation.height)
+    }
+
+    func handleKey(_ key: KeyEquivalent, _ modifiers: EventModifiers) -> KeyPress.Result {
+        let step = modifiers.contains(.shift) ? Self.largeNudgeStep : Self.nudgeStep
+        switch (isRow, key) {
         case (true, .leftArrow), (false, .upArrow):
             onNudge(-step)
             return .handled
@@ -63,5 +55,13 @@ struct SplitDivider: View {
         default:
             return .ignored
         }
+    }
+
+    func adjust(_ direction: AccessibilityAdjustmentDirection) {
+        _ = Self.adjustmentDelta(direction).map(onNudge)
+    }
+
+    static func adjustmentDelta(_ direction: AccessibilityAdjustmentDirection) -> CGFloat? {
+        direction == .increment ? nudgeStep : (direction == .decrement ? -nudgeStep : nil)
     }
 }

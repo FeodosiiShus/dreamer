@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import Dreamder
@@ -119,33 +120,20 @@ struct BranchesCompareCommitListTests {
 }
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct BranchesCompareViewModelTests {
-    private nonisolated static func mutate(
-        _ fixture: GitMergeFixture,
-        _ body: @escaping @Sendable (GitMergeFixture) throws -> Void
-    ) async throws {
-        _ = try await GitMergeFixture.offMain {
-            try body(fixture)
-            return fixture
-        }
-    }
-
     private func makeDivergedRepository(_ dir: URL) async throws -> (GitMergeFixture, SourceControlManager) {
-        let fixture = try await GitMergeFixture.offMain {
-            let fixture = try GitMergeFixture(root: dir)
-            try fixture.write("a.txt", "base\n")
-            try fixture.commit("base commit")
-            try fixture.run("checkout", "-q", "-b", "feature")
-            try fixture.write("feature.txt", "one\n")
-            try fixture.commit("feature one")
-            try fixture.write("feature.txt", "two\n")
-            try fixture.commit("feature two")
-            try fixture.run("checkout", "-q", "main")
-            try fixture.write("main.txt", "main\n")
-            try fixture.commit("main only")
-            return fixture
-        }
+        let fixture = try await GitMergeFixture(root: dir)
+        try fixture.write("a.txt", "base\n")
+        try await fixture.commit("base commit")
+        try await fixture.run("checkout", "-q", "-b", "feature")
+        try fixture.write("feature.txt", "one\n")
+        try await fixture.commit("feature one")
+        try fixture.write("feature.txt", "two\n")
+        try await fixture.commit("feature two")
+        try await fixture.run("checkout", "-q", "main")
+        try fixture.write("main.txt", "main\n")
+        try await fixture.commit("main only")
         return (fixture, SourceControlManager(workspaceURL: dir, editorManager: EditorManager()))
     }
 
@@ -185,8 +173,8 @@ struct BranchesCompareViewModelTests {
             #expect(model.errorMessage == nil)
             #expect(model.isLoading == false)
 
-            let featureHead = try fixture.run("rev-parse", "feature").trimmingCharacters(in: .whitespacesAndNewlines)
-            let mainHead = try fixture.run("rev-parse", "main").trimmingCharacters(in: .whitespacesAndNewlines)
+            let featureHead = try await fixture.run("rev-parse", "feature").trimmingCharacters(in: .whitespacesAndNewlines)
+            let mainHead = try await fixture.run("rev-parse", "main").trimmingCharacters(in: .whitespacesAndNewlines)
             let branchOnlyHash = try #require(model.branchOnly.first?.hash)
             let currentOnlyHash = try #require(model.currentOnly.first?.hash)
             #expect(featureHead.hasPrefix(branchOnlyHash))
@@ -202,7 +190,7 @@ struct BranchesCompareViewModelTests {
 
             await model.load()
 
-            let expectedDate = try fixture
+            let expectedDate = try await fixture
                 .run("log", "-1", "--format=%ad", "--date=short", "feature")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let commit = try #require(model.branchOnly.first)
@@ -228,12 +216,10 @@ struct BranchesCompareViewModelTests {
     func subjectsContainingPipesSurviveTheRoundTripThroughGit() async throws {
         try await withTempDir { dir in
             let (fixture, manager) = try await makeDivergedRepository(dir)
-            try await Self.mutate(fixture) { fixture in
-                try fixture.run("checkout", "-q", "feature")
-                try fixture.write("pipe.txt", "p\n")
-                try fixture.commit("fix a|b handling")
-                try fixture.run("checkout", "-q", "main")
-            }
+            try await fixture.run("checkout", "-q", "feature")
+            try fixture.write("pipe.txt", "p\n")
+            try await fixture.commit("fix a|b handling")
+            try await fixture.run("checkout", "-q", "main")
             let model = BranchesCompareViewModel(manager: manager, branch: "feature", current: "main")
 
             await model.load()
@@ -287,12 +273,10 @@ struct BranchesCompareViewModelTests {
             #expect(model.isLoading == false)
             #expect(model.branchOnly.isEmpty)
 
-            try await Self.mutate(fixture) { fixture in
-                try fixture.run("checkout", "-q", "-b", "later")
-                try fixture.write("later.txt", "l\n")
-                try fixture.commit("later commit")
-                try fixture.run("checkout", "-q", "main")
-            }
+            try await fixture.run("checkout", "-q", "-b", "later")
+            try fixture.write("later.txt", "l\n")
+            try await fixture.commit("later commit")
+            try await fixture.run("checkout", "-q", "main")
             await model.load()
 
             #expect(model.errorMessage == nil)
@@ -300,5 +284,234 @@ struct BranchesCompareViewModelTests {
             #expect(model.currentOnly.isEmpty)
             #expect(model.isLoading == false)
         }
+    }
+
+    @Test
+    func cancelledLoadReportsTheSystemDescriptionOfTheError() async throws {
+        try await withTempDir { dir in
+            let manager = SourceControlManager(workspaceURL: dir, editorManager: EditorManager())
+            let model = BranchesCompareViewModel(manager: manager, branch: "feature", current: "main")
+
+            let load = Task { @MainActor in await model.load() }
+            load.cancel()
+            await load.value
+
+            #expect(model.errorMessage == CancellationError().localizedDescription)
+            #expect(model.isLoading == false)
+            #expect(model.branchOnly.isEmpty)
+            #expect(model.currentOnly.isEmpty)
+        }
+    }
+}
+
+extension BranchesCompareViewModelTests {
+    @Test
+    func hostedViewLoadsTheDivergedCommitsOfBothSides() async throws {
+        try await withTempDir { dir in
+            let (_, manager) = try await makeDivergedRepository(dir)
+            let model = BranchesCompareViewModel(manager: manager, branch: "feature", current: "main")
+            let hosted = HostedViewFixture.host { BranchesCompareView(model: model) }
+            defer { hosted.close() }
+
+            try await eventually { model.isLoading == false }
+            try await hosted.settle()
+
+            #expect(model.branchOnly.map(\.subject) == ["feature two", "feature one"])
+            #expect(model.currentOnly.map(\.subject) == ["main only"])
+            #expect(model.errorMessage == nil)
+        }
+    }
+
+    @Test
+    func hostedViewOfIdenticalBranchesHasNothingToList() async throws {
+        try await withTempDir { dir in
+            let (_, manager) = try await makeDivergedRepository(dir)
+            let model = BranchesCompareViewModel(manager: manager, branch: "main", current: "main")
+            let hosted = HostedViewFixture.host { BranchesCompareView(model: model) }
+            defer { hosted.close() }
+
+            try await eventually { model.isLoading == false }
+            try await hosted.settle()
+
+            #expect(model.branchOnly.isEmpty)
+            #expect(model.currentOnly.isEmpty)
+            #expect(model.errorMessage == nil)
+        }
+    }
+
+    @Test
+    func hostedViewOutsideARepositoryKeepsTheErrorAndNoCommits() async throws {
+        try await withTempDir { dir in
+            let manager = SourceControlManager(workspaceURL: dir, editorManager: EditorManager())
+            let model = BranchesCompareViewModel(manager: manager, branch: "feature", current: "main")
+            let hosted = HostedViewFixture.host { BranchesCompareView(model: model) }
+            defer { hosted.close() }
+
+            try await eventually { model.isLoading == false }
+            try await hosted.settle()
+
+            #expect(model.errorMessage == "Not a git repository")
+            #expect(model.branchOnly.isEmpty)
+            #expect(model.currentOnly.isEmpty)
+        }
+    }
+
+    @Test
+    func hostedViewRendersTheLoadingStateBeforeTheCommitsArrive() async throws {
+        try await withTempDir { dir in
+            let (_, manager) = try await makeDivergedRepository(dir)
+            let model = BranchesCompareViewModel(manager: manager, branch: "feature", current: "main")
+            let hosted = HostedViewFixture.host { BranchesCompareView(model: model) }
+            defer { hosted.close() }
+
+            hosted.layout()
+            #expect(model.isLoading)
+            #expect(model.branchOnly.isEmpty)
+
+            try await eventually { model.isLoading == false }
+            try await hosted.settle()
+            #expect(model.branchOnly.count == 2)
+        }
+    }
+}
+
+@MainActor
+@Suite(.serialized, .uiGate)
+struct BranchesCompareWindowTests {
+    private func makeController(
+        in dir: URL,
+        branch: String = "feature",
+        current: String = "main"
+    ) -> BranchesCompareWindowController {
+        let manager = SourceControlManager(workspaceURL: dir, editorManager: EditorManager())
+        let model = BranchesCompareViewModel(manager: manager, branch: branch, current: current)
+        return BranchesCompareWindowController(model: model)
+    }
+
+    private func visibleWindows(titled title: String) -> [NSWindow] {
+        NSApp.windows.filter { $0.title == title && $0.isVisible }
+    }
+
+    @Test
+    func windowIsTitledAfterTheComparisonAndStyledDark() throws {
+        try withTempDir { dir in
+            let controller = makeController(in: dir, branch: "feature/x", current: "main")
+            let window = try #require(controller.window)
+
+            #expect(window.title == "Comparing feature/x with main")
+            #expect(window.delegate === controller)
+            #expect(window.appearance?.name == .darkAqua)
+            #expect(window.isReleasedWhenClosed == false)
+            #expect(window.styleMask.contains(.resizable))
+            #expect(window.styleMask.contains(.closable))
+        }
+    }
+
+    @Test
+    func closingTheWindowNotifiesTheOwnerOnce() throws {
+        try withTempDir { dir in
+            let controller = makeController(in: dir)
+            let window = try #require(controller.window)
+            var closed = 0
+            controller.onClose = { closed += 1 }
+            controller.showWindow(nil)
+
+            window.close()
+
+            #expect(closed == 1)
+        }
+    }
+
+    @Test
+    func placeCentersTheWindowOnItsParent() throws {
+        try withTempDir { dir in
+            let controller = makeController(in: dir)
+            let window = try #require(controller.window)
+            let parent = NSWindow(
+                contentRect: NSRect(x: 300, y: 400, width: 1000, height: 700),
+                styleMask: [.titled],
+                backing: .buffered,
+                defer: false
+            )
+            parent.isReleasedWhenClosed = false
+
+            controller.place(relativeTo: parent)
+
+            #expect(abs(window.frame.midX - parent.frame.midX) < 1)
+            #expect(abs(window.frame.midY - parent.frame.midY) < 1)
+        }
+    }
+
+    @Test
+    func placeWithoutAParentCentersTheWindowOnTheMainScreen() throws {
+        guard let screen = NSScreen.main else { return }
+        try withTempDir { dir in
+            let controller = makeController(in: dir)
+            let window = try #require(controller.window)
+
+            controller.place(relativeTo: nil)
+
+            #expect(abs(window.frame.midX - screen.visibleFrame.midX) < 1)
+            #expect(abs(window.frame.midY - screen.visibleFrame.midY) < 1)
+        }
+    }
+
+    @Test
+    func presenterKeepsOneWindowPerComparisonAndForgetsClosedOnes() throws {
+        try withTempDir { dir in
+            let workspace = try HostedViewFixture.makeWorkspace(in: dir)
+            defer { workspace.close() }
+            let suffix = UUID().uuidString
+            let first = "feature-\(suffix)"
+            let second = "release-\(suffix)"
+            let firstTitle = "Comparing \(first) with main"
+            let secondTitle = "Comparing \(second) with main"
+            defer {
+                for window in visibleWindows(titled: firstTitle) + visibleWindows(titled: secondTitle) {
+                    window.close()
+                }
+            }
+
+            BranchesComparePresenter.show(workspace: workspace, branch: first, current: "main")
+            let opened = try #require(visibleWindows(titled: firstTitle).first)
+            #expect(visibleWindows(titled: firstTitle).count == 1)
+
+            BranchesComparePresenter.show(workspace: workspace, branch: first, current: "main")
+            #expect(visibleWindows(titled: firstTitle).count == 1)
+            #expect(visibleWindows(titled: firstTitle).first === opened)
+
+            BranchesComparePresenter.show(workspace: workspace, branch: second, current: "main")
+            #expect(visibleWindows(titled: secondTitle).count == 1)
+            #expect(visibleWindows(titled: firstTitle).count == 1)
+
+            opened.close()
+            #expect(visibleWindows(titled: firstTitle).isEmpty)
+
+            BranchesComparePresenter.show(workspace: workspace, branch: first, current: "main")
+            let reopened = try #require(visibleWindows(titled: firstTitle).first)
+            #expect(reopened !== opened)
+        }
+    }
+
+    @Test
+    func presenterDoesNothingWithoutASourceControlManager() throws {
+        try withTempDir { dir in
+            let workspace = try HostedViewFixture.makeWorkspace(in: dir)
+            defer { workspace.close() }
+            workspace.sourceControlManager = nil
+            let branch = "orphan-\(UUID().uuidString)"
+
+            BranchesComparePresenter.show(workspace: workspace, branch: branch, current: "main")
+
+            #expect(visibleWindows(titled: "Comparing \(branch) with main").isEmpty)
+        }
+    }
+
+    @Test
+    func controllerCannotBeDecoded() throws {
+        let data = try NSKeyedArchiver.archivedData(withRootObject: NSString(string: "x"), requiringSecureCoding: false)
+        let decoder = try NSKeyedUnarchiver(forReadingFrom: data)
+
+        #expect(BranchesCompareWindowController(coder: decoder) == nil)
     }
 }

@@ -1,17 +1,38 @@
 import SwiftUI
 
 struct AppearanceSettingsView: View {
-    @AppStorage(Islands.densityKey)
-    private var density = Islands.Density.compact.rawValue
+    @AppStorage private var density: String
 
-    @AppStorage(Islands.BackgroundImageKey.path)
-    private var imagePath = ""
+    @AppStorage private var imagePath: String
 
-    @AppStorage(Islands.BackgroundImageKey.opacity)
-    private var imageOpacity = Islands.BackgroundImageKey.defaultOpacity
+    @AppStorage private var imageOpacity: Double
 
-    @AppStorage(Islands.BackgroundImageKey.fill)
-    private var fillMode = BackgroundImageFill.fill.rawValue
+    @AppStorage private var fillMode: String
+
+    private let panels: any FilePanelPresenting
+
+    init(
+        defaults: UserDefaults = .standard,
+        panels: any FilePanelPresenting = SystemFilePanels()
+    ) {
+        self._density = AppStorage(
+            wrappedValue: Islands.Density.compact.rawValue,
+            Islands.densityKey,
+            store: defaults
+        )
+        self._imagePath = AppStorage(wrappedValue: "", Islands.BackgroundImageKey.path, store: defaults)
+        self._imageOpacity = AppStorage(
+            wrappedValue: Islands.BackgroundImageKey.defaultOpacity,
+            Islands.BackgroundImageKey.opacity,
+            store: defaults
+        )
+        self._fillMode = AppStorage(
+            wrappedValue: BackgroundImageFill.fill.rawValue,
+            Islands.BackgroundImageKey.fill,
+            store: defaults
+        )
+        self.panels = panels
+    }
 
     static let searchKeys: [String] = [
         "Density",
@@ -64,16 +85,20 @@ struct AppearanceSettingsView: View {
 
     private var actionsRow: some View {
         HStack(spacing: 8) {
-            Button("Choose Image…") {
-                if let path = BackgroundImageSettings.chooseImage() {
-                    imagePath = path
-                }
-            }
-            Button("Clear") {
-                imagePath = ""
-            }
-            .disabled(imagePath.isEmpty)
+            Button("Choose Image…", action: chooseImage)
+            Button("Clear", action: clearImage)
+                .disabled(imagePath.isEmpty)
         }
+    }
+
+    func chooseImage() {
+        if let path = BackgroundImageSettings.chooseImage(panels: panels) {
+            imagePath = path
+        }
+    }
+
+    func clearImage() {
+        imagePath = ""
     }
 
     private var preview: some View {

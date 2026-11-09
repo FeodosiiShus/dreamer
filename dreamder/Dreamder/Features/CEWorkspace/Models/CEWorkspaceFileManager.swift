@@ -5,13 +5,17 @@
 //  Created by Matthijs Eikelenboom on 04/02/2023.
 //
 
-import Combine
 import Foundation
 import AppKit
 import OSLog
 
 protocol CEWorkspaceFileManagerObserver: AnyObject {
     func fileManagerUpdated(updatedItems: Set<CEWorkspaceFile>)
+    func fileManagerModifiedFiles(_ urls: Set<URL>)
+}
+
+extension CEWorkspaceFileManagerObserver {
+    func fileManagerModifiedFiles(_ urls: Set<URL>) {}
 }
 
 /// This class is used to load, modify, and listen to files on a user's machine.
@@ -47,6 +51,11 @@ final class CEWorkspaceFileManager {
     /// Maps all directories to it's children's paths.
     var childrenMap: [String: [String]] = [:]
     var fsEventStream: DirectoryEventStream?
+    var eventBatcher: FileEventBatcher?
+    var gitStatusPlan = GitStatusPlan()
+    var statusCarriers: Set<String> = []
+    var pendingLoads: Set<String> = []
+    let diagnostics: FileManagerDiagnostics
     var observers: NSHashTable<AnyObject> = .weakObjects()
 
     let folderUrl: URL
@@ -62,7 +71,8 @@ final class CEWorkspaceFileManager {
         folderUrl: URL,
         ignoredFilesAndFolders: Set<String>,
         fileManager: FileManager = FileManager.default,
-        sourceControlManager: SourceControlManager?
+        sourceControlManager: SourceControlManager?,
+        diagnostics: FileManagerDiagnostics = .silent
     ) {
         self.folderUrl = folderUrl
         self.ignoredFilesAndFolders = ignoredFilesAndFolders
@@ -71,21 +81,32 @@ final class CEWorkspaceFileManager {
         self.flattenedFileItems = [workspaceItem.id: workspaceItem]
         self.sourceControlManager = sourceControlManager
         self.fileManager = fileManager
+        self.diagnostics = diagnostics
 
-        self.loadChildrenForFile(self.workspaceItem)
-
-        fsEventStream = DirectoryEventStream(directory: self.folderUrl.path) { [weak self] events in
-            Task { @MainActor [weak self] in
-                self?.fileSystemEventReceived(events: events)
-            }
+        if let rootListing = try? DirectoryListing.read(
+            directoryID: workspaceItem.id,
+            at: workspaceItem.resolvedURL,
+            ignoring: ignoredFilesAndFolders,
+            diagnostics: diagnostics
+        ) {
+            applyListing(rootListing)
         }
 
-        Task {
-            do {
-                try await self.sourceControlManager?.validate()
-            } catch {
-                self.logger.error("Failed to validate source control: \(error.localizedDescription)")
-            }
+        let batcher = FileEventBatcher { [weak self] events in
+            await self?.processFileSystemEvents(events)
+        }
+        eventBatcher = batcher
+        fsEventStream = DirectoryEventStream(
+            directory: self.folderUrl.path,
+            exclusionPaths: exclusionPolicy().streamExclusionPaths()
+        ) { events in
+            batcher.submit(events)
+        }
+
+        Task { [weak self] in
+            guard let sourceControlManager = self?.sourceControlManager else { return }
+            await sourceControlManager.validate()
+            await sourceControlManager.refreshAllChangedFiles()
         }
     }
 
@@ -102,43 +123,37 @@ final class CEWorkspaceFileManager {
         _ path: String,
         createIfNotFound: Bool = false
     ) -> CEWorkspaceFile? {
+        let path = path.withoutTrailingSlashes
         if let file = flattenedFileItems[path] {
             return file
-        } else if createIfNotFound {
-            guard let url = URL(string: path, relativeTo: folderUrl) else {
-                return nil
+        }
+        guard createIfNotFound else { return nil }
+
+        let url = path.hasPrefix("/") ? URL(filePath: path) : URL(string: path, relativeTo: folderUrl)
+        guard let url, folderUrl.containsSubPath(url) else { return nil }
+
+        var current = workspaceItem
+        let components = url.pathComponents.dropFirst(folderUrl.pathComponents.count)
+        for (offset, component) in components.enumerated() {
+            let childURL = DirectoryListing.childURL(of: current.id, named: component)
+            let childID = childURL.relativePath
+            let isTarget = offset == components.count - 1
+            if let existing = flattenedFileItems[childID] {
+                current = existing
+            } else {
+                guard isTarget || isIndexableDirectory(named: component, atPath: childID) else { return nil }
+                let child = makeItem(id: childID, url: childURL, parent: current, isDirectory: isTarget ? nil : true)
+                childrenMap[current.id]?.append(childID)
+                current = child
             }
-
-            // If file is not in the `folderUrl` or subdirectories, exit.
-            guard folderUrl.containsSubPath(url) else {
-                return nil
-            }
-
-            // Drill down towards the file, indexing any directories needed.
-            let pathComponents = url.pathComponents.dropFirst(folderUrl.pathComponents.count)
-            var currentURL = folderUrl
-
-            for component in pathComponents {
-                currentURL.append(component: component)
-
-                if let file = flattenedFileItems[currentURL.relativePath], childrenMap[file.id] == nil {
-                    loadChildrenForFile(file)
+            if !isTarget {
+                guard current.isFolder else { return nil }
+                if childrenMap[current.id] == nil {
+                    requestChildren(of: current)
                 }
             }
-
-            if let file = flattenedFileItems[url.relativePath] {
-                return file
-            } else if let parent = getFile(currentURL.deletingLastPathComponent().path) {
-                // This catches the case where each parent dir has been loaded, their children cached, and this is a new
-                // file, so we still need to create it and add it to the cache.
-                let newFileItem = createChild(url, forParent: parent)
-                flattenedFileItems[newFileItem.id] = newFileItem
-                childrenMap[parent.id]?.append(newFileItem.id)
-                return newFileItem
-            }
         }
-
-        return nil
+        return current
     }
 
     /// Returns all children for the given file.
@@ -149,87 +164,83 @@ final class CEWorkspaceFileManager {
     func childrenOfFile(_ file: CEWorkspaceFile) -> [CEWorkspaceFile]? {
         if file.isFolder {
             if childrenMap[file.id] == nil {
-                // Load the children
-                loadChildrenForFile(file)
+                requestChildren(of: file)
             }
 
-            return childrenMap[file.id]?.compactMap { flattenedFileItems[$0] }
+            return childrenMap[file.id]?.compactMap { flattenedFileItems[$0] } ?? []
         }
 
         return nil
     }
 
-    /// Loads and caches all children for the given file item.
-    ///
-    /// After calling this method, you can expect `childrenMap` to contain some value
-    /// for the file object, even an empty array.
-    ///
-    /// - Parameter file: The file item to load children for.
-    private func loadChildrenForFile(_ file: CEWorkspaceFile) {
-        guard let children = urlsForDirectory(file.resolvedURL) else {
-            return
-        }
-        var addedChildrenUrls: [String] = []
-        for child in children {
-            let newFileItem = createChild(child, forParent: file)
-            flattenedFileItems[newFileItem.id] = newFileItem
-            addedChildrenUrls.append(newFileItem.id)
-        }
-        childrenMap[file.id] = addedChildrenUrls
-        Task {
-            await sourceControlManager?.refreshAllChangedFiles()
+    func requestChildren(of file: CEWorkspaceFile) {
+        guard pendingLoads.insert(file.id).inserted else { return }
+        Task { [weak self] in
+            await self?.loadChildren(of: file)
         }
     }
 
-    /// Creates an ordered array of all files and directories at the given file object.
-    /// - Parameter file: The file to use.
-    /// - Returns: An ordered array of URLs sorted alphabetically with directories first.
-    private func urlsForDirectory(_ url: URL) -> [URL]? {
-        try? fileManager.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.includesDirectoriesPostOrder, .skipsSubdirectoryDescendants]
+    func loadChildren(of file: CEWorkspaceFile) async {
+        defer { pendingLoads.remove(file.id) }
+        let listing = await Self.readListing(
+            directoryID: file.id,
+            at: file.resolvedURL,
+            ignoring: ignoredFilesAndFolders,
+            diagnostics: diagnostics
         )
-        .compactMap {
-            ignoredFilesAndFolders.contains($0.lastPathComponent) && (try? $0.checkResourceIsReachable()) ?? false
-            ? nil
-            : URL(filePath: $0.path(percentEncoded: false), relativeTo: folderUrl)
+        guard let listing, let parent = applyListing(listing) else { return }
+        notifyObservers(updatedItems: [parent])
+    }
+
+    @concurrent
+    static func readListing(
+        directoryID: String,
+        at url: URL,
+        ignoring ignoredNames: Set<String>,
+        diagnostics: FileManagerDiagnostics
+    ) async -> DirectoryListing? {
+        try? DirectoryListing.read(
+            directoryID: directoryID,
+            at: url,
+            ignoring: ignoredNames,
+            diagnostics: diagnostics
+        )
+    }
+
+    @discardableResult
+    func makeItem(id: String, url: URL, parent: CEWorkspaceFile, isDirectory: Bool?) -> CEWorkspaceFile {
+        let item = CEWorkspaceFile(id: id, url: url)
+        item.parent = parent
+        if let isDirectory {
+            item.isFolder = isDirectory
         }
-        .sortItems(foldersOnTop: true)
+        if let status = gitStatusPlan.status(forPath: id) {
+            item.gitStatus = status
+            statusCarriers.insert(id)
+        }
+        flattenedFileItems[id] = item
+        return item
     }
 
-    /// Creates a child item for the specified parent item. Th child item's id is based on the
-    /// parent's id to take into account symlinks.
-    /// - Parameter url: The file url of the child element.
-    /// - Parameter file: The parent element.
-    /// - Returns: A child element with an associated parent.
-    func createChild(_ url: URL, forParent file: CEWorkspaceFile) -> CEWorkspaceFile {
-        let relativeURL = URL(filePath: file.id).appending(path: url.lastPathComponent)
-        let childId = relativeURL.relativePath
-        let newFileItem = CEWorkspaceFile(id: childId, url: relativeURL)
-        newFileItem.parent = file
-        return newFileItem
+    private func isIndexableDirectory(named name: String, atPath path: String) -> Bool {
+        var isDirectory: ObjCBool = false
+        return !ignoredFilesAndFolders.contains(name)
+            && fileManager.fileExists(atPath: path, isDirectory: &isDirectory)
+            && isDirectory.boolValue
     }
-
-#if DEBUG
-    /// Determines if the file has had it's children loaded from disk.
-    /// - Parameter file: The file to check.
-    /// - Returns: True if the file's children have been cached.
-    func hasLoadedChildrenFor(file: CEWorkspaceFile) -> Bool {
-        childrenMap[file.id] != nil
-    }
-#endif
 
     /// Run when the owner of the ``CEWorkspaceFileManager`` doesn't need it anymore.
     /// This de-inits most functions in the ``CEWorkspaceFileManager``, so that in case it isn't de-init'd it does not
     /// use up significant amounts of RAM, and clears any file system event watchers.
     func cleanUp() {
         fsEventStream?.cancel()
+        eventBatcher?.cancel()
         flattenedFileItems = [workspaceItem.id: workspaceItem]
     }
 
     isolated deinit {
         fsEventStream?.cancel()
+        eventBatcher?.cancel()
         observers.removeAllObjects()
     }
 }

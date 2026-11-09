@@ -4,8 +4,9 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct HostingSizingPolicyTests {
+    @MainActor
     private struct Harness {
         let workspace: WorkspaceDocument
         let controller: DreamderWindowController

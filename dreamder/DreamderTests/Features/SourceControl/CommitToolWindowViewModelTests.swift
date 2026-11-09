@@ -3,16 +3,13 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct CommitToolWindowViewModelTests {
     private func makeRepo(_ dir: URL) async throws -> (GitMergeFixture, SourceControlManager) {
-        let fixture = try await GitMergeFixture.offMain {
-            let fixture = try GitMergeFixture(root: dir)
-            try fixture.write("a.txt", "a\n")
-            try fixture.write("b.txt", "b\n")
-            try fixture.commit("initial")
-            return fixture
-        }
+        let fixture = try await GitMergeFixture(root: dir)
+        try fixture.write("a.txt", "a\n")
+        try fixture.write("b.txt", "b\n")
+        try await fixture.commit("initial")
         return (fixture, SourceControlManager(workspaceURL: dir, editorManager: EditorManager()))
     }
 
@@ -24,8 +21,8 @@ struct CommitToolWindowViewModelTests {
         manager.changedFiles.map(\.fileURL.lastPathComponent).sorted()
     }
 
-    private func headFiles(_ fixture: GitMergeFixture) throws -> [String] {
-        try fixture.run("show", "--name-only", "--format=", "HEAD")
+    private func headFiles(_ fixture: GitMergeFixture) async throws -> [String] {
+        try await fixture.run("show", "--name-only", "--format=", "HEAD")
             .split(separator: "\n")
             .map(String.init)
             .sorted()
@@ -98,7 +95,7 @@ struct CommitToolWindowViewModelTests {
             let (fixture, manager) = try await makeRepo(dir)
             try fixture.write("a.txt", "a changed\n")
             try fixture.write("b.txt", "b changed\n")
-            try fixture.run("add", "b.txt")
+            try await fixture.run("add", "b.txt")
             try fixture.write("c.txt", "c\n")
             await manager.refreshAllChangedFiles()
             #expect(changedNames(manager) == ["a.txt", "b.txt", "c.txt"])
@@ -110,10 +107,10 @@ struct CommitToolWindowViewModelTests {
             model.message = message
             await model.commit(using: manager, andPush: false)
 
-            let subject = try fixture.run("log", "-1", "--format=%s").trimmingCharacters(in: .newlines)
+            let subject = try await fixture.run("log", "-1", "--format=%s").trimmingCharacters(in: .newlines)
             #expect(subject == message)
-            #expect(try headFiles(fixture) == ["a.txt", "c.txt"])
-            #expect(try fixture.stagedPaths().isEmpty)
+            #expect(try await headFiles(fixture) == ["a.txt", "c.txt"])
+            #expect(try await fixture.stagedPaths().isEmpty)
             #expect(try fixture.read("b.txt") == "b changed\n")
             #expect(changedNames(manager) == ["b.txt"])
             #expect(model.message.isEmpty)
@@ -140,9 +137,9 @@ struct CommitToolWindowViewModelTests {
             model.amend = true
             await model.commit(using: manager, andPush: true)
 
-            let subjects = try fixture.run("log", "--format=%s").split(separator: "\n").map(String.init)
+            let subjects = try await fixture.run("log", "--format=%s").split(separator: "\n").map(String.init)
             #expect(subjects == ["Final", "initial"])
-            #expect(try fixture.run("show", "HEAD:a.txt") == "second\n")
+            #expect(try await fixture.run("show", "HEAD:a.txt") == "second\n")
             #expect(model.amend == false)
             #expect(manager.pushSheetIsPresented)
         }
@@ -157,7 +154,7 @@ struct CommitToolWindowViewModelTests {
             let model = CommitToolWindowViewModel()
             await model.commit(using: manager, andPush: true)
 
-            #expect(try fixture.run("rev-list", "--count", "HEAD").trimmingCharacters(in: .newlines) == "1")
+            #expect(try await fixture.run("rev-list", "--count", "HEAD").trimmingCharacters(in: .newlines) == "1")
             #expect(manager.pushSheetIsPresented == false)
         }
     }
@@ -169,8 +166,8 @@ struct CommitToolWindowViewModelTests {
             try fixture.write("a.txt", "changed\n")
             try fixture.write("untracked.txt", "u\n")
             try fixture.write("staged.txt", "s\n")
-            try fixture.run("add", "staged.txt")
-            try fixture.run("rm", "-q", "b.txt")
+            try await fixture.run("add", "staged.txt")
+            try await fixture.run("rm", "-q", "b.txt")
             await manager.refreshAllChangedFiles()
             #expect(changedNames(manager) == ["a.txt", "b.txt", "staged.txt", "untracked.txt"])
 
@@ -181,7 +178,7 @@ struct CommitToolWindowViewModelTests {
             #expect(try fixture.read("b.txt") == "b\n")
             #expect(fixture.exists("untracked.txt") == false)
             #expect(fixture.exists("staged.txt") == false)
-            #expect(try fixture.stagedPaths().isEmpty)
+            #expect(try await fixture.stagedPaths().isEmpty)
             #expect(manager.changedFiles.isEmpty)
         }
     }

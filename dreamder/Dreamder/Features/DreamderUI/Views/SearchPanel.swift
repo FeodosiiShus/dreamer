@@ -18,6 +18,7 @@ final class SearchPanel: NSPanel, NSWindowDelegate {
         self.center()
         self.titlebarAppearsTransparent = true
         self.isMovableByWindowBackground = true
+        self.isReleasedWhenClosed = false
     }
 
     override func standardWindowButton(_ button: NSWindow.ButtonType) -> NSButton? {
@@ -27,8 +28,6 @@ final class SearchPanel: NSPanel, NSWindowDelegate {
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        if let panel = notification.object as? SearchPanel {
-            panel.close()
-        }
+        close()
     }
 }

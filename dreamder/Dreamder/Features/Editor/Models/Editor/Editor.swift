@@ -57,14 +57,23 @@ final class Editor: Identifiable {
     /// Currently selected tab.
     private(set) var selectedTab: Tab?
 
-    var temporaryTab: Tab?
+    var temporaryTab: Tab? {
+        didSet {
+            if let temporaryTab, isPinned(temporaryTab.file) {
+                self.temporaryTab = nil
+            }
+        }
+    }
+
+    var pinnedURLs: Set<URL> = []
 
     @ObservationIgnored var id = UUID()
 
     @ObservationIgnored weak var parent: SplitViewData?
     @ObservationIgnored weak var workspace: WorkspaceDocument?
 
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "Editor")
+    private let logger = EditorLogging.logger(category: "Editor")
+    @ObservationIgnored private let closeResponder = CloseResponder()
 
     init() {
         self.tabs = []
@@ -132,7 +141,7 @@ final class Editor: Identifiable {
             do { // Ignore this error for simpler API usage.
                 try openFile(item: tab)
             } catch {
-                print(error)
+                logger.error("Error opening file: \(error)")
             }
         }
     }
@@ -160,13 +169,25 @@ final class Editor: Identifiable {
         if let selectedTab {
             addToHistory(selectedTab)
         }
-        // Reset change count to 0
+        guard !isShownInAnotherEditor(file) else { return }
         file.fileDocument?.updateChangeCount(.changeCleared)
         if let codeFile = file.fileDocument {
             codeFile.close()
         }
-        // remove file from memory
         file.fileDocument = nil
+    }
+
+    private func isShownInAnotherEditor(_ file: CEWorkspaceFile) -> Bool {
+        let siblings: [Editor]
+        if let managed = workspace?.editorManager?.getFlattened(), managed.contains(where: { $0 === self }) {
+            siblings = managed
+        } else {
+            siblings = parent?.getFlattened() ?? []
+        }
+        return siblings.contains { other in
+            other !== self
+                && (other.tabs.contains { $0.file == file } || other.temporaryTab?.file == file)
+        }
     }
 
     /// Closes the currently opened tab in the tab group.
@@ -175,7 +196,48 @@ final class Editor: Identifiable {
             return
         }
 
+        closeTabUnlessPinned(file: file)
+    }
+
+    func closeTabUnlessPinned(file: CEWorkspaceFile) {
+        guard !isPinned(file) else { return }
         closeTab(file: file)
+    }
+
+    var pinnedTabCount: Int {
+        tabs.count(where: { isPinned($0.file) })
+    }
+
+    func isPinned(_ file: CEWorkspaceFile) -> Bool {
+        pinnedURLs.contains(file.url)
+    }
+
+    var unpinnedFiles: [CEWorkspaceFile] {
+        tabs.map(\.file).filter { !isPinned($0) }
+    }
+
+    func setPinned(_ pinned: Bool, file: CEWorkspaceFile) {
+        guard let tab = tabs.first(where: { $0.file == file }), isPinned(tab.file) != pinned else { return }
+        var ordered = Array(tabs).filter { $0 != tab }
+        if pinned {
+            pinnedURLs.insert(tab.file.url)
+            if temporaryTab == tab {
+                temporaryTab = nil
+            }
+        } else {
+            pinnedURLs.remove(tab.file.url)
+        }
+        let boundary = ordered.count(where: { isPinned($0.file) })
+        ordered.insert(tab, at: boundary)
+        tabs = OrderedSet(ordered)
+    }
+
+    func togglePinned(file: CEWorkspaceFile) {
+        setPinned(!isPinned(file), file: file)
+    }
+
+    func closeUnpinnedTabs(where isIncluded: (CEWorkspaceFile) -> Bool = { _ in true }) {
+        unpinnedFiles.filter(isIncluded).forEach { closeTab(file: $0) }
     }
 
     /// Opens a tab in the editor.
@@ -197,11 +259,7 @@ final class Editor: Identifiable {
             replaceTemporaryTab(tab: tab, with: item)
         case (.some(let tab), false) where tab == item:
             temporaryTab = nil
-        case (.some(let tab), false) where tab != item:
-            openTab(file: item.file)
         case (.some, false):
-            // A temporary tab exists, but we don't want to open this one as temporary.
-            // Clear the temp tab and open the new one.
             openTab(file: item.file)
         case (.none, true):
             openTab(file: item.file)
@@ -243,11 +301,12 @@ final class Editor: Identifiable {
     ///   - fromHistory: Indicates whether the tab has been opened from going back in history.
     func openTab(file: CEWorkspaceFile, at index: Int? = nil, fromHistory: Bool = false) {
         let item = Tab(workspace: workspace, file: file)
+        let firstUnpinnedIndex = pinnedTabCount
         if let index {
-            tabs.insert(item, at: index)
+            tabs.insert(item, at: min(max(index, firstUnpinnedIndex), tabs.count))
         } else {
             if let selectedTab, let currentIndex = tabs.firstIndex(of: selectedTab) {
-                tabs.insert(item, at: tabs.index(after: currentIndex))
+                tabs.insert(item, at: max(tabs.index(after: currentIndex), firstUnpinnedIndex))
             } else {
                 tabs.append(item)
             }
@@ -282,50 +341,31 @@ final class Editor: Identifiable {
     ///
     /// If document edited it will show dialog where user can save document before closing or cancel.
     private func canCloseTab(file: CEWorkspaceFile) -> Bool {
-        guard let codeFile = file.fileDocument else { return true }
+        guard !isShownInAnotherEditor(file), let codeFile = file.fileDocument else { return true }
 
-        if codeFile.isDocumentEdited {
-            let shouldClose = UnsafeMutablePointer<Bool>.allocate(capacity: 1)
-            shouldClose.initialize(to: true)
-            defer {
-                _ = shouldClose.move()
-                shouldClose.deallocate()
-            }
-            codeFile.canClose(
-                withDelegate: self,
-                shouldClose: #selector(document(_:shouldClose:contextInfo:)),
-                contextInfo: shouldClose
-            )
-
-            return shouldClose.pointee
-        }
-
-        return true
+        closeResponder.shouldClose = true
+        codeFile.canClose(
+            withDelegate: closeResponder,
+            shouldClose: #selector(CloseResponder.document(_:shouldClose:contextInfo:)),
+            contextInfo: nil
+        )
+        return closeResponder.shouldClose
     }
 
-    /// Receives result of `canClose` and then, set `shouldClose` to `contextInfo`'s `pointee`.
-    ///
-    /// - Parameters:
-    ///   - document: The document may be closed.
-    ///   - shouldClose: The result of user selection.
-    ///      `shouldClose` becomes false if the user selects cancel, otherwise true.
-    ///   - contextInfo: The additional info which will be set `shouldClose`.
-    ///       `contextInfo` must be `UnsafeMutablePointer<Bool>`.
-    @objc
-    func document(
-        _ document: NSDocument,
-        shouldClose: Bool,
-        contextInfo: UnsafeMutableRawPointer
-    ) {
-        let opaquePtr = OpaquePointer(contextInfo)
-        let mutablePointer = UnsafeMutablePointer<Bool>(opaquePtr)
-        mutablePointer.pointee = shouldClose
+    final class CloseResponder: NSObject {
+        var shouldClose = true
+
+        @objc
+        func document(_ document: NSDocument, shouldClose: Bool, contextInfo: UnsafeMutableRawPointer?) {
+            self.shouldClose = shouldClose
+        }
     }
 
     /// Remove the given file from tabs.
     /// - Parameter file: The file to remove.
     func removeTab(_ file: CEWorkspaceFile) {
         tabs.removeAll(where: { tab in tab.file == file })
+        pinnedURLs.remove(file.url)
         if temporaryTab?.file == file {
             temporaryTab = nil
         }

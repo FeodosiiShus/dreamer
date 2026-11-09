@@ -3,15 +3,26 @@ import CodeEditSourceEditor
 import CodeEditTextView
 
 final class EditorContextMenuCoordinator: NSObject, TextViewCoordinator {
-    private static let f7KeyEquivalent = String(UnicodeScalar(NSF7FunctionKey) ?? "\u{7F}")
+    private static let f7KeyEquivalent = String(KeyNames.f7)
 
     private weak var controller: TextViewController?
     private let editorInstance: EditorInstance
     private let codeFile: CodeFileDocument
+    private let pasteboard: any PasteboardAccess
+    private let hasLanguageServer: (URL) -> Bool
 
-    init(editorInstance: EditorInstance, codeFile: CodeFileDocument) {
+    init(
+        editorInstance: EditorInstance,
+        codeFile: CodeFileDocument,
+        pasteboard: any PasteboardAccess = SystemPasteboard(),
+        hasLanguageServer: @escaping (URL) -> Bool = { url in
+            LSPService.shared.languageClient(forDocument: url) != nil
+        }
+    ) {
         self.editorInstance = editorInstance
         self.codeFile = codeFile
+        self.pasteboard = pasteboard
+        self.hasLanguageServer = hasLanguageServer
         super.init()
     }
 
@@ -40,7 +51,7 @@ final class EditorContextMenuCoordinator: NSObject, TextViewCoordinator {
     private func menu(for event: NSEvent) -> NSMenu? {
         guard let textView = controller?.textView, let url = fileURL else { return nil }
         moveCaretIfNeeded(for: event, in: textView)
-        return buildMenu(for: url)
+        return buildMenu(for: url, textView: textView)
     }
 
     private func moveCaretIfNeeded(for event: NSEvent, in textView: TextView) {
@@ -51,7 +62,7 @@ final class EditorContextMenuCoordinator: NSObject, TextViewCoordinator {
         let point = textView.convert(event.locationInWindow, from: nil)
         guard textView.bounds.contains(point) else { return }
         textView.window?.makeFirstResponder(textView)
-        let offset = textView.layoutManager.textOffsetAtPoint(point) ?? 0
+        guard let offset = textView.layoutManager.textOffsetAtPoint(point) else { return }
         let isInsideSelection = textView.selectionManager.textSelections.contains { selection in
             !selection.range.isEmpty
                 && offset >= selection.range.location
@@ -61,14 +72,13 @@ final class EditorContextMenuCoordinator: NSObject, TextViewCoordinator {
         controller?.setCursorPositions([CursorPosition(range: NSRange(location: offset, length: 0))])
     }
 
-    private func buildMenu(for url: URL) -> NSMenu {
+    private func buildMenu(for url: URL, textView: TextView) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
 
         let workspace = codeFile.findWorkspace()
-        let textView = controller?.textView
-        let isEditable = textView?.isEditable ?? false
-        let hasSelection = !(textView?.selectionManager.textSelections.allSatisfy { $0.range.isEmpty } ?? true)
+        let isEditable = textView.isEditable
+        let hasSelection = textView.selectionManager.textSelections.contains { !$0.range.isEmpty }
         let hasLanguageServer = MainActor.assumeIsolated { languageServerAvailable(for: url) }
 
         menu.addItem(item("Cut", #selector(NSText.cut(_:)), "x", .command, enabled: isEditable && hasSelection))
@@ -250,20 +260,16 @@ final class EditorContextMenuCoordinator: NSObject, TextViewCoordinator {
     }
 
     private func canPaste() -> Bool {
-        NSPasteboard.general.canReadItem(
-            withDataConformingToTypes: [NSPasteboard.PasteboardType.string.rawValue]
-        )
+        pasteboard.canReadPlainText
     }
 
     @MainActor
     private func languageServerAvailable(for url: URL) -> Bool {
-        ServiceContainer.resolve(.singleton, LSPService.self)?.languageClient(forDocument: url) != nil
+        hasLanguageServer(url)
     }
 
     private func copyToPasteboard(_ string: String) {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(string, forType: .string)
+        pasteboard.replaceContents(withText: string)
     }
 
     @objc private func copyAbsolutePath(_ sender: Any?) {
@@ -275,14 +281,17 @@ final class EditorContextMenuCoordinator: NSObject, TextViewCoordinator {
     @objc private func copyProjectRelativePath(_ sender: Any?) {
         guard let url = fileURL,
               let root = codeFile.findWorkspace()?.workspaceFileManager?.folderUrl else { return }
+        copyToPasteboard(Self.projectRelativePath(of: url, root: root))
+    }
+
+    static func projectRelativePath(of url: URL, root: URL) -> String {
         let rootComponents = root.standardizedFileURL.pathComponents
         let components = url.standardizedFileURL.pathComponents
         guard components.count > rootComponents.count,
               Array(components.prefix(rootComponents.count)) == rootComponents else {
-            copyToPasteboard(url.path(percentEncoded: false))
-            return
+            return url.path(percentEncoded: false)
         }
-        copyToPasteboard(components.dropFirst(rootComponents.count).joined(separator: "/"))
+        return components.dropFirst(rootComponents.count).joined(separator: "/")
     }
 
     @objc private func copyFileName(_ sender: Any?) {
@@ -338,13 +347,18 @@ final class EditorContextMenuCoordinator: NSObject, TextViewCoordinator {
         alert.alertStyle = .warning
 
         let apply: (NSApplication.ModalResponse) -> Void = { [weak workspace] response in
-            guard response == .alertFirstButtonReturn else { return }
-            workspace?.sourceControlManager?.discardChanges(for: url)
+            Self.confirmRollback(response, url: url, in: workspace)
         }
         if let window = controller?.view.window {
             alert.beginSheetModal(for: window, completionHandler: apply)
         } else {
             apply(alert.runModal())
         }
+    }
+
+    @MainActor
+    static func confirmRollback(_ response: NSApplication.ModalResponse, url: URL, in workspace: WorkspaceDocument?) {
+        guard response == .alertFirstButtonReturn else { return }
+        workspace?.sourceControlManager?.discardChanges(for: url)
     }
 }

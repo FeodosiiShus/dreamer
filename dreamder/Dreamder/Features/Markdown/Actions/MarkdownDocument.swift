@@ -169,10 +169,6 @@ nonisolated struct MarkdownDocument: Sendable {
         return lower..<upper
     }
 
-    func setextUnderlineLevel(line: Int) -> Int? {
-        Self.setextLevel(text: text, info: infos[line], line: line)
-    }
-
     func inlineRegion(ofBlock index: Int) -> (base: Int, units: [UInt16])? {
         let block = blocks[index]
         switch block.kind {
@@ -528,7 +524,6 @@ nonisolated struct MarkdownDocument: Sendable {
                 || following == "/"
             if Self.rawTagNames.contains(name), terminates {
                 return terminatedEnd(from: line, startOffset: start, terminator: "</\(name)>", caseInsensitive: true)
-                    ?? blankLineEnd(from: line)
             }
             if Self.blockTagNames.contains(name), terminates {
                 return blankLineEnd(from: line)
@@ -563,7 +558,7 @@ nonisolated struct MarkdownDocument: Sendable {
             startOffset: Int,
             terminator: String,
             caseInsensitive: Bool = false
-        ) -> Int? {
+        ) -> Int {
             var index = line
             var from = startOffset
             while index < count {

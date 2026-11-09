@@ -7,121 +7,162 @@
 
 import SwiftUI
 
+@MainActor
+@Observable
+final class EditorTabStripModel {
+    typealias TabID = CEWorkspaceFile.ID
+
+    static let tabSpacing: CGFloat = 4
+    static let dragReleaseDelay: Duration = .milliseconds(250)
+    static let dragCommitDelay: Duration = .milliseconds(400)
+    static let dragUpdateThreshold: CGFloat = 10
+
+    var draggingTabId: TabID?
+    var draggingStartLocation: CGFloat?
+    var draggingLastLocation: CGFloat?
+    var openedTabs: [TabID] = []
+    var pinnedTabs: Set<TabID> = []
+    var tabWidth: [TabID: CGFloat] = [:]
+    var tabLocations: [TabID: CGRect] = [:]
+    var tabOffsets: [TabID: CGFloat] = [:]
+    var closeButtonGestureActive = false
+    var revealedTabID: TabID?
+    var viewportFrame: CGRect = .zero
+
+    func synchronizeTabs(with editor: Editor) {
+        openedTabs = editor.tabs.map(\.file.id)
+        pinnedTabs = Set(editor.tabs.filter { editor.isPinned($0.file) }.map(\.file.id))
+    }
+
+    func hiddenTabs(in viewport: CGRect) -> [TabID] {
+        EditorTabOverflow.hiddenTabs(openedTabs: openedTabs, frames: tabLocations, viewport: viewport)
+    }
+
+    @discardableResult
+    func activate(_ id: TabID, in editor: Editor, editorManager: EditorManager) -> Bool {
+        guard let tab = editor.tabs.first(where: { $0.file.id == id }) else { return false }
+        editorManager.activeEditor = editor
+        editor.setSelectedTab(tab.file)
+        editor.clearFuture()
+        editor.addToHistory(tab)
+        return true
+    }
+
+    func reveal(_ id: TabID, in editor: Editor, editorManager: EditorManager) {
+        guard activate(id, in: editor, editorManager: editorManager) else { return }
+        revealedTabID = id
+    }
+
+    func dragChanged(id: TabID, startX: CGFloat, currentX: CGFloat) {
+        if closeButtonGestureActive {
+            return
+        }
+
+        if draggingTabId != id {
+            draggingTabId = id
+            draggingStartLocation = startX
+            draggingLastLocation = currentX
+        }
+        guard let startLocation = draggingStartLocation,
+              let currentIndex = openedTabs.firstIndex(of: id),
+              let currentTabWidth = tabWidth[id],
+              let lastLocation = draggingLastLocation
+        else { return }
+        let dragDifference = currentX - lastLocation
+        tabOffsets[id] = currentX - startLocation
+        if currentIndex > 0 && dragDifference < 0 {
+            let previousTabIndex = currentIndex - 1
+            let previousID = openedTabs[previousTabIndex]
+            guard pinnedTabs.contains(previousID) == pinnedTabs.contains(id) else { return }
+            guard let previousTabLocation = tabLocations[openedTabs[previousTabIndex]],
+                  let previousTabWidth = tabWidth[openedTabs[previousTabIndex]]
+            else { return }
+            if currentX < max(
+                previousTabLocation.maxX - previousTabWidth * 0.1,
+                previousTabLocation.minX + currentTabWidth * 0.9
+            ) {
+                let changing = previousTabWidth + Self.tabSpacing
+                draggingStartLocation = startLocation - changing
+                withAnimation {
+                    tabOffsets[id]? += changing
+                    openedTabs.move(
+                        fromOffsets: IndexSet(integer: previousTabIndex),
+                        toOffset: currentIndex + 1
+                    )
+                }
+                return
+            }
+        }
+        if currentIndex < openedTabs.count - 1 && dragDifference > 0 {
+            let nextTabIndex = currentIndex + 1
+            let nextID = openedTabs[nextTabIndex]
+            guard pinnedTabs.contains(nextID) == pinnedTabs.contains(id) else { return }
+            guard let nextTabLocation = tabLocations[openedTabs[nextTabIndex]],
+                  let nextTabWidth = tabWidth[openedTabs[nextTabIndex]]
+            else { return }
+            if currentX > min(
+                nextTabLocation.minX + nextTabWidth * 0.1,
+                nextTabLocation.maxX - currentTabWidth * 0.9
+            ) {
+                let changing = nextTabWidth + Self.tabSpacing
+                draggingStartLocation = startLocation + changing
+                withAnimation {
+                    tabOffsets[id]? -= changing
+                    openedTabs.move(
+                        fromOffsets: IndexSet(integer: nextTabIndex),
+                        toOffset: currentIndex
+                    )
+                }
+                return
+            }
+        }
+        if abs(currentX - lastLocation) >= Self.dragUpdateThreshold {
+            draggingLastLocation = currentX
+        }
+    }
+
+    func dragEnded(editor: Editor) {
+        draggingStartLocation = nil
+        draggingLastLocation = nil
+        withAnimation(.easeInOut(duration: 0.25)) {
+            tabOffsets = [:]
+        }
+        Task {
+            try? await Task.sleep(for: Self.dragReleaseDelay)
+            draggingTabId = nil
+        }
+        Task {
+            try? await Task.sleep(for: Self.dragCommitDelay)
+            if draggingStartLocation == nil {
+                editor.tabs = .init(openedTabs.compactMap { id in
+                    editor.tabs.first { $0.file.id == id }
+                })
+            }
+        }
+    }
+}
+
 struct EditorTabs: View {
     typealias TabID = CEWorkspaceFile.ID
 
     @Environment(Editor.self) private var editor
     @Environment(EditorManager.self) private var editorManager
 
-    @State private var draggingTabId: TabID?
-
-    @State private var draggingStartLocation: CGFloat?
-
-    @State private var draggingLastLocation: CGFloat?
-
-    @State private var openedTabs: [TabID] = []
-
-    @State private var tabWidth: [TabID: CGFloat] = [:]
-
-    @State private var tabLocations: [TabID: CGRect] = [:]
-
-    @State private var tabOffsets: [TabID: CGFloat] = [:]
-
-    @State private var closeButtonGestureActive: Bool = false
+    @State private var strip: EditorTabStripModel
 
     @State private var scrollOffset: CGFloat = 0
 
     @State private var scrollTrailingOffset: CGFloat? = 0
 
-    @State private var viewportFrame: CGRect = .zero
-
-    private static let tabSpacing: CGFloat = 4
+    init(strip: EditorTabStripModel = EditorTabStripModel()) {
+        _strip = State(initialValue: strip)
+    }
 
     private func makeTabDragGesture(id: TabID) -> some Gesture {
+        let handler = EditorTabDragHandler(id: id, strip: strip, editor: editor)
         return DragGesture(minimumDistance: 2, coordinateSpace: .global)
-            .onChanged({ value in
-                if closeButtonGestureActive {
-                    return
-                }
-
-                if draggingTabId != id {
-                    draggingTabId = id
-                    draggingStartLocation = value.startLocation.x
-                    draggingLastLocation = value.location.x
-                }
-                let currentLocation = value.location.x
-                guard let startLocation = draggingStartLocation,
-                      let currentIndex = openedTabs.firstIndex(of: id),
-                      let currentTabWidth = tabWidth[id],
-                      let lastLocation = draggingLastLocation
-                else { return }
-                let dragDifference = currentLocation - lastLocation
-                let previousIndex = currentIndex > 0 ? currentIndex - 1 : nil
-                let nextIndex = currentIndex < openedTabs.count - 1 ? currentIndex + 1 : nil
-                tabOffsets[id] = currentLocation - startLocation
-                if previousIndex != nil && dragDifference < 0 {
-                    guard let previousTabIndex = previousIndex,
-                          let previousTabLocation = tabLocations[openedTabs[previousTabIndex]],
-                          let previousTabWidth = tabWidth[openedTabs[previousTabIndex]]
-                    else { return }
-                    if currentLocation < max(
-                        previousTabLocation.maxX - previousTabWidth * 0.1,
-                        previousTabLocation.minX + currentTabWidth * 0.9
-                    ) {
-                        let changing = previousTabWidth + Self.tabSpacing
-                        draggingStartLocation = startLocation - changing
-                        withAnimation {
-                            tabOffsets[id, default: 0] += changing
-                            openedTabs.move(
-                                fromOffsets: IndexSet(integer: previousTabIndex),
-                                toOffset: currentIndex + 1
-                            )
-                        }
-                        return
-                    }
-                }
-                if nextIndex != nil && dragDifference > 0 {
-                    guard let nextTabIndex = nextIndex,
-                          let nextTabLocation = tabLocations[openedTabs[nextTabIndex]],
-                          let nextTabWidth = tabWidth[openedTabs[nextTabIndex]]
-                    else { return }
-                    if currentLocation > min(
-                        nextTabLocation.minX + nextTabWidth * 0.1,
-                        nextTabLocation.maxX - currentTabWidth * 0.9
-                    ) {
-                        let changing = nextTabWidth + Self.tabSpacing
-                        draggingStartLocation = startLocation + changing
-                        withAnimation {
-                            tabOffsets[id, default: 0] -= changing
-                            openedTabs.move(
-                                fromOffsets: IndexSet(integer: nextTabIndex),
-                                toOffset: currentIndex
-                            )
-                        }
-                        return
-                    }
-                }
-                if draggingLastLocation.map({ abs(value.location.x - $0) >= 10 }) ?? true {
-                    draggingLastLocation = value.location.x
-                }
-            })
-            .onEnded({ _ in
-                draggingStartLocation = nil
-                draggingLastLocation = nil
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    tabOffsets = [:]
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    draggingTabId = nil
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.40) {
-                    if draggingStartLocation == nil {
-                        editor.tabs = .init(openedTabs.compactMap { id in
-                            editor.tabs.first { $0.file.id == id }
-                        })
-                    }
-                }
-            })
+            .onChanged(handler.changed)
+            .onEnded(handler.ended)
     }
 
     private func makeTabItemGeometryReader(id: TabID) -> some View {
@@ -129,48 +170,21 @@ struct EditorTabs: View {
             Rectangle()
                 .foregroundColor(.clear)
                 .onAppear {
-                    tabWidth[id] = tabItemGeoReader.size.width
-                    tabLocations[id] = tabItemGeoReader.frame(in: .global)
+                    strip.tabWidth[id] = tabItemGeoReader.size.width
+                    strip.tabLocations[id] = tabItemGeoReader.frame(in: .global)
                 }
                 .onChange(of: tabItemGeoReader.frame(in: .global)) { _, tabCGRect in
-                    tabLocations[id] = tabCGRect
+                    strip.tabLocations[id] = tabCGRect
                 }
                 .onChange(of: tabItemGeoReader.size.width) { _, newWidth in
-                    tabWidth[id] = newWidth
+                    strip.tabWidth[id] = newWidth
                 }
         }
     }
 
-    private func hiddenTabs(in viewport: CGRect) -> [TabID] {
-        EditorTabOverflow.hiddenTabs(openedTabs: openedTabs, frames: tabLocations, viewport: viewport)
-    }
-
-    private func revealTab(_ id: TabID, proxy: ScrollViewProxy) {
-        guard let tab = editor.tabs.first(where: { $0.file.id == id }) else { return }
-        editorManager.activeEditor = editor
-        editor.setSelectedTab(tab.file)
-        editor.clearFuture()
-        editor.addToHistory(tab)
-        withAnimation {
-            proxy.scrollTo(id, anchor: .trailing)
-        }
-    }
-
-    private func showHiddenTabsButton(_ hidden: [TabID], proxy: ScrollViewProxy) -> some View {
+    private func showHiddenTabsButton(_ hidden: [TabID]) -> some View {
         Menu {
-            ForEach(hidden, id: \.self) { id in
-                Button {
-                    revealTab(id, proxy: proxy)
-                } label: {
-                    if let file = editor.tabs.first(where: { $0.file.id == id })?.file {
-                        Label {
-                            Text(file.name)
-                        } icon: {
-                            Image(IntelliJIcon.fileIcon(for: file.name))
-                        }
-                    }
-                }
-            }
+            EditorHiddenTabsMenuContent(hidden: hidden, strip: strip, editor: editor, editorManager: editorManager)
         } label: {
             Image("general/chevronDown")
                 .resizable()
@@ -185,10 +199,6 @@ struct EditorTabs: View {
         .help("Show Hidden Tabs")
     }
 
-    private func synchronizeTabs() {
-        openedTabs = editor.tabs.map(\.file.id)
-    }
-
     var body: some View {
         ScrollViewReader { scrollReader in
             HStack(spacing: 0) {
@@ -198,14 +208,14 @@ struct EditorTabs: View {
                     contentOffset: $scrollOffset,
                     contentTrailingOffset: $scrollTrailingOffset
                 ) {
-                    HStack(spacing: Self.tabSpacing) {
-                        ForEach(Array(openedTabs.enumerated()), id: \.element) { index, id in
+                    HStack(spacing: EditorTabStripModel.tabSpacing) {
+                        ForEach(Array(strip.openedTabs.enumerated()), id: \.element) { index, id in
                             if let item = editor.tabs.first(where: { $0.file.id == id }) {
                                 EditorTabView(
                                     file: item.file,
                                     index: index,
-                                    draggingTabId: draggingTabId,
-                                    closeButtonGestureActive: $closeButtonGestureActive
+                                    draggingTabId: strip.draggingTabId,
+                                    closeButtonGestureActive: $strip.closeButtonGestureActive
                                 )
                                 .fixedSize()
                                 .transition(
@@ -215,22 +225,25 @@ struct EditorTabs: View {
                                     )
                                 )
                                 .background(makeTabItemGeometryReader(id: id))
-                                .offset(x: tabOffsets[id] ?? 0, y: 0)
+                                .offset(x: strip.tabOffsets[id] ?? 0, y: 0)
                                 .simultaneousGesture(makeTabDragGesture(id: id), including: .all)
                             }
                         }
                     }
                     .padding(.horizontal, 4)
                     .onAppear {
-                        synchronizeTabs()
+                        strip.synchronizeTabs(with: editor)
                         scrollReader.scrollTo(editor.selectedTab?.file.id)
+                    }
+                    .onChange(of: editor.pinnedURLs) {
+                        strip.synchronizeTabs(with: editor)
                     }
                     .onChange(of: editor.tabs) { tabs, newValue in
                         if tabs.count == newValue.count {
-                            synchronizeTabs()
+                            strip.synchronizeTabs(with: editor)
                         } else {
                             withAnimation(.easeOut(duration: 0.20)) {
-                                synchronizeTabs()
+                                strip.synchronizeTabs(with: editor)
                             }
                         }
                         Task {
@@ -245,23 +258,71 @@ struct EditorTabs: View {
                             scrollReader.scrollTo(newValue?.file.id)
                         }
                     }
+                    .onChange(of: strip.revealedTabID) { _, id in
+                        guard let id else { return }
+                        withAnimation {
+                            scrollReader.scrollTo(id, anchor: .trailing)
+                        }
+                        strip.revealedTabID = nil
+                    }
                 }
                 .background(
                     GeometryReader { viewportProxy in
                         Color.clear
-                            .onAppear { viewportFrame = viewportProxy.frame(in: .global) }
+                            .onAppear { strip.viewportFrame = viewportProxy.frame(in: .global) }
                             .onChange(of: viewportProxy.frame(in: .global)) { _, frame in
-                                viewportFrame = frame
+                                strip.viewportFrame = frame
                             }
                     }
                 )
 
-                let hidden = hiddenTabs(in: viewportFrame)
+                let hidden = strip.hiddenTabs(in: strip.viewportFrame)
                 if !hidden.isEmpty {
-                    showHiddenTabsButton(hidden, proxy: scrollReader)
+                    showHiddenTabsButton(hidden)
                 }
             }
             .frame(height: Islands.tabStripHeight)
         }
+    }
+}
+
+struct EditorHiddenTabsMenuContent: View {
+    let hidden: [CEWorkspaceFile.ID]
+    let strip: EditorTabStripModel
+    let editor: Editor
+    let editorManager: EditorManager
+
+    var body: some View {
+        ForEach(hidden, id: \.self) { id in
+            Button { strip.reveal(id, in: editor, editorManager: editorManager) } label: {
+                if let file = editor.tabs.first(where: { $0.file.id == id })?.file {
+                    Label {
+                        Text(file.name)
+                    } icon: {
+                        Image(IntelliJIcon.fileIcon(for: file.name))
+                    }
+                }
+            }
+        }
+    }
+}
+
+nonisolated protocol DragLocated: PointerLocated {
+    var startLocation: CGPoint { get }
+}
+
+extension DragGesture.Value: DragLocated {}
+
+struct EditorTabDragHandler {
+    let id: CEWorkspaceFile.ID
+    let strip: EditorTabStripModel
+    let editor: Editor
+
+    func changed(_ value: some DragLocated) {
+        strip.dragChanged(id: id, startX: value.startLocation.x, currentX: value.location.x)
+    }
+
+    func ended(_ value: some DragLocated) {
+        strip.dragEnded(editor: editor)
     }
 }

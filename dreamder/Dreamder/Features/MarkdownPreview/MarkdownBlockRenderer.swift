@@ -165,8 +165,8 @@ nonisolated enum MarkdownBlockRenderer {
                 continue
             }
 
-            if listMarker(line) != nil {
-                let list = parseList(lines, start: index, context: context)
+            if let marker = listMarker(line) {
+                let list = parseList(lines, start: index, firstMarker: marker, context: context)
                 blocks.append(list.html)
                 index = list.next
                 continue
@@ -285,13 +285,9 @@ nonisolated enum MarkdownBlockRenderer {
     private static func parseList(
         _ lines: [MarkdownSourceLine],
         start: Int,
+        firstMarker: ListMarker,
         context: MarkdownRenderContext
     ) -> ParsedBlock {
-        guard let firstMarker = listMarker(lines[start].text) else {
-            let html = MarkdownInlineRenderer.render(lines[start].text, context: context.inline)
-            return ParsedBlock(html: html, next: start + 1)
-        }
-
         struct Item {
             var lines: [MarkdownSourceLine]
             let start: Int
@@ -299,6 +295,7 @@ nonisolated enum MarkdownBlockRenderer {
         }
 
         var items: [Item] = []
+        var listEnd = lines[start].contentEnd
         var loose = false
         var index = start
 
@@ -350,12 +347,12 @@ nonisolated enum MarkdownBlockRenderer {
                 loose = true
             }
             items.append(item)
+            listEnd = item.end
             index = cursor
         }
 
         let tag = firstMarker.ordered ? "ol" : "ul"
         let listStart = lines[start].offset + firstMarker.indent
-        let listEnd = items.last?.end ?? lines[start].contentEnd
         var html = "<\(tag)"
         if firstMarker.ordered, firstMarker.number != 1 {
             html += " start=\"\(firstMarker.number)\""
@@ -522,8 +519,6 @@ nonisolated enum MarkdownBlockRenderer {
     private static func delimiterRow(_ line: String) -> [TableAlignment]? {
         guard line.contains("-") else { return nil }
         let cells = splitTableRow(line)
-        guard !cells.isEmpty else { return nil }
-
         var alignments: [TableAlignment] = []
         for cell in cells {
             let trimmed = cell.trimmingCharacters(in: .whitespaces)
@@ -613,7 +608,6 @@ nonisolated enum MarkdownBlockRenderer {
 
     private static func setextLevel(_ line: String) -> Int? {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return nil }
         if trimmed.allSatisfy({ $0 == "=" }) { return 1 }
         if trimmed.allSatisfy({ $0 == "-" }) { return 2 }
         return nil
@@ -625,7 +619,6 @@ nonisolated enum MarkdownBlockRenderer {
         if isThematicBreak(line) { return true }
         if blockQuoteContent(line) != nil { return true }
         if listMarker(line) != nil { return true }
-        if isIndentedCode(line) { return true }
         if let kind = htmlBlockKind(line), kind != 7 { return true }
         return false
     }
@@ -679,8 +672,7 @@ nonisolated enum MarkdownBlockRenderer {
         case 2: return lower.contains("-->")
         case 3: return lower.contains("?>")
         case 4: return lower.contains(">")
-        case 5: return lower.contains("]]>")
-        default: return false
+        default: return lower.contains("]]>")
         }
     }
 

@@ -1,14 +1,12 @@
 import AppKit
 
-nonisolated enum SearchEverywhereSectionKind: String, CaseIterable, Identifiable {
+nonisolated enum SearchEverywhereSectionKind: String, CaseIterable {
     case recent
     case files
     case classes
     case symbols
     case actions
     case text
-
-    var id: String { rawValue }
 
     var title: String {
         switch self {
@@ -158,8 +156,12 @@ struct SearchEverywhereSection: Identifiable {
 @MainActor
 enum SearchEverywhereActionProvider {
     static func actions() -> [SearchEverywhereAction] {
+        actions(mainMenu: NSApp.mainMenu)
+    }
+
+    static func actions(mainMenu: NSMenu?) -> [SearchEverywhereAction] {
         var collected: [SearchEverywhereAction] = []
-        guard let mainMenu = NSApp.mainMenu else { return collected }
+        guard let mainMenu else { return collected }
 
         for topLevelItem in mainMenu.items {
             guard let submenu = topLevelItem.submenu else { continue }
@@ -203,7 +205,7 @@ enum SearchEverywhereActionProvider {
             let title = item.title
             guard !title.isEmpty else { continue }
 
-            if let submenu = item.submenu, item.action == nil {
+            if let submenu = item.submenu {
                 collectActions(from: submenu, prefix: prefix + [title], into: &collected)
                 continue
             }

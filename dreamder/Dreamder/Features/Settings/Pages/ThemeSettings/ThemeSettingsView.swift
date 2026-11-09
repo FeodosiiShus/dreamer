@@ -11,15 +11,20 @@ import SwiftUI
 struct ThemeSettingsView: View {
     @Environment(\.colorScheme)
     var colorScheme
-    @Bindable private var themeModel: ThemeModel = .shared
+    @Bindable private var themeModel: ThemeModel
     @AppSettings(\.theme)
     var settings
     @AppSettings(\.terminal.darkAppearance)
     var useDarkTerminalAppearance
 
     @State private var listView: Bool = false
-    @State private var themeSearchQuery: String = ""
+    @State private var themeSearchQuery: String
     @State private var filteredThemes: [Theme] = []
+
+    init(themeModel: ThemeModel = .shared, initialSearchQuery: String = "") {
+        self.themeModel = themeModel
+        _themeSearchQuery = State(initialValue: initialSearchQuery)
+    }
 
     var body: some View {
         VStack {
@@ -28,36 +33,15 @@ struct ThemeSettingsView: View {
                     HStack(spacing: 10) {
                         SearchField("Search", text: $themeSearchQuery)
 
-                        Button {
-                            // As discussed, the expected behavior is to duplicate the selected theme.
-                            if let selectedTheme = themeModel.selectedTheme {
-                                if let fileURL = selectedTheme.fileURL {
-                                    themeModel.duplicate(fileURL)
-                                }
-                            }
-                        } label: {
+                        Button(action: themeModel.duplicateSelectedTheme) {
                             Image(systemName: "plus")
                         }
                         .disabled(themeModel.selectedTheme == nil)
                         .help("Create a new Theme")
 
-                        MenuWithButtonStyle(systemImage: "ellipsis", menu: {
-                            Group {
-                                Button {
-                                    themeModel.importTheme()
-                                } label: {
-                                    Text("Import Theme...")
-                                }
-                                Button {
-                                    themeModel.exportAllCustomThemes()
-                                } label: {
-                                    Text("Export All Custom Themes...")
-                                }
-                                .disabled(themeModel.themes.filter { !$0.isBundled }.isEmpty)
-                            }
-                        })
-                        .padding(.horizontal, 5)
-                        .help("Import or Export Custom Themes")
+                        MenuWithButtonStyle(systemImage: "ellipsis", menu: { importExportMenu })
+                            .padding(.horizontal, 5)
+                            .help("Import or Export Custom Themes")
                     }
                 }
                 if themeSearchQuery.isEmpty {
@@ -76,7 +60,8 @@ struct ThemeSettingsView: View {
                                 Divider().padding(.horizontal, 10)
                                 ThemeSettingsThemeRow(
                                     theme: $themeModel.themes[themeIndex],
-                                    active: themeModel.getThemeActive(theme)
+                                    active: themeModel.getThemeActive(theme),
+                                    themeModel: themeModel
                                 ).id(theme)
                             }
                         }
@@ -85,46 +70,15 @@ struct ThemeSettingsView: View {
                 } footer: {
                     HStack {
                         Spacer()
-                        Button("Import...") {
-                            themeModel.importTheme()
-                        }
+                        Button("Import...", action: themeModel.importTheme)
                     }
                     .padding(.top, 10)
                 }
-                .sheet(isPresented: $themeModel.detailsIsPresented, onDismiss: {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        themeModel.isAdding = false
-                    }
-                }, content: {
-                    if let theme = themeModel.detailsTheme, let index = themeModel.themes.firstIndex(where: {
-                        $0.fileURL?.absoluteString == theme.fileURL?.absoluteString
-                    }) {
-                        ThemeSettingsThemeDetails(theme: Binding(
-                            get: { themeModel.themes[index] },
-                            set: { newValue in
-                                if themeModel.detailsIsPresented {
-                                    themeModel.themes[index] = newValue
-                                    themeModel.save(newValue)
-                                    if settings.selectedTheme == theme.name {
-                                        themeModel.activateTheme(newValue)
-                                    }
-                                }
-                            }
-                        ))
-                    }
-                })
-                .onAppear {
-                    updateFilteredThemes()
-                }
-                .onChange(of: themeSearchQuery) { _, _ in
-                    updateFilteredThemes()
-                }
-                .onChange(of: themeModel.themes) { _, _ in
-                    updateFilteredThemes()
-                }
-                .onChange(of: colorScheme) { _, newColorScheme in
-                    updateFilteredThemes(overrideColorScheme: newColorScheme)
-                }
+                .sheet(isPresented: $themeModel.detailsIsPresented, onDismiss: endAdding) { detailsSheet }
+                .onAppear { updateFilteredThemes() }
+                .onChange(of: themeSearchQuery) { _, _ in updateFilteredThemes() }
+                .onChange(of: themeModel.themes, themesChanged)
+                .onChange(of: colorScheme, colorSchemeChanged)
             }
         }
     }
@@ -149,9 +103,25 @@ struct ThemeSettingsView: View {
     private func filterAndSortThemes(_ themes: [Theme]) async -> [Theme] {
         return await themes.fuzzySearch(query: themeSearchQuery).map { $1 }
     }
+
+    func applyMatchAppearance(_ value: Bool) {
+        themeModel.matchAppearanceChanged(to: value, colorScheme: colorScheme)
+    }
+
+    func endAdding() {
+        themeModel.scheduleAddingReset()
+    }
+
+    func themesChanged(_ oldValue: [Theme], _ newValue: [Theme]) {
+        updateFilteredThemes()
+    }
+
+    func colorSchemeChanged(_ oldValue: ColorScheme, _ newValue: ColorScheme) {
+        updateFilteredThemes(overrideColorScheme: newValue)
+    }
 }
 
-private extension ThemeSettingsView {
+extension ThemeSettingsView {
     private var useThemeBackground: some View {
         Toggle("Use theme background ", isOn: $settings.useThemeBackground)
     }
@@ -165,18 +135,34 @@ private extension ThemeSettingsView {
             "Automatically change theme based on system appearance",
             isOn: $settings.matchAppearance
         )
-        .onChange(of: settings.matchAppearance) { _, value in
-            if value {
-                if colorScheme == .dark {
-                    themeModel.selectedTheme = themeModel.selectedDarkTheme
-                } else {
-                    themeModel.selectedTheme = themeModel.selectedLightTheme
-                }
-            } else {
-                themeModel.selectedTheme = themeModel.themes.first {
-                    $0.name == settings.selectedTheme
-                }
+        .onChange(of: settings.matchAppearance) { _, value in applyMatchAppearance(value) }
+    }
+
+    var importExportMenu: some View {
+        Group {
+            Button(action: themeModel.importTheme) {
+                Text("Import Theme...")
             }
+            Button(action: themeModel.exportAllCustomThemes) {
+                Text("Export All Custom Themes...")
+            }
+            .disabled(themeModel.themes.filter { !$0.isBundled }.isEmpty)
+        }
+    }
+
+    func detailsBinding(editing theme: Theme, at index: Int) -> Binding<Theme> {
+        Binding(
+            get: { themeModel.themes[index] },
+            set: { themeModel.commitDetails($0, at: index, editing: theme) }
+        )
+    }
+
+    @ViewBuilder
+    var detailsSheet: some View {
+        if let theme = themeModel.detailsTheme, let index = themeModel.themes.firstIndex(where: {
+            $0.fileURL?.absoluteString == theme.fileURL?.absoluteString
+        }) {
+            ThemeSettingsThemeDetails(theme: detailsBinding(editing: theme, at: index), themeModel: themeModel)
         }
     }
 }

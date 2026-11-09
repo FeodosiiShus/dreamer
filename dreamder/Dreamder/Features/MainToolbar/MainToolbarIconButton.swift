@@ -46,21 +46,44 @@ struct MainToolbarIconContent: View {
     }
 }
 
+@Observable
+final class MainToolbarHoverState {
+    var isHovering = false
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
+    }
+}
+
 struct MainToolbarIconButton: View {
     let icon: String
     let help: String
     var isEnabled = true
     let action: () -> Void
 
-    @State private var isHovering = false
+    @State private var hover: MainToolbarHoverState
+
+    init(
+        icon: String,
+        help: String,
+        isEnabled: Bool = true,
+        action: @escaping () -> Void,
+        hover: MainToolbarHoverState = MainToolbarHoverState()
+    ) {
+        self.icon = icon
+        self.help = help
+        self.isEnabled = isEnabled
+        self.action = action
+        _hover = State(initialValue: hover)
+    }
 
     var body: some View {
         Button(action: action) {
-            MainToolbarIconContent(icon: icon, isEnabled: isEnabled, isHovering: isHovering)
+            MainToolbarIconContent(icon: icon, isEnabled: isEnabled, isHovering: hover.isHovering)
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
-        .onHover { isHovering = $0 }
+        .onHover(perform: hover.setHovering)
         .help(help)
         .fixedSize()
     }

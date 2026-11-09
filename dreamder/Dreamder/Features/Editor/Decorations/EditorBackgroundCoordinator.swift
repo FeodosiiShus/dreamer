@@ -4,6 +4,11 @@ import CodeEditSourceEditor
 final class EditorBackgroundCoordinator: TextViewCoordinator {
     private weak var controller: TextViewController?
     private var observer: NSObjectProtocol?
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
     func prepareCoordinator(controller: TextViewController) {
         self.controller = controller
@@ -42,7 +47,7 @@ final class EditorBackgroundCoordinator: TextViewCoordinator {
 
     private func applyTransparency() {
         guard let controller, let scrollView = controller.scrollView else { return }
-        let hasBackgroundImage = !(UserDefaults.standard.string(forKey: Islands.BackgroundImageKey.path) ?? "").isEmpty
+        let hasBackgroundImage = !(defaults.string(forKey: Islands.BackgroundImageKey.path) ?? "").isEmpty
         if hasBackgroundImage {
             scrollView.drawsBackground = false
             scrollView.contentView.drawsBackground = false

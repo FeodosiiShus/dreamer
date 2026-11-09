@@ -5,17 +5,39 @@ import CodeEditTextView
 import SwiftUI
 
 final class DiagnosticHighlightCoordinator: TextViewCoordinator {
+    typealias LSPServiceProvider = @MainActor () -> LSPService?
+
     private static let errorGroup = "dreamder.diagnostics.error"
     private static let warningGroup = "dreamder.diagnostics.warning"
 
     private let fileURL: URL?
+    private weak var codeFile: CodeFileDocument?
+    private let lspService: LSPServiceProvider
+    private let intentionDelay: Duration
+    private let tooltipDelay: Duration
     private weak var controller: TextViewController?
     private weak var store: DiagnosticsStore?
     private var storeObservation: Task<Void, Never>?
-    private var applyWorkItem: DispatchWorkItem?
+    private var applyTask: Task<Void, Never>?
+    private var intentionTask: Task<Void, Never>?
+    private var intentionLine: Int?
+    let stripe = ErrorStripeInstaller()
+    let bulb = IntentionBulbPresenter()
+    lazy var tooltip = DiagnosticTooltipPresenter(delay: tooltipDelay) { [weak self] line, column in
+        self?.tooltipModel(line: line, column: column)
+    }
 
-    init(codeFile: CodeFileDocument) {
+    init(
+        codeFile: CodeFileDocument,
+        intentionDelay: Duration = .milliseconds(150),
+        tooltipDelay: Duration = .milliseconds(400),
+        lspService: @escaping LSPServiceProvider = { .shared }
+    ) {
         fileURL = codeFile.fileURL
+        self.codeFile = codeFile
+        self.intentionDelay = intentionDelay
+        self.tooltipDelay = tooltipDelay
+        self.lspService = lspService
     }
 
     func prepareCoordinator(controller: TextViewController) {
@@ -23,6 +45,7 @@ final class DiagnosticHighlightCoordinator: TextViewCoordinator {
     }
 
     func controllerDidAppear(controller: TextViewController) {
+        installDecorations(in: controller)
         guard store == nil, let fileURL, let workspace = fileURL.findWorkspace() else { return }
         let diagnosticsStore = workspace.diagnosticsStore
         store = diagnosticsStore
@@ -38,26 +61,53 @@ final class DiagnosticHighlightCoordinator: TextViewCoordinator {
 
     func textViewDidChangeText(controller: TextViewController) {
         scheduleApply()
+        bulb.reposition()
+    }
+
+    func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition]) {
+        scheduleIntentionRefresh()
+    }
+
+    func intentionAvailable(line: Int) -> Bool {
+        intentionLine == line
     }
 
     func destroy() {
-        applyWorkItem?.cancel()
-        applyWorkItem = nil
+        applyTask?.cancel()
+        applyTask = nil
         storeObservation?.cancel()
         storeObservation = nil
+        intentionTask?.cancel()
+        intentionTask = nil
+        intentionLine = nil
         removeEmphases()
+        stripe.remove()
+        bulb.remove()
+        tooltip.remove()
         store = nil
         controller = nil
     }
 
-    private func scheduleApply() {
-        guard applyWorkItem == nil else { return }
-        let item = DispatchWorkItem { [weak self] in
-            self?.applyWorkItem = nil
-            self?.applyEmphases()
+    private func installDecorations(in controller: TextViewController) {
+        stripe.onSelect = { [weak self] line in self?.selectDiagnostic(onLine: line) }
+        stripe.install(in: controller)
+        bulb.onActivate = {
+            NSApp.sendAction(#selector(DreamderWindowController.showContextActions(_:)), to: nil, from: nil)
         }
-        applyWorkItem = item
-        DispatchQueue.main.async(execute: item)
+        bulb.install(controller: controller)
+        if let textView = controller.textView {
+            tooltip.install(textView: textView)
+        }
+    }
+
+    private func scheduleApply() {
+        guard applyTask == nil else { return }
+        applyTask = Task { [weak self] in
+            guard !Task.isCancelled, let self else { return }
+            applyTask = nil
+            applyEmphases()
+            scheduleIntentionRefresh()
+        }
     }
 
     private func removeEmphases() {
@@ -95,6 +145,86 @@ final class DiagnosticHighlightCoordinator: TextViewCoordinator {
 
         emphasisManager.replaceEmphases(errors, for: Self.errorGroup)
         emphasisManager.replaceEmphases(warnings, for: Self.warningGroup)
+        stripe.update(
+            marks: diagnostics.map { ErrorStripeMark(line: $0.startLine, severity: $0.severity) },
+            lineCount: layoutManager.lineCount
+        )
+    }
+
+    private func selectDiagnostic(onLine line: Int) {
+        guard let textView = controller?.textView,
+              let fileURL,
+              let diagnostic = store?.diagnostics(for: fileURL).first(where: { $0.startLine == line }),
+              let range = Self.range(
+                  for: diagnostic,
+                  layoutManager: textView.layoutManager,
+                  textLength: textView.textStorage.length
+              ) else {
+            return
+        }
+        textView.selectionManager.setSelectedRange(NSRange(location: range.location, length: 0))
+        textView.scrollSelectionToVisible()
+    }
+
+    private func scheduleIntentionRefresh() {
+        intentionTask?.cancel()
+        let delay = intentionDelay
+        intentionTask = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            await self?.refreshIntention()
+        }
+    }
+
+    private func refreshIntention() async {
+        guard let codeFile,
+              let fileURL,
+              let store,
+              let line = caretLine() else {
+            clearIntention()
+            return
+        }
+        let diagnostics = store.diagnostics(for: fileURL)
+        guard let request = CodeActionRequest.makeForLine(
+            line,
+            codeFile: codeFile,
+            diagnostics: diagnostics,
+            lspService: lspService()
+        ) else {
+            clearIntention()
+            return
+        }
+        let groups = await request.fetch(triggerKind: .automatic)
+        guard !Task.isCancelled else { return }
+        if groups.hasQuickFixes {
+            intentionLine = line
+            bulb.show(line: line)
+        } else {
+            clearIntention()
+        }
+    }
+
+    private func clearIntention() {
+        intentionLine = nil
+        bulb.hide()
+    }
+
+    private func caretLine() -> Int? {
+        guard let textView = controller?.textView,
+              let location = textView.selectionManager.textSelections.first?.range.location else {
+            return nil
+        }
+        return textView.layoutManager.textLineForOffset(location)?.index
+    }
+
+    private func tooltipModel(line: Int, column: Int) -> DiagnosticTooltipModel? {
+        guard let fileURL, let store else { return nil }
+        return DiagnosticTooltipModel.make(
+            diagnostics: store.diagnostics(for: fileURL),
+            line: line,
+            column: column,
+            showsMoreActions: intentionAvailable(line: line)
+        )
     }
 
     private static func range(
@@ -118,6 +248,6 @@ final class DiagnosticHighlightCoordinator: TextViewCoordinator {
 
     private static func color(for severity: WorkspaceDiagnostic.Severity) -> NSColor {
         let color = severity == .error ? Islands.errorForeground : Islands.warningForeground
-        return NSColor(color).usingColorSpace(.sRGB) ?? NSColor(color)
+        return NSColor(color)
     }
 }

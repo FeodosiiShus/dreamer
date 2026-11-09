@@ -45,6 +45,7 @@ extension LanguageServer {
             guard resolveOpenCloseSupport(), let document = openFiles.document(for: uri) else { return }
             logger.debug("Closing document \(uri, privacy: .private)")
 
+            lspCache.invalidate(uri: uri)
             openFiles.removeDocument(for: uri)
             clearIsolatedDocument(document)
 
@@ -82,6 +83,7 @@ extension LanguageServer {
     func documentChanged(uri: String, changes: [DocumentChange]) async throws {
         do {
             logger.debug("Document updated, \(uri, privacy: .private)")
+            lspCache.invalidate(uri: uri)
             guard let document = openFiles.document(for: uri) else { return }
 
             switch resolveDocumentSyncKind() {
@@ -90,9 +92,10 @@ extension LanguageServer {
                     logger.error("Failed to get isolated document content")
                     return
                 }
+                let fileVersion = openFiles.incrementVersion(for: uri)
                 let changeEvent = TextDocumentContentChangeEvent(range: nil, rangeLength: nil, text: content.string)
                 try await lspInstance.textDocumentDidChange(
-                    DidChangeTextDocumentParams(uri: uri, version: 0, contentChange: changeEvent)
+                    DidChangeTextDocumentParams(uri: uri, version: fileVersion, contentChange: changeEvent)
                 )
             case .incremental:
                 let fileVersion = openFiles.incrementVersion(for: uri)
@@ -112,9 +115,35 @@ extension LanguageServer {
             try await document.languageServerObjects.highlightProvider.documentDidChange()
             await requestPullDiagnosticsIfSupported(for: uri)
         } catch {
-            logger.warning("closeDocument: Error \(error)")
+            logger.warning("documentChanged: Error \(error)")
             throw error
         }
+    }
+
+    func reloadDocument(_ document: DocumentType) async throws {
+        do {
+            guard let uri = document.languageServerURI, openFiles.document(for: uri) != nil else { return }
+            guard resolveDocumentSyncKind() != .none, let content = getIsolatedDocumentContent(document) else {
+                return
+            }
+            document.languageServerObjects.textCoordinator.discardPendingChanges()
+            lspCache.invalidate(uri: uri)
+            let fileVersion = openFiles.incrementVersion(for: uri)
+            let changeEvent = TextDocumentContentChangeEvent(range: nil, rangeLength: nil, text: content.string)
+            try await lspInstance.textDocumentDidChange(
+                DidChangeTextDocumentParams(uri: uri, version: fileVersion, contentChange: changeEvent)
+            )
+            try await document.languageServerObjects.highlightProvider.documentDidChange()
+            await requestPullDiagnosticsIfSupported(for: uri)
+        } catch {
+            logger.warning("reloadDocument: Error \(error)")
+            throw error
+        }
+    }
+
+    func flushPendingEdits(for uri: String) async {
+        guard let document = openFiles.document(for: uri) else { return }
+        await document.languageServerObjects.textCoordinator.flushPendingChanges()
     }
 
     private func requestPullDiagnosticsIfSupported(for uri: String) async {
@@ -137,7 +166,7 @@ extension LanguageServer {
               let content = document.content?.string else {
             return nil
         }
-        return DocumentContent(uri: uri, language: document.getLanguage().id.rawValue, string: content)
+        return DocumentContent(uri: uri, language: document.getLanguage().lspLanguageId, string: content)
     }
 
     @MainActor

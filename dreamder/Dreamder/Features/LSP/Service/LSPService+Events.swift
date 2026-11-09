@@ -73,7 +73,8 @@ extension LSPService {
                 workspacePath: key.workspacePath
             )
         case let .protocolProgress(params):
-            client.workDoneProgress.apply(params)
+            let update = client.workDoneProgress.apply(params)
+            publishWorkDoneProgress(update, for: params.token, client: client, key: key)
         default:
             return
         }

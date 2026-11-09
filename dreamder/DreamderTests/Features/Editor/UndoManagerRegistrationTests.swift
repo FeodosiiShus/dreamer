@@ -11,7 +11,7 @@ import Foundation
 import CodeEditTextView
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct UndoManagerRegistrationTests {
     let registrar = UndoManagerRegistration()
     let file = CEWorkspaceFile(url: URL(filePath: "/fake/dir/file.txt"))

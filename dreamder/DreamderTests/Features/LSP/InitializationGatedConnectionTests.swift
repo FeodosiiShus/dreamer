@@ -58,4 +58,44 @@ struct InitializationGatedConnectionTests {
         let third = try #require(await iterator.next())
         #expect(label(third) == "request")
     }
+
+    @Test
+    func closedGateDropsLaterRequestsButStillPassesNotifications() async throws {
+        let source = Source()
+        let gate = InitializationGatedConnection(source)
+        var iterator = gate.eventSequence.makeAsyncIterator()
+        gate.open()
+        gate.close()
+
+        source.continuation.yield(.request(
+            id: .numericId(1),
+            request: .workspaceConfiguration(ConfigurationParams(items: []), { _ in })
+        ))
+        source.continuation.yield(.notification(.windowLogMessage(LogMessageParams(type: .info, message: "late"))))
+
+        let next = try #require(await iterator.next())
+        #expect(label(next) == "log:late")
+    }
+
+    @Test
+    func closingBeforeOpenDiscardsQueuedRequests() async throws {
+        let source = Source()
+        let gate = InitializationGatedConnection(source)
+        var iterator = gate.eventSequence.makeAsyncIterator()
+
+        source.continuation.yield(.request(
+            id: .numericId(1),
+            request: .workspaceConfiguration(ConfigurationParams(items: []), { _ in })
+        ))
+        source.continuation.yield(.notification(.windowLogMessage(LogMessageParams(type: .info, message: "first"))))
+        let first = try #require(await iterator.next())
+        #expect(label(first) == "log:first")
+
+        gate.close()
+        gate.open()
+        source.continuation.yield(.notification(.windowLogMessage(LogMessageParams(type: .info, message: "second"))))
+
+        let second = try #require(await iterator.next())
+        #expect(label(second) == "log:second")
+    }
 }

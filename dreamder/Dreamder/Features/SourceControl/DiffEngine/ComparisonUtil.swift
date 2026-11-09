@@ -19,7 +19,7 @@ nonisolated enum ComparisonUtil {
         case .default:
             return text1 == text2
         case .trimWhitespaces:
-            return trimmed(text1[...]) == trimmed(text2[...])
+            return trimmed(ArraySlice(text1)) == trimmed(ArraySlice(text2))
         case .ignoreWhitespaces:
             return equalsIgnoreWhitespaces(text1, text2)
         }
@@ -33,7 +33,7 @@ nonisolated enum ComparisonUtil {
                 hash = 31 &* hash &+ Int32(unit)
             }
         case .trimWhitespaces:
-            for unit in trimmed(text[...]) {
+            for unit in trimmed(ArraySlice(text)) {
                 hash = 31 &* hash &+ Int32(unit)
             }
         case .ignoreWhitespaces:
@@ -95,15 +95,17 @@ nonisolated enum ComparisonUtil {
     static func equalsTrimWhitespacesPerLine(_ text1: DiffUnits, _ text2: DiffUnits) -> Bool {
         var index1 = 0
         var index2 = 0
-        while true {
+        var isLastLine = false
+        while !isLastLine {
             let (end1, last1) = lineEnd(text1, from: index1)
             let (end2, last2) = lineEnd(text2, from: index2)
             if last1 != last2 { return false }
             if trimmed(text1[index1..<end1]) != trimmed(text2[index2..<end2]) { return false }
             index1 = end1
             index2 = end2
-            if last1 { return true }
+            isLastLine = last1
         }
+        return true
     }
 
     private static func lineEnd(_ text: DiffUnits, from index: Int) -> (end: Int, isLast: Bool) {

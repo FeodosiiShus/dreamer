@@ -70,7 +70,11 @@ struct ToolWindowTab: View {
         )
         .contentShape(Rectangle())
         .onTapGesture(perform: action)
-        .onHover { isHovering = $0 }
+        .onHover(perform: setHovering)
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
     }
 }
 
@@ -118,7 +122,11 @@ struct ToolWindowActionButton: View {
         }
         .buttonStyle(.plain)
         .help(help)
-        .onHover { isHovering = $0 }
+        .onHover(perform: setHovering)
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
     }
 }
 
@@ -144,6 +152,12 @@ struct GlassSurface: ViewModifier {
     private var imagePath = ""
     @AppStorage(Islands.BackgroundImageKey.opacity)
     private var imageOpacity = Islands.BackgroundImageKey.defaultOpacity
+
+    init(radius: CGFloat, tint: Color, followsBackgroundImage: Bool) {
+        self.radius = radius
+        self.tint = tint
+        self.followsBackgroundImage = followsBackgroundImage
+    }
 
     private var shape: RoundedRectangle {
         RoundedRectangle(cornerRadius: radius, style: .continuous)

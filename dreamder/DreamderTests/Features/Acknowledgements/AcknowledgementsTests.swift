@@ -11,17 +11,8 @@ import XCTest
 @MainActor
 final class AcknowledgementsTests: XCTestCase {
 
-    var model: AcknowledgementsViewModel!
-
-    override func setUpWithError() throws {
-        model = .init()
-    }
-
-    override func tearDownWithError() throws {
-        model = nil
-    }
-
     func testAcknowledgementsNotEmpty() throws {
+        let model = AcknowledgementsViewModel()
         XCTAssertFalse(model.acknowledgements.isEmpty)
     }
 }

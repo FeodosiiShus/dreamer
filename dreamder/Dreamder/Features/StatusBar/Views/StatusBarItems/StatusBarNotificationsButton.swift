@@ -2,18 +2,30 @@ import SwiftUI
 
 struct StatusBarNotificationsButton: View {
     @Environment(WorkspaceDocument.self) private var workspace
-    private let notificationManager = NotificationManager.shared
+    private let notificationManager: NotificationManager
 
     @State private var isHovering = false
 
+    init(notificationManager: NotificationManager = .shared) {
+        self.notificationManager = notificationManager
+    }
+
+    static func toggle(panel: NotificationPanelViewModel, notificationManager: NotificationManager) {
+        panel.toggleNotificationsVisibility()
+        if panel.isPresented {
+            notificationManager.markAllAsRead()
+        }
+    }
+
+    static func togglingAction(
+        panel: NotificationPanelViewModel,
+        notificationManager: NotificationManager
+    ) -> () -> Void {
+        { toggle(panel: panel, notificationManager: notificationManager) }
+    }
+
     var body: some View {
-        Button {
-            let panel = workspace.notificationPanel
-            panel.toggleNotificationsVisibility()
-            if panel.isPresented {
-                notificationManager.markAllAsRead()
-            }
-        } label: {
+        Button(action: Self.togglingAction(panel: workspace.notificationPanel, notificationManager: notificationManager)) {
             ZStack(alignment: .topTrailing) {
                 Image("toolwindows/notifications")
                     .resizable()
@@ -35,6 +47,10 @@ struct StatusBarNotificationsButton: View {
         }
         .buttonStyle(.plain)
         .help("Notifications")
-        .onHover { isHovering = $0 }
+        .onHover(perform: setHovering)
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
     }
 }

@@ -66,13 +66,7 @@ struct ExternalLink<Content: View, Icon: View>: View {
     }
 
     var body: some View {
-        Button(action: {
-            if showInFinder {
-                NSWorkspace.shared.activateFileViewerSelecting([destination])
-            } else {
-                NSWorkspace.shared.open(destination)
-            }
-        }, label: {
+        Button(action: open, label: {
             HStack(spacing: 8) {
                 icon?()
                 VStack(alignment: .leading, spacing: 2) {
@@ -93,6 +87,14 @@ struct ExternalLink<Content: View, Icon: View>: View {
             }
         })
         .buttonStyle(ExternalLinkButtonStyle())
+    }
+
+    func open() {
+        if showInFinder {
+            NSWorkspace.shared.activateFileViewerSelecting([destination])
+        } else {
+            NSWorkspace.shared.open(destination)
+        }
     }
 }
 

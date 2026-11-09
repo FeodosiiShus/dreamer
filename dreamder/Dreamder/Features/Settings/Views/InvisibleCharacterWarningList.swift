@@ -14,38 +14,12 @@ struct InvisibleCharacterWarningList: View {
 
     var body: some View {
         KeyValueTable(
-            items: Binding(
-                get: {
-                    items.reduce(into: [String: String]()) { dict, keyVal in
-                        let hex = String(keyVal.key, radix: 16).uppercased()
-                        let padding = String(repeating: "0", count: 4 - hex.count)
-                        dict["U+" + padding + hex] = keyVal.value
-                    }
-                },
-                set: { dict in
-                    items = dict.reduce(into: [UInt16: String]()) { dict, keyVal in
-                        guard let intFromHex = UInt(hexString: String(keyVal.key.trimmingPrefix("U+"))),
-                              intFromHex < UInt16.max else {
-                            return
-                        }
-                        let charCode = UInt16(intFromHex)
-                        dict[charCode] = keyVal.value
-                    }
-                }
-            ),
+            items: displayBinding,
             keyColumnName: "Unicode Character Code",
             valueColumnName: "Notes",
             newItemInstruction: "Add A Character As A Hexidecimal Unicode Value",
             actionBarTrailing: {
-                Button {
-                    // Add defaults without removing user's data. We do still override notes here.
-                    items = items.merging(
-                        SettingsData.TextEditingSettings.WarningCharacters.default.characters,
-                        uniquingKeysWith: { _, defaults in
-                            defaults
-                        }
-                    )
-                } label: {
+                Button(action: restoreDefaults) {
                     Text("Restore Defaults")
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -62,5 +36,37 @@ struct InvisibleCharacterWarningList: View {
                     .foregroundStyle(Color(.secondaryLabelColor))
             }
         }
+    }
+
+    var displayBinding: Binding<[String: String]> {
+        Binding(get: { Self.displayItems(items) }, set: { items = Self.parseItems($0) })
+    }
+
+    static func displayItems(_ items: [UInt16: String]) -> [String: String] {
+        items.reduce(into: [String: String]()) { dict, keyVal in
+            let hex = String(keyVal.key, radix: 16).uppercased()
+            let padding = String(repeating: "0", count: 4 - hex.count)
+            dict["U+" + padding + hex] = keyVal.value
+        }
+    }
+
+    static func parseItems(_ dict: [String: String]) -> [UInt16: String] {
+        dict.reduce(into: [UInt16: String]()) { dict, keyVal in
+            guard let intFromHex = UInt(hexString: String(keyVal.key.trimmingPrefix("U+"))),
+                  intFromHex < UInt16.max else {
+                return
+            }
+            let charCode = UInt16(intFromHex)
+            dict[charCode] = keyVal.value
+        }
+    }
+
+    func restoreDefaults() {
+        items = items.merging(
+            SettingsData.TextEditingSettings.WarningCharacters.default.characters,
+            uniquingKeysWith: { _, defaults in
+                defaults
+            }
+        )
     }
 }

@@ -3,7 +3,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct GitBlameCoordinatorRegistryTests {
     private func makeEditor(_ name: String = "file.swift") -> EditorInstance {
         EditorInstance(workspace: nil, file: CEWorkspaceFile(url: URL(filePath: "/fake/dir/\(name)")))

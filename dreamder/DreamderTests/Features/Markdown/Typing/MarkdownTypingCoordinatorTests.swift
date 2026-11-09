@@ -6,7 +6,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct MarkdownTypingCoordinatorTests {
     private static let returnKeyCode: UInt16 = 36
     private static let deleteKeyCode: UInt16 = 51

@@ -15,11 +15,6 @@ nonisolated extension GitClient {
         _ = try await self.run(arguments: arguments)
     }
 
-    /// Pops the latest entry from stash onto HEAD
-    func stashPop() async throws {
-        _ = try await self.run(arguments: ["stash", "pop"])
-    }
-
     /// Lists all of the entries in stash
     func stashList() async throws -> [GitStashEntry] {
         let output = try await run(arguments: ["stash", "list", "--format=%gd%x1f%ct%x1f%gs"])
@@ -35,11 +30,6 @@ nonisolated extension GitClient {
         } else {
             _ = try await run(arguments: ["stash", "apply"])
         }
-    }
-
-    /// Delete stash
-    func deleteStashEntry(_ index: Int) async throws {
-        _ = try await run(arguments: ["stash", "drop", "stash@{\(index)}"])
     }
 }
 

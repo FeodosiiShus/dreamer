@@ -35,12 +35,9 @@ extension NSFont {
             intWeight=5
         }
 
-        return fontManager.font(
-            withFamily: self.familyName ?? "",
-            traits: [],
-            weight: intWeight,
-            size: self.pointSize
-        )
+        return familyName.flatMap { family in
+            fontManager.font(withFamily: family, traits: [], weight: intWeight, size: pointSize)
+        }
     }
 }
 
@@ -53,6 +50,6 @@ extension NSFont.Weight: @retroactive Codable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let rawValue = try container.decode(CGFloat.self)
-        self = NSFont.Weight(rawValue: rawValue)
+        self = NSFont.Weight(rawValue: CGFloat(Float(rawValue)))
     }
 }

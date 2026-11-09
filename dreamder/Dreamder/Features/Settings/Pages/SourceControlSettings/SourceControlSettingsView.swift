@@ -11,7 +11,14 @@ struct SourceControlSettingsView: View {
     @AppSettings(\.sourceControl.general)
     var settings
 
-    @State var selectedTab: String = "general"
+    @State var selectedTab: String
+
+    let gitView: SourceControlGitView
+
+    init(selectedTab: String = "general", gitView: SourceControlGitView = SourceControlGitView()) {
+        _selectedTab = State(initialValue: selectedTab)
+        self.gitView = gitView
+    }
 
     var body: some View {
         SettingsForm {
@@ -33,7 +40,7 @@ struct SourceControlSettingsView: View {
                 case "general":
                     SourceControlGeneralView()
                 case "git":
-                    SourceControlGitView()
+                    gitView
                 default:
                     SourceControlGeneralView()
                 }

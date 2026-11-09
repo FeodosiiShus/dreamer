@@ -15,10 +15,26 @@ protocol OutlineTableViewCellDelegate: AnyObject {
 
 /// A `NSTableCellView` showing an ``icon`` and a ``label``
 final class ProjectNavigatorTableViewCell: FileSystemTableViewCell {
+    struct CreationEditing {
+        let validate: (String) -> String?
+        let commit: (String) -> Void
+        let cancel: () -> Void
+    }
+
     private weak var delegate: OutlineTableViewCellDelegate?
 
     private let disclosureButton = NSButton()
     private let disclosureWidth: CGFloat = 14
+
+    private var isFinishingCreation = false
+
+    var creationEditing: CreationEditing? {
+        didSet {
+            guard creationEditing != nil else { return }
+            textField?.stringValue = ""
+            textField?.placeholderString = fileItem?.isFolder == true ? "Directory name" : "File name"
+        }
+    }
 
     var showsDisclosureGutter = true {
         didSet { resizeSubviews(withOldSize: .zero) }
@@ -50,9 +66,16 @@ final class ProjectNavigatorTableViewCell: FileSystemTableViewCell {
         item: CEWorkspaceFile?,
         isEditable: Bool = true,
         delegate: OutlineTableViewCellDelegate? = nil,
-        navigatorFilter: String? = nil
+        navigatorFilter: String? = nil,
+        exclusion: ProjectNavigatorExclusion = .included
     ) {
-        super.init(frame: frameRect, item: item, isEditable: isEditable, navigatorFilter: navigatorFilter)
+        super.init(
+            frame: frameRect,
+            item: item,
+            isEditable: isEditable,
+            navigatorFilter: navigatorFilter,
+            exclusion: exclusion
+        )
         self.textField?.setAccessibilityIdentifier("ProjectNavigatorTableViewCell-\(item?.name ?? "")")
         self.delegate = delegate
         configureDisclosure()
@@ -115,17 +138,81 @@ final class ProjectNavigatorTableViewCell: FileSystemTableViewCell {
         onToggleDisclosure?()
     }
 
+    override func controlTextDidChange(_ obj: Notification) {
+        guard let creationEditing else {
+            super.controlTextDidChange(obj)
+            return
+        }
+        let name = enteredName
+        let isBlank = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        showCreationError(isBlank ? nil : creationEditing.validate(name))
+    }
+
+    @objc
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard let creationEditing, !isFinishingCreation else { return false }
+        switch commandSelector {
+        case #selector(NSResponder.cancelOperation(_:)):
+            finishCreation(creationEditing.cancel)
+            return true
+        case #selector(NSResponder.insertNewline(_:)):
+            let name = enteredName
+            if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                finishCreation(creationEditing.cancel)
+            } else if let message = creationEditing.validate(name) {
+                showCreationError(message)
+            } else {
+                finishCreation { creationEditing.commit(name) }
+            }
+            return true
+        default:
+            return false
+        }
+    }
+
     override func controlTextDidEndEditing(_ obj: Notification) {
+        if let creationEditing {
+            guard !isFinishingCreation else { return }
+            let name = enteredName
+            isFinishingCreation = true
+            if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || creationEditing.validate(name) != nil {
+                creationEditing.cancel()
+            } else {
+                creationEditing.commit(name)
+            }
+            return
+        }
         guard let fileItem else { return }
-        textField?.backgroundColor = fileItem.validateFileName(for: textField?.stringValue ?? "") ? .none : errorRed
-        if fileItem.validateFileName(for: textField?.stringValue ?? "") {
+        let isValid = fileItem.validateFileName(for: enteredName)
+        textField?.backgroundColor = isValid ? .none : errorRed
+        if isValid {
             let destinationURL = fileItem.url
                 .deletingLastPathComponent()
-                .appending(path: textField?.stringValue ?? "")
+                .appending(path: enteredName)
             delegate?.moveFile(file: fileItem, to: destinationURL)
         } else {
             textField?.stringValue = fileItem.labelFileName()
         }
         delegate?.cellDidFinishEditing()
+    }
+
+    private func finishCreation(_ action: () -> Void) {
+        isFinishingCreation = true
+        var ancestor = superview
+        while let current = ancestor, !(current is NSOutlineView) {
+            ancestor = current.superview
+        }
+        if let outline = ancestor {
+            window?.makeFirstResponder(outline)
+        }
+        action()
+    }
+
+    private func showCreationError(_ message: String?) {
+        textField?.toolTip = message
+        textField?.textColor = NSColor(message == nil ? Islands.foreground : Islands.errorForeground)
+        textField?.layer?.backgroundColor = message == nil
+            ? NSColor.textBackgroundColor.cgColor
+            : errorRed.cgColor
     }
 }

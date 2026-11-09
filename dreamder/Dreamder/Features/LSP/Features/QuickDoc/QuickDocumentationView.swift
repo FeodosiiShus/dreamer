@@ -50,9 +50,6 @@ struct QuickDocumentationView: View {
         let options = AttributedString.MarkdownParsingOptions(
             interpretedSyntax: .inlineOnlyPreservingWhitespace
         )
-        guard let attributed = try? AttributedString(markdown: markdown, options: options) else {
-            return AttributedString(markdown)
-        }
-        return attributed
+        return (try? AttributedString(markdown: markdown, options: options)) ?? AttributedString(markdown)
     }
 }

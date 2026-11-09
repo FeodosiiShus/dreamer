@@ -363,9 +363,10 @@ nonisolated enum BranchesPopupTreeBuilder {
         let path: [String]
     }
 
-    nonisolated private enum Slot {
-        case ref(RefEntry)
-        case group(String)
+    nonisolated private struct Slot {
+        let title: String
+        let leaf: RefEntry?
+        var members: [RefEntry] = []
     }
 
     private static func buildLevel(
@@ -375,39 +376,42 @@ nonisolated enum BranchesPopupTreeBuilder {
         ordering: BranchesPopupRefOrdering
     ) -> [BranchesPopupNode] {
         var slots: [Slot] = []
-        var groups: [String: [RefEntry]] = [:]
+        var groupSlotIndexByName: [String: Int] = [:]
         for entry in entries {
             guard let first = entry.path.first else { continue }
             if entry.path.count <= 1 {
-                slots.append(.ref(entry))
+                slots.append(Slot(title: first, leaf: entry))
+                continue
+            }
+            let member = RefEntry(ref: entry.ref, path: Array(entry.path.dropFirst()))
+            if let index = groupSlotIndexByName[first] {
+                slots[index].members.append(member)
             } else {
-                if groups[first] == nil { slots.append(.group(first)) }
-                groups[first, default: []].append(RefEntry(ref: entry.ref, path: Array(entry.path.dropFirst())))
+                groupSlotIndexByName[first] = slots.count
+                slots.append(Slot(title: first, leaf: nil, members: [member]))
             }
         }
 
         let isNested = !path.isEmpty
         let nodes = slots.map { slot -> BranchesPopupNode in
-            switch slot {
-            case .ref(let entry):
-                return refNode(entry.ref, section: section, title: entry.path.first ?? entry.ref.displayName)
-            case .group(let name):
-                let groupPath = path + [name]
-                let children = buildLevel(
-                    entries: groups[name] ?? [],
-                    section: section,
-                    path: groupPath,
-                    ordering: ordering
-                )
-                return BranchesPopupNode(
-                    id: .group(section, groupPath.joined(separator: "/")),
-                    kind: .group,
-                    title: name,
-                    detail: nil,
-                    ref: nil,
-                    children: children
-                )
+            if let leaf = slot.leaf {
+                return refNode(leaf.ref, section: section, title: slot.title)
             }
+            let groupPath = path + [slot.title]
+            let children = buildLevel(
+                entries: slot.members,
+                section: section,
+                path: groupPath,
+                ordering: ordering
+            )
+            return BranchesPopupNode(
+                id: .group(section, groupPath.joined(separator: "/")),
+                kind: .group,
+                title: slot.title,
+                detail: nil,
+                ref: nil,
+                children: children
+            )
         }
         return isNested ? ordering.arrangedChildren(nodes) : nodes
     }

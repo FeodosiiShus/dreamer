@@ -30,7 +30,7 @@ final class GitGutterMarkerView: NSView {
 
     private var lineMarkers: [Int: GitLineChange] = [:]
     private var boundaryMarkers: [Int: GitLineChange] = [:]
-    private var popover: NSPopover?
+    private(set) var popover: NSPopover?
 
     override var isFlipped: Bool { true }
 
@@ -105,10 +105,8 @@ final class GitGutterMarkerView: NSView {
         switch kind {
         case .added:
             return Self.addedColor
-        case .modified:
+        case .modified, .deleted:
             return Self.modifiedColor
-        case .deleted:
-            return Self.deletedColor
         }
     }
 
@@ -142,33 +140,34 @@ final class GitGutterMarkerView: NSView {
 
     private func change(at point: NSPoint) -> (change: GitLineChange, rect: NSRect)? {
         guard let layoutManager = textView?.layoutManager else { return nil }
-        var best: (change: GitLineChange, rect: NSRect, distance: CGFloat)?
+        var best: (change: GitLineChange, rect: NSRect)?
+        var bestDistance = CGFloat.infinity
         let rectHeight: CGFloat = 2
 
         func consider(_ change: GitLineChange?, boundaryY: CGFloat) {
             guard let change else { return }
             let distance = abs(point.y - boundaryY)
-            guard distance <= Self.hitTolerance else { return }
-            guard best == nil || distance < (best?.distance ?? .greatestFiniteMagnitude) else { return }
+            guard distance <= Self.hitTolerance, distance < bestDistance else { return }
+            bestDistance = distance
             best = (
                 change,
-                NSRect(x: 0, y: boundaryY - rectHeight / 2, width: bounds.width, height: rectHeight),
-                distance
+                NSRect(x: 0, y: boundaryY - rectHeight / 2, width: bounds.width, height: rectHeight)
             )
         }
 
         consider(boundaryMarkers[0], boundaryY: 0)
-        guard let line = layoutManager.textLineForPosition(point.y) else { return best.map { ($0.change, $0.rect) } }
+        guard let line = layoutManager.textLineForPosition(point.y) else { return best }
         consider(boundaryMarkers[line.index + 1], boundaryY: line.yPos + line.height)
         consider(boundaryMarkers[line.index], boundaryY: line.yPos)
         if let change = lineMarkers[line.index + 1] {
             return (change, NSRect(x: 0, y: line.yPos, width: bounds.width, height: line.height))
         }
-        return best.map { ($0.change, $0.rect) }
+        return best
     }
 
     private func presentPopover(for change: GitLineChange, relativeTo rect: NSRect) {
         popover?.close()
+        guard window != nil else { return }
         let content = GitHunkPopoverView(
             title: Self.title(for: change),
             previousText: previousContent?(change),
@@ -194,14 +193,19 @@ final class GitGutterMarkerView: NSView {
     private static func title(for change: GitLineChange) -> String {
         switch change.kind {
         case .added:
-            let count = change.newLines?.count ?? 0
+            let count = lineCount(of: change.newLines)
             return count == 1 ? "Added 1 line" : "Added \(count) lines"
         case .modified:
-            let count = change.newLines?.count ?? 0
+            let count = lineCount(of: change.newLines)
             return count == 1 ? "Modified 1 line" : "Modified \(count) lines"
         case .deleted:
-            let count = change.oldLines?.count ?? 0
+            let count = lineCount(of: change.oldLines)
             return count == 1 ? "Deleted 1 line" : "Deleted \(count) lines"
         }
+    }
+
+    private static func lineCount(of range: ClosedRange<Int>?) -> Int {
+        guard let range else { return 0 }
+        return range.count
     }
 }

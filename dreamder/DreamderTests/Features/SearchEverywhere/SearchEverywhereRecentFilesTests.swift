@@ -3,7 +3,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct SearchEverywhereRecentFileListTests {
     private func url(_ path: String) -> URL {
         URL(fileURLWithPath: path)
@@ -55,7 +55,7 @@ struct SearchEverywhereRecentFileListTests {
 }
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct SearchEverywhereActionTitleTests {
     private func action(_ path: String) -> SearchEverywhereAction {
         SearchEverywhereAction(identity: "test:\(path)", path: path, shortcut: "", perform: {})
@@ -84,7 +84,7 @@ struct SearchEverywhereActionTitleTests {
 }
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct SearchEverywhereRecentSectionTests {
     @Test
     func allAndFilesTabsLeadWithRecentFiles() {
@@ -96,5 +96,64 @@ struct SearchEverywhereRecentSectionTests {
     @Test
     func recentSectionTitle() {
         #expect(SearchEverywhereSectionKind.recent.title == "Recent Files")
+    }
+}
+
+@MainActor
+@Suite(.serialized, .isolatedDefaults, .uiGate)
+struct SearchEverywhereRecentFilesStoreTests {
+    private func names(_ urls: [URL]) -> [String] {
+        urls.map(\.lastPathComponent)
+    }
+
+    private func storedNames(_ defaults: UserDefaults, workspace: WorkspaceDocument) -> [String] {
+        let key = workspace.fileURL?.standardizedFileURL.path ?? "untitled"
+        let paths = defaults.stringArray(forKey: "dreamder.recentFiles.\(key)") ?? []
+        return paths.map { URL(fileURLWithPath: $0).lastPathComponent }
+    }
+
+    @Test
+    func openTabsSeedAnEmptyHistoryAndLaterSelectionsAreRecordedAndPersisted() async throws {
+        try await withTempDir { dir in
+            let defaults = try IsolatedDefaults.require()
+            let workspace = try SearchEverywhereFixtures.makeWorkspace(dir)
+            defer { workspace.tearDownFileScope() }
+            try SearchEverywhereFixtures.openTab("README.md", in: workspace, dir: dir)
+            try SearchEverywhereFixtures.openTab("Sources/AppDelegate.swift", in: workspace, dir: dir)
+            let store = SearchEverywhereRecentFilesStore(defaults: defaults)
+
+            store.startTracking(for: workspace)
+
+            #expect(names(store.recentFiles(for: workspace)) == ["AppDelegate.swift", "README.md"])
+            #expect(storedNames(defaults, workspace: workspace) == ["AppDelegate.swift", "README.md"])
+
+            try SearchEverywhereFixtures.openTab("Sources/Helpers/StringUtils.swift", in: workspace, dir: dir)
+            try await eventually { names(store.recentFiles(for: workspace)).first == "StringUtils.swift" }
+            try await eventually { storedNames(defaults, workspace: workspace).first == "StringUtils.swift" }
+
+            try SearchEverywhereFixtures.openTab("README.md", in: workspace, dir: dir)
+            try await eventually { names(store.recentFiles(for: workspace)).first == "README.md" }
+            #expect(names(store.recentFiles(for: workspace)).count == 3)
+        }
+    }
+
+    @Test
+    func aStoredHistoryIsRestoredWithoutFilesThatNoLongerExist() throws {
+        try withTempDir { dir in
+            let defaults = try IsolatedDefaults.require()
+            let workspace = try SearchEverywhereFixtures.makeWorkspace(dir)
+            defer { workspace.tearDownFileScope() }
+            try SearchEverywhereFixtures.openTab("README.md", in: workspace, dir: dir)
+            try SearchEverywhereFixtures.openTab("Sources/AppDelegate.swift", in: workspace, dir: dir)
+            SearchEverywhereRecentFilesStore(defaults: defaults).startTracking(for: workspace)
+            #expect(storedNames(defaults, workspace: workspace) == ["AppDelegate.swift", "README.md"])
+
+            let restored = SearchEverywhereRecentFilesStore(defaults: defaults)
+            #expect(names(restored.recentFiles(for: workspace)) == ["AppDelegate.swift", "README.md"])
+
+            try FileManager.default.removeItem(at: dir.appending(path: "README.md"))
+            let pruned = SearchEverywhereRecentFilesStore(defaults: defaults)
+            #expect(names(pruned.recentFiles(for: workspace)) == ["AppDelegate.swift"])
+        }
     }
 }

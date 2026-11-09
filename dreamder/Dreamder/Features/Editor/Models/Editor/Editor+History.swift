@@ -21,8 +21,10 @@ extension Editor {
     /// available to navigate forwards to.
     func clearFuture() {
         guard historyOffset > 0 else { return } // nothing to clear, avoid an out of bounds error
+        let selectedFile = selectedTab?.file
         history.removeFirst(historyOffset)
         historyOffset = 0
+        setSelectedTab(selectedFile)
     }
 
     /// Move backwards in the history list by one place.

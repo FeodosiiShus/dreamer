@@ -1,12 +1,65 @@
 import Foundation
+import Synchronization
 import Testing
+
+nonisolated final class IsolatedDefaultsPool: Sendable {
+    private struct State {
+        var free: Set<Int> = []
+        var inUse: Set<Int> = []
+        var created = 0
+    }
+
+    private let prefix: String
+    private let state = Mutex(State())
+
+    init(prefix: String) {
+        self.prefix = prefix
+    }
+
+    func acquire() -> String {
+        let index = state.withLock { state -> Int in
+            let index: Int
+            if let reusable = state.free.min() {
+                state.free.remove(reusable)
+                index = reusable
+            } else {
+                index = state.created
+                state.created += 1
+            }
+            state.inUse.insert(index)
+            return index
+        }
+        let name = suiteName(for: index)
+        wipe(name)
+        return name
+    }
+
+    func release(_ name: String) {
+        guard let index = index(of: name), state.withLock({ $0.inUse.remove(index) != nil }) else { return }
+        wipe(name)
+        state.withLock { state in
+            _ = state.free.insert(index)
+        }
+    }
+
+    private func wipe(_ name: String) {
+        UserDefaults(suiteName: name)?.removePersistentDomain(forName: name)
+    }
+
+    private func suiteName(for index: Int) -> String {
+        "\(prefix)\(index)"
+    }
+
+    private func index(of name: String) -> Int? {
+        guard name.hasPrefix(prefix) else { return nil }
+        return Int(name.dropFirst(prefix.count))
+    }
+}
 
 nonisolated enum IsolatedDefaults {
     @TaskLocal static var currentSuiteName: String?
 
-    static func makeSuiteName() -> String {
-        "dreamder.tests.isolated.\(UUID().uuidString)"
-    }
+    static let pool = IsolatedDefaultsPool(prefix: "dreamder.tests.isolated." + TestShard.suiteFragment)
 
     static func require() throws -> UserDefaults {
         guard let currentSuiteName else { throw IsolatedDefaultsError.outsideIsolatedScope }
@@ -23,16 +76,16 @@ nonisolated enum IsolatedDefaultsError: Error, Equatable {
 }
 
 nonisolated func makeIsolatedDefaults() throws -> (defaults: UserDefaults, suiteName: String) {
-    let suiteName = IsolatedDefaults.makeSuiteName()
+    let suiteName = IsolatedDefaults.pool.acquire()
     guard let defaults = UserDefaults(suiteName: suiteName) else {
+        IsolatedDefaults.pool.release(suiteName)
         throw IsolatedDefaultsError.suiteUnavailable(suiteName)
     }
-    defaults.removePersistentDomain(forName: suiteName)
     return (defaults, suiteName)
 }
 
 nonisolated func removeIsolatedDefaults(_ defaults: UserDefaults, suiteName: String) {
-    defaults.removePersistentDomain(forName: suiteName)
+    IsolatedDefaults.pool.release(suiteName)
 }
 
 nonisolated func withIsolatedDefaults<T>(_ body: (UserDefaults) async throws -> T) async throws -> T {

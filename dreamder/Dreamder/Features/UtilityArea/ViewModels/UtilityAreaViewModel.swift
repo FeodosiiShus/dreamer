@@ -13,8 +13,6 @@ import SwiftUI
 @Observable
 class UtilityAreaViewModel {
 
-    var selectedTab: UtilityAreaTab? = .terminal
-
     var terminals: [UtilityAreaTerminal] = []
 
     var selectedTerminals: Set<UtilityAreaTerminal.ID> = []
@@ -30,12 +28,6 @@ class UtilityAreaViewModel {
 
     /// The current height of the drawer. Zero if hidden
     var currentHeight: Double = 0
-
-    /// The tab bar items for the UtilityAreaView
-    var tabItems: [UtilityAreaTab] = UtilityAreaTab.allCases
-
-    /// The tab bar view model for UtilityAreaTabView
-    var tabViewModel = UtilityAreaTabViewModel()
 
     // MARK: - State Restoration
 
@@ -135,7 +127,7 @@ class UtilityAreaViewModel {
         let id = UUID()
         let url = terminals[index].url
         let shell = terminals[index].shell
-        if let shellPid = TerminalCache.shared.getTerminalView(replacing)?.process.shellPid {
+        if let shellPid = TerminalCache.shared.getTerminalView(replacing)?.process.shellPid, shellPid > 0 {
             kill(shellPid, SIGKILL)
         }
 

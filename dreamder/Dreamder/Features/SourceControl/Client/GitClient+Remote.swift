@@ -25,12 +25,6 @@ nonisolated extension GitClient {
         _ = try await run(arguments: ["remote", "add", name, location])
     }
 
-    /// Remove remote from local git
-    /// - Parameter name: Name for remote to remove
-    func removeRemote(name: String) async throws {
-        _ = try await run(arguments: ["remote", "rm", name])
-    }
-
     /// Get the URL of the remote
     /// > Note: If a git repository has multiple remotes, by default the `origin` remote
     /// > will be used, unless there’s an upstream branch configured for the current branch.

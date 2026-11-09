@@ -26,7 +26,7 @@ mgr.executeCommand("test")
 final class CommandManager {
     private var commandsList: [String: Command]
 
-    private init() {
+    init() {
         commandsList = [:]
     }
 

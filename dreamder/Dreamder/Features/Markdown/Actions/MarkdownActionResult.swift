@@ -10,12 +10,6 @@ nonisolated struct MarkdownActionResult: Equatable, Sendable {
     let selections: [NSRange]
     let edits: [MarkdownTextEdit]
 
-    init(text: String, selections: [NSRange], edits: [MarkdownTextEdit]) {
-        self.text = text
-        self.selections = selections
-        self.edits = edits
-    }
-
     init(original: [UInt16], updated: [UInt16], selections: [NSRange]) {
         self.text = String(decoding: updated, as: UTF16.self)
         self.selections = selections
@@ -54,7 +48,7 @@ nonisolated struct MarkdownActionResult: Equatable, Sendable {
     func applied(to original: String) -> String {
         let units = Array(original.utf16)
         var result = units
-        for edit in edits.sorted(by: { $0.range.location > $1.range.location }) {
+        for edit in edits {
             let range = edit.range.location..<(edit.range.location + edit.range.length)
             result.replaceSubrange(range, with: Array(edit.replacement.utf16))
         }

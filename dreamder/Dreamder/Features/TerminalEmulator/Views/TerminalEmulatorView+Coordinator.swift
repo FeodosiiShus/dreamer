@@ -11,11 +11,11 @@ import SwiftTerm
 extension TerminalEmulatorView {
     final class Coordinator: NSObject, CELocalShellTerminalViewDelegate {
         private let terminalID: UUID
-        public var onTitleChange: (_ title: String) -> Void
+        public var onTitleChange: ((_ title: String) -> Void)?
 
         var mode: TerminalMode
 
-        init(terminalID: UUID, mode: TerminalMode, onTitleChange: @escaping (_ title: String) -> Void) {
+        init(terminalID: UUID, mode: TerminalMode, onTitleChange: ((_ title: String) -> Void)?) {
             self.terminalID = terminalID
             self.onTitleChange = onTitleChange
             self.mode = mode
@@ -27,7 +27,7 @@ extension TerminalEmulatorView {
         func sizeChanged(source: CETerminalView, newCols: Int, newRows: Int) {}
 
         func setTerminalTitle(source: CETerminalView, title: String) {
-            onTitleChange(title)
+            onTitleChange?(title)
         }
 
         func processTerminated(source: TerminalView, exitCode: Int32?) {

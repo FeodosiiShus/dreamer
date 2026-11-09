@@ -272,7 +272,7 @@ struct LSPClientRequestHandlerTests {
             ("5", "textDocument/codeLens")
         ])
         await makeHandler(environment: environment).handle(.clientRegisterCapability(params, { _ in }))
-        #expect(refreshes.values == [.inlayHint, .diagnostics, .codeLens])
+        #expect(refreshes.values == [.inlayHint, .diagnostics])
     }
 
     @Test
@@ -292,16 +292,13 @@ struct LSPClientRequestHandlerTests {
     }
 
     @Test
-    func codeLensAndSemanticTokenRefreshReplyBeforeTriggeringTheRefresh() async {
+    func codeLensRefreshIsAcknowledgedWithoutARefreshAndSemanticTokenRefreshRepliesBeforeRefreshing() async {
         let order = LSPTestRecorder<String>()
         let environment = LSPClientRequestEnvironment(refresh: { order.append("refresh:\($0.rawValue)") })
         let handler = makeHandler(environment: environment)
         await handler.handle(.workspaceCodeLensRefresh({ _ in order.append("reply:codeLens") }))
         await handler.handle(.workspaceSemanticTokenRefresh({ _ in order.append("reply:semanticTokens") }))
-        #expect(order.values == [
-            "reply:codeLens", "refresh:codeLens",
-            "reply:semanticTokens", "refresh:semanticTokens"
-        ])
+        #expect(order.values == ["reply:codeLens", "reply:semanticTokens", "refresh:semanticTokens"])
     }
 
     @Test
@@ -558,24 +555,21 @@ struct LSPDynamicCapabilityRegistryTests {
         #expect(LSPRefreshKind(refreshMethod: "workspace/semanticTokens/refresh") == .semanticTokens)
         #expect(LSPRefreshKind(refreshMethod: "workspace/inlayHint/refresh") == .inlayHint)
         #expect(LSPRefreshKind(refreshMethod: "workspace/diagnostic/refresh") == .diagnostics)
-        #expect(LSPRefreshKind(refreshMethod: "workspace/codeLens/refresh") == .codeLens)
+        #expect(LSPRefreshKind(refreshMethod: "workspace/codeLens/refresh") == nil)
         #expect(LSPRefreshKind(refreshMethod: "workspace/foldingRange/refresh") == nil)
         #expect(LSPRefreshKind(registrationMethod: "textDocument/inlayHint") == .inlayHint)
         #expect(LSPRefreshKind(registrationMethod: "textDocument/diagnostic") == .diagnostics)
-        #expect(LSPRefreshKind(registrationMethod: "textDocument/codeLens") == .codeLens)
+        #expect(LSPRefreshKind(registrationMethod: "textDocument/codeLens") == nil)
         #expect(LSPRefreshKind(registrationMethod: "textDocument/hover") == nil)
     }
 }
 
 @Suite
 struct LSPWorkDoneProgressTrackerTests {
-    private func begin(_ title: String, percentage: Double? = nil, cancellable: Bool? = nil) -> LSPAny {
+    private func begin(_ title: String, percentage: Double? = nil) -> LSPAny {
         var value: [String: LSPAny] = ["kind": "begin", "title": .string(title)]
         if let percentage {
             value["percentage"] = .number(percentage)
-        }
-        if let cancellable {
-            value["cancellable"] = .bool(cancellable)
         }
         return .hash(value)
     }
@@ -589,7 +583,7 @@ struct LSPWorkDoneProgressTrackerTests {
 
         #expect(tracker.apply(ProgressParams(token: token, value: begin("Indexing", percentage: 10))) == .began)
         #expect(tracker.progress(for: token) == LSPWorkDoneProgress(
-            token: token, title: "Indexing", message: nil, percentage: 10, isCancellable: false, hasBegun: true
+            token: token, title: "Indexing", message: nil, percentage: 10, hasBegun: true
         ))
 
         let report: LSPAny = ["kind": "report", "message": "3/10", "percentage": 30]
@@ -607,12 +601,11 @@ struct LSPWorkDoneProgressTrackerTests {
     func reportKeepsPreviousValuesWhenFieldsAreOmitted() {
         let tracker = LSPWorkDoneProgressTracker()
         let token = ProgressToken.optionA(1)
-        tracker.apply(ProgressParams(token: token, value: begin("Build", percentage: 40, cancellable: true)))
+        tracker.apply(ProgressParams(token: token, value: begin("Build", percentage: 40)))
         tracker.apply(ProgressParams(token: token, value: ["kind": "report", "message": "step"]))
         let progress = tracker.progress(for: token)
         #expect(progress?.percentage == 40)
         #expect(progress?.message == "step")
-        #expect(progress?.isCancellable == true)
     }
 
     @Test
@@ -665,28 +658,15 @@ struct LSPWorkDoneProgressTrackerTests {
     }
 
     @Test
-    func cancellationRequiresACancellableRunningProgress() {
-        let tracker = LSPWorkDoneProgressTracker()
-        tracker.apply(ProgressParams(token: .optionA(1), value: begin("fixed")))
-        tracker.apply(ProgressParams(token: .optionA(2), value: begin("cancellable", cancellable: true)))
-        #expect(!tracker.takeCancellation(for: .optionA(1)))
-        #expect(!tracker.takeCancellation(for: .optionA(3)))
-        #expect(tracker.takeCancellation(for: .optionA(2)))
-        #expect(tracker.progress(for: .optionA(2)) == nil)
-        #expect(tracker.progress(for: .optionA(1)) != nil)
-    }
-
-    @Test
     func shutDownDropsEverythingAndRejectsLaterBegins() {
         let tracker = LSPWorkDoneProgressTracker()
         tracker.create(.optionA(1))
-        tracker.apply(ProgressParams(token: .optionA(2), value: begin("running", cancellable: true)))
+        tracker.apply(ProgressParams(token: .optionA(2), value: begin("running")))
         tracker.shutDown()
         #expect(tracker.isShutDown)
         #expect(tracker.trackedTokenCount == 0)
         #expect(tracker.apply(ProgressParams(token: .optionA(3), value: begin("late"))) == .ignored)
         #expect(!tracker.create(.optionA(4)))
-        #expect(!tracker.takeCancellation(for: .optionA(2)))
         #expect(tracker.trackedTokenCount == 0)
     }
 }
@@ -1038,6 +1018,74 @@ struct LSPWorkspaceEditExecutorTests {
     }
 
     @Test
+    func editsOutsideTheDocumentOrWithReversedRangesReportTheirReason() async throws {
+        let directory = try LSPTestDirectory()
+        defer { directory.remove() }
+        let file = directory.url.appendingPathComponent("a.txt")
+        try "one".write(to: file, atomically: true, encoding: .utf8)
+        let uri = file.absoluteString
+        let reversedRange = LSPRange(startPair: (0, 3), endPair: (0, 1))
+        let outside = WorkspaceEdit(changes: [uri: [lspTextEdit((5, 0), (5, 0), "x")]], documentChanges: nil)
+        let reversed = WorkspaceEdit(changes: [uri: [TextEdit(range: reversedRange, newText: "x")]], documentChanges: nil)
+        let executor = LSPWorkspaceEditExecutor()
+
+        #expect(await executor.apply(outside) == ApplyWorkspaceEditResult(
+            applied: false,
+            failureReason: "Line 5 is outside the document (1 lines)",
+            failedChange: 0
+        ))
+        #expect(await executor.apply(reversed) == ApplyWorkspaceEditResult(
+            applied: false,
+            failureReason: "Range \(reversedRange) ends before it starts",
+            failedChange: 0
+        ))
+        #expect(try String(contentsOf: file, encoding: .utf8) == "one")
+    }
+
+    @Test
+    func filesThatAreNotUTF8CannotBeEdited() async throws {
+        let directory = try LSPTestDirectory()
+        defer { directory.remove() }
+        let file = directory.url.appendingPathComponent("binary.dat")
+        let bytes = Data([0xFF, 0xFE, 0xFD])
+        try bytes.write(to: file)
+        let workspaceEdit = WorkspaceEdit(
+            changes: [file.absoluteString: [lspTextEdit((0, 0), (0, 0), "x")]],
+            documentChanges: nil
+        )
+
+        let result = await LSPWorkspaceEditExecutor().apply(workspaceEdit)
+
+        #expect(result == ApplyWorkspaceEditResult(
+            applied: false,
+            failureReason: "The file cannot be decoded as UTF-8: \(file.absoluteString)",
+            failedChange: 0
+        ))
+        #expect(try Data(contentsOf: file) == bytes)
+    }
+
+    @Test
+    func createFileReportsAFileSystemThatRefusesTheNewFile() async throws {
+        let directory = try LSPTestDirectory()
+        defer { directory.remove() }
+        let locked = directory.url.appendingPathComponent("locked", isDirectory: true)
+        try FileManager.default.createDirectory(at: locked, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: locked.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path) }
+        let target = locked.appendingPathComponent("new.txt")
+        let creation = try createEdit(target.absoluteString)
+
+        let result = await LSPWorkspaceEditExecutor().apply(creation)
+
+        #expect(result == ApplyWorkspaceEditResult(
+            applied: false,
+            failureReason: "The file could not be created: \(target.absoluteString)",
+            failedChange: 0
+        ))
+        #expect(!FileManager.default.fileExists(atPath: target.path))
+    }
+
+    @Test
     func createFileHonoursOverwriteAndIgnoreIfExists() async throws {
         let directory = try LSPTestDirectory()
         defer { directory.remove() }
@@ -1207,5 +1255,27 @@ struct LSPShowDocumentPlanTests {
             return
         }
         #expect(url.path == "/tmp/a b.swift")
+    }
+}
+
+@Suite
+struct LSPFileURITests {
+    @Test
+    func wellFormedFileUrisParseDirectly() {
+        #expect(LSPFileURI.fileURL(from: "file:///tmp/a.swift")?.path == "/tmp/a.swift")
+    }
+
+    @Test
+    func fileUrisWithMalformedAuthoritiesFallBackToThePathAfterThePrefix() throws {
+        let url = try #require(LSPFileURI.fileURL(from: "file://localhost:abc/tmp/a.swift"))
+        #expect(url.isFileURL)
+        #expect(url.lastPathComponent == "a.swift")
+    }
+
+    @Test
+    func otherSchemesAreRejected() {
+        #expect(LSPFileURI.fileURL(from: "untitled:Untitled-1") == nil)
+        #expect(LSPFileURI.fileURL(from: "https://example.com/a.swift") == nil)
+        #expect(LSPFileURI.fileURL(from: "") == nil)
     }
 }

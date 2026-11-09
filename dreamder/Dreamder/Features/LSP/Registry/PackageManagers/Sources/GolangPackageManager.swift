@@ -10,11 +10,8 @@ import Foundation
 final class GolangPackageManager: PackageManagerProtocol {
     private let installationDirectory: URL
 
-    let shellClient: ShellClient
-
     init(installationDirectory: URL) {
         self.installationDirectory = installationDirectory
-        self.shellClient = .live()
     }
 
     // MARK: - PackageManagerProtocol
@@ -140,14 +137,6 @@ final class GolangPackageManager: PackageManagerProtocol {
 
     // MARK: - Helper methods
 
-    /// Clean up after a failed installation
-    private func cleanupFailedInstallation(packagePath: URL) throws {
-        let goSumPath = packagePath.appending(path: "go.sum")
-        if FileManager.default.fileExists(atPath: goSumPath.path) {
-            try FileManager.default.removeItem(at: goSumPath)
-        }
-    }
-
     private func getGoInstallCommand(_ source: PackageSource) -> String {
         if let gitRef = source.gitReference, let repoUrl = source.repositoryUrl {
             // Check if this is a Git-based package
@@ -156,7 +145,7 @@ final class GolangPackageManager: PackageManagerProtocol {
                 packageName = repoUrl.replacingOccurrences(of: "https://", with: "")
             }
 
-            var gitVersion: String
+            let gitVersion: String
             switch gitRef {
             case .tag(let tag):
                 gitVersion = tag

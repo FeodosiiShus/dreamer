@@ -44,7 +44,7 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     }
 
     func setupNotificationDelegate() {
-        UNUserNotificationCenter.current().delegate = self
+        center.attach(delegate: self)
 
         // Create action button
         let action = UNNotificationAction(
@@ -61,7 +61,9 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
             options: .customDismissAction
         )
 
-        UNUserNotificationCenter.current().setNotificationCategories([actionCategory])
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+        center.setNotificationCategories([actionCategory])
+        Task { [center = self.center] in
+            await center.requestAuthorization(options: [.alert, .sound, .badge])
+        }
     }
 }

@@ -9,15 +9,25 @@ import Foundation
 import LanguageServerProtocol
 
 extension LanguageServer {
-    /// The hover request is sent from the client to the server to request hover
-    /// information at a given text document position.
     func requestHover(for documentURI: String, _ position: Position) async throws -> HoverResponse {
+        await flushPendingEdits(for: documentURI)
         do {
+            let cacheKey = CacheKey(
+                uri: documentURI,
+                requestType: "hover",
+                position: position,
+                documentVersion: openFiles.documentVersion(for: documentURI)
+            )
+            if let cachedResponse: HoverResponse = lspCache.get(key: cacheKey, as: HoverResponse.self) {
+                return cachedResponse
+            }
             let params = TextDocumentPositionParams(
                 textDocument: TextDocumentIdentifier(uri: documentURI),
                 position: position
             )
-            return try await lspInstance.hover(params)
+            let response = try await lspInstance.hover(params)
+            lspCache.set(key: cacheKey, value: response)
+            return response
         } catch {
             logger.warning("requestHover: Error \(error)")
             throw error

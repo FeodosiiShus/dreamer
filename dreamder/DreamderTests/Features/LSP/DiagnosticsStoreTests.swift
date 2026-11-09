@@ -3,7 +3,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct DiagnosticsStoreTests {
     private func diagnostic(
         _ path: String,

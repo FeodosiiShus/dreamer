@@ -378,6 +378,8 @@ nonisolated struct Reindexer {
 }
 
 nonisolated enum SequenceDiff {
+    @TaskLocal static var myersLimit = MyersLCS.deltaThresholdSize
+
     static func compare<T: Hashable>(_ objects1: [T], _ objects2: [T]) throws -> DiffChanges {
         try Task.checkCancellation()
         let minCount = min(objects1.count, objects2.count)
@@ -443,7 +445,7 @@ nonisolated enum SequenceDiff {
         var changes2: DiffBitSet
         do {
             var myers = MyersLCS(first: discarded.first, second: discarded.second)
-            try myers.executeWithThreshold()
+            try myers.executeWithThreshold(limit: myersLimit)
             changes1 = myers.changes1
             changes2 = myers.changes2
         } catch is DiffTooBigError {

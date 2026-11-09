@@ -5,73 +5,48 @@
 //  Created by Axel Martinez on 23/6/24.
 //
 
-import XCTest
+import AppKit
+import Testing
+import UniformTypeIdentifiers
 
 @testable import Dreamder
 
-final class UTTypeTests: XCTestCase {
-    private var document: CodeFileDocument!
-
-    override func setUp() {
-        document = .init()
-    }
-
-    func testTextFileByContent() {
+@MainActor
+@Suite(.uiGate)
+struct UTTypeTests {
+    @Test
+    func textFileByContent() {
+        let document = CodeFileDocument()
         document.content = NSTextStorage(string: "Some text content")
-        XCTAssertEqual(document.utType, .text)
+        #expect(document.utType == .text)
     }
 
-    func testJSONFile() {
-        document.fileType = "public.json"
-        XCTAssertEqual(document.utType, .json)
+    @Test(arguments: [
+        ("public.json", UTType.json),
+        ("public.python-script", UTType.pythonScript),
+        ("com.adobe.pdf", UTType.pdf),
+        ("public.image", UTType.image),
+        ("public.png", UTType.png),
+        ("public.audio", UTType.audio),
+        ("public.mp3", UTType.mp3),
+        ("public.video", UTType.video),
+        ("public.mpeg-4", UTType.mpeg4Movie)
+    ])
+    func fileTypeDeterminesTheUTType(fileType: String, expected: UTType) {
+        let document = CodeFileDocument()
+        document.fileType = fileType
+        #expect(document.utType == expected)
     }
 
-    func testTextFileByExtension() {
-        document.fileType = "public.python-script"
-        XCTAssertEqual(document.utType, .pythonScript)
-    }
-
-    func testPdfFile() {
-        document.fileType = "com.adobe.pdf"
-        XCTAssertEqual(document.utType, .pdf)
-    }
-
-    func testImageFile() {
-        document.fileType = "public.image"
-        XCTAssertEqual(document.utType, .image)
-    }
-
-    func testPngFile() {
-        document.fileType = "public.png"
-        XCTAssertEqual(document.utType, .png)
-    }
-
-    func testAudioFile() {
-        document.fileType = "public.audio"
-        XCTAssertEqual(document.utType, .audio)
-    }
-
-    func testMp3File() {
-        document.fileType = "public.mp3"
-        XCTAssertEqual(document.utType, .mp3)
-    }
-
-    func testVideoFile() {
-        document.fileType = "public.video"
-        XCTAssertEqual(document.utType, .video)
-    }
-
-    func testMpeg4File() {
-        document.fileType = "public.mpeg-4"
-        XCTAssertEqual(document.utType, .mpeg4Movie)
-    }
-
-    func testUnknownFileType() {
+    @Test
+    func unknownFileTypeHasNoUTType() {
+        let document = CodeFileDocument()
         document.fileType = "unknown"
-        XCTAssertNil(document.utType)
+        #expect(document.utType == nil)
     }
 
-    func testEmptyFileTypeAndContent() {
-        XCTAssertNil(document.utType)
+    @Test
+    func emptyFileTypeAndContentHaveNoUTType() {
+        #expect(CodeFileDocument().utType == nil)
     }
 }

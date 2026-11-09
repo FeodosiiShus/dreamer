@@ -246,7 +246,7 @@ struct SearchEverywhereQueryTests {
     }
 }
 
-@Suite("SymbolExtractor")
+@Suite("SymbolExtractor", .uiGate)
 @MainActor
 struct SearchEverywhereSymbolExtractorTests {
     @Test func swiftDeclarations() {

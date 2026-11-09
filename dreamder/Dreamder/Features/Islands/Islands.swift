@@ -124,7 +124,11 @@ enum Islands {
     }
 
     static var codeNSFont: NSFont {
-        NSFont(name: codeFontName, size: codeFontSize) ?? .monospacedSystemFont(ofSize: codeFontSize, weight: .regular)
+        codeNSFont(named: codeFontName)
+    }
+
+    static func codeNSFont(named name: String) -> NSFont {
+        NSFont(name: name, size: codeFontSize) ?? .monospacedSystemFont(ofSize: codeFontSize, weight: .regular)
     }
 }
 

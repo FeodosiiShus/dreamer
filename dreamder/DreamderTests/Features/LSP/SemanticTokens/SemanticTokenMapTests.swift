@@ -39,7 +39,7 @@ final class SemanticTokenMapTests: XCTestCase {
     var mockProvider: MockRangeProvider!
 
     override func setUp() async throws {
-        mockProvider = await MockRangeProvider()
+        mockProvider = MockRangeProvider()
     }
 
     @MainActor

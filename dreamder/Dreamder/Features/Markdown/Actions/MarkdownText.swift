@@ -7,7 +7,6 @@ nonisolated struct MarkdownText: Sendable, Equatable {
         let end: Int
 
         var contentRange: Range<Int> { start..<contentEnd }
-        var fullRange: Range<Int> { start..<end }
     }
 
     let units: [UInt16]
@@ -48,8 +47,6 @@ nonisolated struct MarkdownText: Sendable, Equatable {
 
     var length: Int { units.count }
 
-    var string: String { String(decoding: units, as: UTF16.self) }
-
     func lineIndex(containing offset: Int) -> Int {
         var low = 0
         var high = lines.count - 1
@@ -68,25 +65,12 @@ nonisolated struct MarkdownText: Sendable, Equatable {
         String(decoding: units[range], as: UTF16.self)
     }
 
-    func string(_ range: NSRange) -> String {
-        string(range.location..<(range.location + range.length))
-    }
-
     func isBlank(_ range: Range<Int>) -> Bool {
         units[range].allSatisfy { Self.isSpaceOrTab($0) }
     }
 
     func isBlankLine(_ index: Int) -> Bool {
         isBlank(lines[index].contentRange)
-    }
-
-    func firstIndex(of unit: UInt16, in range: Range<Int>) -> Int? {
-        var index = range.lowerBound
-        while index < range.upperBound {
-            if units[index] == unit { return index }
-            index += 1
-        }
-        return nil
     }
 
     func skipSpacesAndTabs(from index: Int, to limit: Int) -> Int {

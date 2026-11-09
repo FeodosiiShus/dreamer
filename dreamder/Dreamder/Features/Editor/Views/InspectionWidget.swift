@@ -5,24 +5,24 @@ struct InspectionWidget: View {
 
     @Environment(WorkspaceDocument.self) private var workspace
 
-    @Service private var lspService: LSPService
+    private var lspService: LSPService { .shared }
 
     var body: some View {
         InspectionWidgetContent(
             fileURL: editor.selectedTab?.file.url.standardizedFileURL,
             store: workspace.diagnosticsStore,
-            lspService: lspService
+            lspService: lspService,
+            toolWindowManager: workspace.toolWindowManager
         )
     }
 }
 
-private struct InspectionWidgetContent: View {
+struct InspectionWidgetContent: View {
     let fileURL: URL?
 
     let store: DiagnosticsStore
     let lspService: LSPService
-
-    @Environment(ToolWindowManager.self) private var toolWindowManager
+    let toolWindowManager: ToolWindowManager
 
     @State private var isHovering = false
 
@@ -46,9 +46,7 @@ private struct InspectionWidgetContent: View {
                     severity("status/warning", count: counts.warnings)
                 }
             }
-            .onTapGesture {
-                toolWindowManager.show(.problems)
-            }
+            .onTapGesture(perform: showProblems)
             .help(counts.summary)
         } else if counts.total == 0, hasLanguageServer {
             chip {
@@ -80,6 +78,14 @@ private struct InspectionWidgetContent: View {
                     .fill(isHovering ? Islands.actionHover : Color.white.opacity(0x10 / 255))
             )
             .contentShape(RoundedRectangle(cornerRadius: Islands.controlRadius))
-            .onHover { isHovering = $0 }
+            .onHover(perform: setHovering)
+    }
+
+    func showProblems() {
+        toolWindowManager.show(.problems)
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
     }
 }

@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct GitLogCommitTable: View {
+    @Environment(WorkspaceDocument.self) private var workspace: WorkspaceDocument?
+    @Environment(SourceControlManager.self) private var sourceControlManager: SourceControlManager?
+    @Environment(\.gitLogCommitSeams) private var seams
     let viewModel: GitLogViewModel
 
     var body: some View {
@@ -24,12 +27,10 @@ struct GitLogCommitTable: View {
                                 commit: commit,
                                 graphRow: viewModel.graphRows[commit.hash],
                                 laneCount: viewModel.laneCount,
-                                isSelected: commit.hash == viewModel.selectedHash
-                            ) {
-                                Task {
-                                    await viewModel.select(hash: commit.hash)
-                                }
-                            }
+                                isSelected: commit.hash == viewModel.selectedHash,
+                                action: selectionAction(hash: commit.hash),
+                                actions: commitActions
+                            )
                         }
                     }
                     .padding(.vertical, 4)
@@ -39,7 +40,25 @@ struct GitLogCommitTable: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var placeholder: String {
+    func selectionAction(hash: String) -> () -> Void {
+        {
+            Task {
+                await viewModel.select(hash: hash)
+            }
+        }
+    }
+
+    var commitActions: GitLogCommitActions? {
+        guard let workspace, let sourceControlManager else { return nil }
+        return GitLogCommitActions(
+            workspace: workspace,
+            manager: sourceControlManager,
+            viewModel: viewModel,
+            seams: seams
+        )
+    }
+
+    var placeholder: String {
         if viewModel.isLoading {
             return "Loading commits…"
         }
@@ -56,10 +75,11 @@ struct GitLogCommitRow: View {
     let laneCount: Int
     let isSelected: Bool
     let action: () -> Void
+    var actions: GitLogCommitActions?
 
     @State private var isHovering = false
 
-    private let laneWidth: CGFloat = 12
+    private var laneWidth: CGFloat { 12 }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -103,11 +123,25 @@ struct GitLogCommitRow: View {
         .padding(.leading, 8)
         .padding(.trailing, 10)
         .frame(height: Islands.listRowHeight)
-        .background(isSelected ? Islands.selection : (isHovering ? Islands.hover : Color.clear))
+        .background(Self.background(isSelected: isSelected, isHovering: isHovering))
         .contentShape(Rectangle())
         .onTapGesture(perform: action)
-        .onHover { isHovering = $0 }
+        .contextMenu {
+            if let actions {
+                GitLogCommitMenuItems(actions: actions, commit: commit)
+            }
+        }
+        .onHover(perform: setHovering)
         .help(commit.subject)
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
+    }
+
+    static func background(isSelected: Bool, isHovering: Bool) -> Color {
+        if isSelected { return Islands.selection }
+        return isHovering ? Islands.hover : Color.clear
     }
 }
 

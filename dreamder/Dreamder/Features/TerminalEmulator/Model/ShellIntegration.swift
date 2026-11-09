@@ -11,7 +11,7 @@ import os
 /// Provides a single function for setting up shell integrations.
 /// See ``ShellIntegration/setUpIntegration(for:environment:)``
 nonisolated enum ShellIntegration {
-    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "ShellIntegration")
+    private static let logger = Logger(subsystem: "dev.dreamder.Dreamder", category: "ShellIntegration")
 
     /// Variable constants used by setup scripts.
     nonisolated enum Variables {
@@ -28,7 +28,7 @@ nonisolated enum ShellIntegration {
         case bashShellFileNotFound
         case zshShellFileNotFound
 
-        var localizedDescription: String {
+        var errorDescription: String? {
             switch self {
             case .bashShellFileNotFound:
                 return "Failed to find bash injection file."
@@ -56,10 +56,12 @@ nonisolated enum ShellIntegration {
         for shell: Shell,
         environment: inout [String],
         useLogin: Bool,
-        interactive: Bool
+        interactive: Bool,
+        bundle: Bundle = .main,
+        currentUser: CurrentUser? = .getCurrentUser(),
+        temporaryDirectory: URL = FileManager.default.temporaryDirectory
     ) throws -> [String] {
         do {
-            logger.debug("Setting up shell: \(shell.rawValue)")
             var args: [String] = []
 
             // Enable injection in our scripts.
@@ -67,9 +69,9 @@ nonisolated enum ShellIntegration {
 
             switch shell {
             case .bash:
-                try bash(&args)
+                try bash(&args, bundle: bundle)
             case .zsh:
-                try zsh(&environment)
+                try zsh(&environment, bundle: bundle, currentUser: currentUser, temporaryDirectory: temporaryDirectory)
             }
 
             if useLogin {
@@ -99,9 +101,9 @@ nonisolated enum ShellIntegration {
     /// - Parameters:
     ///   - args: The args to use for shell exec, will be modified by this function.
     ///   - interactive: Set to true to use an interactive shell.
-    private static func bash(_ args: inout [String]) throws {
+    private static func bash(_ args: inout [String], bundle: Bundle) throws {
         // Inject our own bash script that will execute the user's init files, then install our pre/post exec functions.
-        guard let scriptURL = Bundle.main.url(
+        guard let scriptURL = bundle.url(
             forResource: "dreamder_shell_integration",
             withExtension: "bash"
         ) else {
@@ -125,33 +127,34 @@ nonisolated enum ShellIntegration {
     ///   - useLogin: Whether to use a login shell.
     ///   - interactive: Whether to use an interactive shell.
     private static func zsh(
-        _ environment: inout [String]
+        _ environment: inout [String],
+        bundle: Bundle,
+        currentUser: CurrentUser?,
+        temporaryDirectory: URL
     ) throws {
         // All injection script URLs
-        guard let profileScriptURL = Bundle.main.url(
+        guard let profileScriptURL = bundle.url(
             forResource: "dreamder_shell_integration_profile",
             withExtension: "zsh"
-        ), let envScriptURL = Bundle.main.url(
+        ), let envScriptURL = bundle.url(
             forResource: "dreamder_shell_integration_env",
             withExtension: "zsh"
-        ), let loginScriptURL = Bundle.main.url(
+        ), let loginScriptURL = bundle.url(
             forResource: "dreamder_shell_integration_login",
             withExtension: "zsh"
-        ), let rcScriptURL = Bundle.main.url(
+        ), let rcScriptURL = bundle.url(
             forResource: "dreamder_shell_integration_rc",
             withExtension: "zsh"
         ) else {
             throw Error.zshShellFileNotFound
         }
 
-        // Make the current user here to avoid a duplicate fetch.
-        let currentUser = CurrentUser.getCurrentUser()
-        let tempDir = try makeTempDir(forShell: .zsh, user: currentUser)
+        let tempDir = try makeTempDir(forShell: .zsh, user: currentUser, in: temporaryDirectory)
 
         // Save any existing home dir. First getting a value from the environment.
         // Falling back to the user's home dir, then ~
         let envZDotDir = environment.first(where: { $0.starts(with: "ZDOTDIR=") })?.trimmingPrefix("ZDOTDIR=")
-        let userZDotDir = (envZDotDir?.isEmpty ?? true) ? currentUser?.homeDir ?? "~" : String(envZDotDir ?? "")
+        let userZDotDir = envZDotDir.flatMap { $0.isEmpty ? nil : String($0) } ?? currentUser?.homeDir ?? "~"
 
         environment.append("\(Variables.zDotDir)=\(tempDir.path())")
         environment.append("\(Variables.userZDotDir)=\(userZDotDir)")
@@ -181,12 +184,16 @@ nonisolated enum ShellIntegration {
     ///   - user: The current user, will attempt to get the current user if none are supplied.
     /// - Returns: The URL of the temporary directory.
     /// - Throws: Errors from `FileManager` operations.
-    private static func makeTempDir(forShell shell: Shell, user: CurrentUser? = .getCurrentUser()) throws -> URL {
+    private static func makeTempDir(
+        forShell shell: Shell,
+        user: CurrentUser?,
+        in temporaryDirectory: URL
+    ) throws -> URL {
         let username = user?.name ?? "unknown" // doesn't really matter but this is used later so might as well
 
         // Create a temp directory to store our init files in.
         // The name of the directory is user-specific and shell-specific to avoid overlap.
-        let tempDir = FileManager.default.temporaryDirectory.appending(
+        let tempDir = temporaryDirectory.appending(
             path: "\(username)-dreamder-\(shell.rawValue)"
         )
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)

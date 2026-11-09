@@ -3,6 +3,7 @@ import SwiftUI
 
 final class MainToolbarMenuAnchor {
     weak var view: NSView?
+    var popUp: (NSMenu, NSPoint, NSView) -> Void = { _ = $0.popUp(positioning: nil, at: $1, in: $2) }
 }
 
 struct MainToolbarMenuAnchorView: NSViewRepresentable {
@@ -30,11 +31,7 @@ private final class MainToolbarMenuAnchorNSView: NSView {
 extension MainToolbarMenuAnchor {
     func present(_ menu: NSMenu) {
         guard let view = view else { return }
-        _ = menu.popUp(
-            positioning: nil,
-            at: NSPoint(x: 0, y: view.bounds.height + Islands.islandGap),
-            in: view
-        )
+        popUp(menu, NSPoint(x: 0, y: view.bounds.height + Islands.islandGap), view)
     }
 }
 
@@ -62,7 +59,7 @@ final class MainToolbarMenuActions: NSObject {
         menu.addItem(open)
 
         let recent = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
-        recent.submenu = recentProjectsMenu.makeMenu()
+        recentProjectsMenu.attachMenu(to: recent)
         menu.addItem(recent)
 
         menu.addItem(.separator())
@@ -81,8 +78,9 @@ final class MainToolbarMenuActions: NSObject {
         let settings = NSMenuItem(
             title: "Settings…",
             action: #selector(openSettings(_:)),
-            keyEquivalent: ","
+            keyEquivalent: ""
         )
+        Keymap.shared.apply(.settings, to: settings)
         settings.target = self
         menu.addItem(settings)
 
@@ -101,20 +99,45 @@ final class MainToolbarMenuActions: NSObject {
 
     func taskMenu(taskManager: TaskManager) -> NSMenu {
         let menu = NSMenu(title: "Run Configuration")
+        menu.autoenablesItems = false
 
-        for task in taskManager.availableTasks {
-            let item = NSMenuItem(
-                title: task.name.isEmpty ? "Untitled Task" : task.name,
-                action: #selector(selectTask(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = MainToolbarTaskSelection(taskManager: taskManager, taskID: task.id)
-            item.state = task.id == taskManager.selectedTaskID ? .on : .off
-            menu.addItem(item)
+        let sections = taskManager.runConfigurationSections
+        for section in sections {
+            if sections.count > 1 {
+                menu.addItem(NSMenuItem.sectionHeader(title: section.title))
+            }
+            for task in section.tasks {
+                let item = NSMenuItem(
+                    title: task.name.isEmpty ? "Untitled Task" : task.name,
+                    action: #selector(selectTask(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.representedObject = MainToolbarTaskSelection(taskManager: taskManager, taskID: task.id)
+                item.state = task.id == taskManager.selectedTaskID ? .on : .off
+                menu.addItem(item)
+            }
         }
 
-        if !taskManager.availableTasks.isEmpty {
+        if !sections.isEmpty {
+            menu.addItem(.separator())
+
+            let rerun = NSMenuItem(
+                title: "Rerun Last Task",
+                action: #selector(rerunLastTask(_:)),
+                keyEquivalent: ""
+            )
+            rerun.target = self
+            rerun.representedObject = taskManager
+            rerun.isEnabled = taskManager.lastRunTask != nil
+            menu.addItem(rerun)
+
+            let stopAll = NSMenuItem(title: "Stop All", action: #selector(stopAllTasks(_:)), keyEquivalent: "")
+            stopAll.target = self
+            stopAll.representedObject = taskManager
+            stopAll.isEnabled = taskManager.hasRunningTasks
+            menu.addItem(stopAll)
+
             menu.addItem(.separator())
         }
 
@@ -143,6 +166,16 @@ final class MainToolbarMenuActions: NSObject {
             return
         }
         selection.taskManager.selectedTaskID = selection.taskID
+    }
+
+    @objc private func rerunLastTask(_ sender: Any?) {
+        guard let taskManager = (sender as? NSMenuItem)?.representedObject as? TaskManager else { return }
+        taskManager.rerunLastTask()
+        taskManager.taskShowingOutput = taskManager.lastRunTask?.id
+    }
+
+    @objc private func stopAllTasks(_ sender: Any?) {
+        (sender as? NSMenuItem).flatMap { $0.representedObject as? TaskManager }?.stopAllTasks()
     }
 
     @objc private func openSettings(_ sender: Any?) {

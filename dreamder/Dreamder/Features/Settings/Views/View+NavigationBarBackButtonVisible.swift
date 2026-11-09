@@ -7,23 +7,34 @@
 
 import SwiftUI
 
-struct NavigationBarBackButtonVisible: ViewModifier {
+struct NavigationBarBackButton: View {
     @Environment(\.presentationMode)
     var presentationMode
+
+    var body: some View {
+        Button(action: dismiss) {
+            Image(systemName: "chevron.left")
+                .frame(width: 23)
+        }
+    }
+
+    func dismiss() {
+        presentationMode.wrappedValue.dismiss()
+    }
+}
+
+struct NavigationBarBackToolbar: ToolbarContent {
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .navigation) { NavigationBarBackButton() }
+    }
+}
+
+struct NavigationBarBackButtonVisible: ViewModifier {
     @Environment(SettingsViewModel.self) private var model
 
     func body(content: Content) -> some View {
         content
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    self.presentationMode.wrappedValue.dismiss()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .frame(width: 23)
-                }
-            }
-        }
+        .toolbar { NavigationBarBackToolbar() }
         .navigationBarBackButtonHidden()
         .onAppear {
             model.backButtonVisible = true

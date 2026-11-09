@@ -11,11 +11,25 @@ struct ThemeSettingsThemeRow: View {
     @Binding var theme: Theme
     var active: Bool
 
-    private let themeModel: ThemeModel = .shared
+    private let themeModel: ThemeModel
 
     @State private var isHovering = false
 
-    @State private var deleteConfirmationIsPresented = false
+    @State private var isConfirmingDelete: Bool
+
+    init(
+        theme: Binding<Theme>,
+        active: Bool,
+        themeModel: ThemeModel = .shared,
+        isConfirmingDelete: Bool = false,
+        isHovering: Bool = false
+    ) {
+        _theme = theme
+        self.active = active
+        self.themeModel = themeModel
+        _isConfirmingDelete = State(initialValue: isConfirmingDelete)
+        _isHovering = State(initialValue: isHovering)
+    }
 
     var body: some View {
         HStack {
@@ -30,56 +44,84 @@ struct ThemeSettingsThemeRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if !active {
-                Button {
-                    themeModel.activateTheme(theme)
-                } label: {
+                Button(action: choose) {
                     Text("Choose")
                 }
                 .buttonStyle(.bordered)
                 .opacity(isHovering ? 1 : 0)
             }
             ThemeSettingsColorPreview(theme)
-            Menu {
-                Button("Details...") {
-                    themeModel.detailsTheme = theme
-                    themeModel.detailsIsPresented = true
-                }
-                Button("Duplicate...") {
-                    if let fileURL = theme.fileURL {
-                        themeModel.duplicate(fileURL)
-                    }
-                }
-                Button("Export...") {
-                    themeModel.exportTheme(theme)
-                }
-                .disabled(theme.isBundled)
-                Divider()
-                Button("Delete...") {
-                    deleteConfirmationIsPresented = true
-                }
-                .disabled(theme.isBundled)
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 16))
-            }
-            .buttonStyle(.icon)
+            Menu(content: { menuItems }, label: { menuLabel })
+                .buttonStyle(.icon)
         }
         .padding(10)
-        .onHover { hovering in
-            isHovering = hovering
+        .onHover(perform: setHovering)
+        .alert(deleteTitle, isPresented: $isConfirmingDelete, actions: { deleteActions }, message: { deleteMessage })
+    }
+
+    var menuLabel: some View {
+        Image(systemName: "ellipsis.circle")
+            .font(.system(size: 16))
+    }
+
+    var menuItems: some View {
+        Group {
+            Button("Details...", action: showDetails)
+            Button("Duplicate...", action: duplicate)
+            Button("Export...", action: export)
+                .disabled(theme.isBundled)
+            Divider()
+            Button("Delete...", action: requestDelete)
+                .disabled(theme.isBundled)
         }
-        .alert(
-            Text("Are you sure you want to delete the theme “\(theme.displayName)”?"),
-            isPresented: $deleteConfirmationIsPresented
-        ) {
-            Button("Delete Theme") {
-                themeModel.delete(theme)
-            }
-            Button("Cancel") {
-                deleteConfirmationIsPresented = false
-            }
-        } message: {
-            Text("This action cannot be undone.")
+    }
+
+    var deleteTitle: Text {
+        Text("Are you sure you want to delete the theme “\(theme.displayName)”?")
+    }
+
+    var deleteActions: some View {
+        Group {
+            Button("Delete Theme", action: confirmDelete)
+            Button("Cancel", action: cancelDelete)
         }
+    }
+
+    var deleteMessage: some View {
+        Text("This action cannot be undone.")
+    }
+
+    func choose() {
+        themeModel.activateTheme(theme)
+    }
+
+    func showDetails() {
+        themeModel.showDetails(of: theme)
+    }
+
+    func duplicate() {
+        if let fileURL = theme.fileURL {
+            themeModel.duplicate(fileURL)
+        }
+    }
+
+    func export() {
+        themeModel.exportTheme(theme)
+    }
+
+    func confirmDelete() {
+        themeModel.delete(theme)
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
+    }
+
+    func requestDelete() {
+        isConfirmingDelete = true
+    }
+
+    func cancelDelete() {
+        isConfirmingDelete = false
     }
 }

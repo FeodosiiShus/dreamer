@@ -179,7 +179,7 @@ nonisolated struct MarkdownListStructure: Sendable {
     }
 
     func lastLine(ofList list: Int) -> Int {
-        lists[list].items.map { items[$0].lastLine }.max() ?? items[lists[list].items[0]].line
+        lists[list].items.reduce(0) { max($0, items[$1].lastLine) }
     }
 
     func isEmpty(item: Int) -> Bool {

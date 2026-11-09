@@ -12,15 +12,17 @@ struct GitCloneView: View {
     @Environment(\.dismiss)
     private var dismiss
 
-    @State private var viewModel = GitCloneViewModel()
+    @State private var viewModel: GitCloneViewModel
 
     private let openBranchView: (URL) -> Void
     private let openDocument: (URL) -> Void
 
     init(
+        viewModel: GitCloneViewModel = GitCloneViewModel(),
         openBranchView: @escaping (URL) -> Void,
         openDocument: @escaping (URL) -> Void
     ) {
+        _viewModel = State(initialValue: viewModel)
         self.openBranchView = openBranchView
         self.openDocument = openDocument
     }
@@ -38,23 +40,16 @@ struct GitCloneView: View {
                     Text("Enter a git repository URL:")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
-                        .alignmentGuide(.trailing) { context in
-                            context[.trailing]
-                        }
                     TextField("Git Repository URL", text: $viewModel.repoUrlStr)
                         .lineLimit(1)
                         .padding(.bottom, 15)
 
                     HStack {
                         Spacer()
-                        Button("Cancel") {
-                            dismiss()
-                        }
-                        Button("Clone") {
-                            cloneRepository()
-                        }
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(!viewModel.isValidUrl(url: viewModel.repoUrlStr))
+                        Button("Cancel", action: dismiss.callAsFunction)
+                        Button("Clone", action: cloneRepository)
+                            .keyboardShortcut(.defaultAction)
+                            .disabled(!viewModel.isValidUrl(url: viewModel.repoUrlStr))
                     }
                 }
                 .frame(width: 300)
@@ -62,36 +57,9 @@ struct GitCloneView: View {
             .padding(.top, 20)
             .padding(.horizontal, 20)
             .padding(.bottom, 16)
-            .onAppear {
-                viewModel.checkClipboard()
-            }
-            .sheet(isPresented: $viewModel.isCloning) {
-                cloningSheet
-            }
+            .onAppear(perform: viewModel.checkClipboard)
+            .sheet(isPresented: $viewModel.isCloning) { GitCloneProgressSheet(viewModel: viewModel) }
         }
-    }
-
-    @ViewBuilder private var cloningSheet: some View {
-        NavigationStack {
-            VStack {
-                ProgressView(
-                    viewModel.cloningProgress.state.label,
-                    value: viewModel.cloningProgress.progress,
-                    total: 100
-                )
-            }
-        }
-        .toolbar {
-            ToolbarItem {
-                Button("Cancel Cloning") {
-                    viewModel.cloningTask?.cancel()
-                    viewModel.cloningTask = nil
-                    viewModel.isCloning = false
-                }
-            }
-        }
-        .padding()
-        .frame(width: 350)
     }
 
     func cloneRepository() {
@@ -111,5 +79,24 @@ struct GitCloneView: View {
                 openDocument(localPath)
             }
         }
+    }
+}
+
+struct GitCloneProgressSheet: View {
+    let viewModel: GitCloneViewModel
+
+    var body: some View {
+        NavigationStack {
+            VStack {
+                ProgressView(
+                    viewModel.cloningProgress.state.label,
+                    value: viewModel.cloningProgress.progress,
+                    total: 100
+                )
+            }
+        }
+        .toolbar { ToolbarItem { Button("Cancel Cloning", action: viewModel.cancelCloning) } }
+        .padding()
+        .frame(width: 350)
     }
 }

@@ -4,60 +4,62 @@ import SwiftUI
 struct MergeConflictEditorBanner: View {
     @Environment(WorkspaceDocument.self) private var workspace
     private let center = MergeConflictsCenter.shared
-    private static let stripHeight: CGFloat = 30
 
     let fileURL: URL
+    let registerAutomation: @MainActor (String?, (() -> Void)?) -> Void
+    let showMergeRevisions: @MainActor (WorkspaceDocument, String) -> Void
+
+    init(fileURL: URL) {
+        self.init(
+            fileURL: fileURL,
+            registerAutomation: MergeAutomation.registerBanner,
+            showMergeRevisions: MergeToolPresenter.showMergeRevisions
+        )
+    }
+
+    init(
+        fileURL: URL,
+        registerAutomation: @escaping @MainActor (String?, (() -> Void)?) -> Void,
+        showMergeRevisions: @escaping @MainActor (WorkspaceDocument, String) -> Void
+    ) {
+        self.fileURL = fileURL
+        self.registerAutomation = registerAutomation
+        self.showMergeRevisions = showMergeRevisions
+    }
 
     var body: some View {
         Group {
             if let entry, isVisible(entry) {
-                HStack(spacing: 8) {
-                    Image("general/warningDialog")
-                        .resizable()
-                        .frame(width: 16, height: 16)
-                    Text("File has unresolved merge conflicts")
-                        .font(Islands.smallFont)
-                        .foregroundStyle(Islands.foreground)
-                    Button {
-                        resolve(entry)
-                    } label: {
-                        Text("Resolve conflicts…")
-                            .font(Islands.smallFont)
-                            .foregroundStyle(Islands.link)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Open the Merge Revisions window for \(entry.path)")
-                    Spacer(minLength: 8)
-                }
-                .padding(.horizontal, 12)
-                .frame(height: Self.stripHeight)
-                .glassPopup(radius: Self.stripHeight / 2)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                strip(for: entry)
             }
         }
         .task(id: fileURL) {
             guard let manager = workspace.sourceControlManager else { return }
             let center = MergeConflictsCenter.shared
             center.monitor(manager)
-            let state = center.state(for: manager.workspaceURL)
-            if state == nil || !(state?.entries.isEmpty ?? true) {
+            let hasNoConflicts = center.state(for: manager.workspaceURL)?.entries.isEmpty
+            if hasNoConflicts != true {
                 await center.refresh(manager: manager)
             }
         }
         .onChange(of: entry?.path, initial: true) { _, path in
             guard let entry, isVisible(entry), path != nil else {
-                MergeAutomation.registerBanner(path: nil, action: nil)
+                registerAutomation(nil, nil)
                 return
             }
-            MergeAutomation.registerBanner(path: entry.path) {
-                resolve(entry)
+            let resolver = strip(for: entry)
+            registerAutomation(entry.path) {
+                resolver.resolve()
             }
         }
     }
 
-    private func resolve(_ entry: MergeConflictEntry) {
-        MergeToolPresenter.showMergeRevisions(workspace: workspace, path: entry.path)
+    private func strip(for entry: MergeConflictEntry) -> MergeConflictBannerStrip {
+        MergeConflictBannerStrip(
+            workspace: workspace,
+            path: entry.path,
+            showMergeRevisions: showMergeRevisions
+        )
     }
 
     private var entry: MergeConflictEntry? {
@@ -70,5 +72,41 @@ struct MergeConflictEditorBanner: View {
     private func isVisible(_ entry: MergeConflictEntry) -> Bool {
         guard !entry.isBothDeleted else { return false }
         return FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false))
+    }
+}
+
+struct MergeConflictBannerStrip: View {
+    static let height: CGFloat = 30
+
+    let workspace: WorkspaceDocument
+    let path: String
+    let showMergeRevisions: @MainActor (WorkspaceDocument, String) -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image("general/warningDialog")
+                .resizable()
+                .frame(width: 16, height: 16)
+            Text("File has unresolved merge conflicts")
+                .font(Islands.smallFont)
+                .foregroundStyle(Islands.foreground)
+            Button(action: resolve) {
+                Text("Resolve conflicts…")
+                    .font(Islands.smallFont)
+                    .foregroundStyle(Islands.link)
+            }
+            .buttonStyle(.plain)
+            .help("Open the Merge Revisions window for \(path)")
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: Self.height)
+        .glassPopup(radius: Self.height / 2)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+    }
+
+    func resolve() {
+        showMergeRevisions(workspace, path)
     }
 }

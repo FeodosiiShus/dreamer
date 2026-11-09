@@ -26,16 +26,19 @@ nonisolated final class LSPProcessEnvironment: Sendable {
     private let shellEnvironment: ShellEnvironment
     private let runner: any ProcessRunning
     private let homeDirectory: String
+    private let toolchainDirectory: String
     private let state = Mutex(State())
 
     init(
         shellEnvironment: ShellEnvironment = .shared,
         runner: any ProcessRunning = ProcessRunner(),
-        homeDirectory: String = NSHomeDirectory()
+        homeDirectory: String = NSHomeDirectory(),
+        toolchainDirectory: String = LSPProcessEnvironment.toolchainBinDirectory
     ) {
         self.shellEnvironment = shellEnvironment
         self.runner = runner
         self.homeDirectory = homeDirectory
+        self.toolchainDirectory = toolchainDirectory
     }
 
     var loginPath: String? {
@@ -84,7 +87,7 @@ nonisolated final class LSPProcessEnvironment: Sendable {
            FileManager.default.isExecutableFile(atPath: found) {
             path = found
         } else {
-            let fallback = Self.toolchainBinDirectory + "/" + tool
+            let fallback = toolchainDirectory + "/" + tool
             path = FileManager.default.isExecutableFile(atPath: fallback) ? fallback : nil
         }
         state.withLock { $0.xcrunResults[tool] = XcrunResult(path: path) }
@@ -107,9 +110,13 @@ nonisolated final class LSPProcessEnvironment: Sendable {
         npmGlobalBin: String? = nil,
         extraDirectories: [String] = []
     ) -> [String] {
-        var directories = loginPath?
+        var directories = [
+            "\(homeDirectory)/.local/share/mise/shims",
+            "\(homeDirectory)/.asdf/shims"
+        ]
+        directories.append(contentsOf: loginPath?
             .split(separator: ":")
-            .map { String($0).trimmingCharacters(in: .whitespaces) } ?? []
+            .map { String($0).trimmingCharacters(in: .whitespaces) } ?? [])
         directories.append(contentsOf: [
             "/opt/homebrew/bin",
             "/usr/local/bin",
@@ -137,7 +144,7 @@ nonisolated final class LSPProcessEnvironment: Sendable {
         return path.isEmpty ? nil : path
     }
 
-    private static let toolchainBinDirectory =
+    static let toolchainBinDirectory =
         "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
 
     private var current: Resolved {
@@ -162,7 +169,7 @@ nonisolated final class LSPProcessEnvironment: Sendable {
             loginPath = probed
         }
         var toolEnvironment = resolution.environment
-        toolEnvironment["PATH"] = loginPath ?? toolEnvironment["PATH"]
+        toolEnvironment["PATH"] = loginPath
         let npmGlobalBin = await npmGlobalBinPath(environment: toolEnvironment)
         let searchPaths = Self.composedSearchPaths(
             loginPath: loginPath,

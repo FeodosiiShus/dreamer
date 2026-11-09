@@ -64,26 +64,20 @@ nonisolated enum PackageSourceParser {
         guard let assetContainer = entry.source.asset,
               let repoURL = pkgSource.repositoryUrl,
               case .tag(let gitTag) = pkgSource.gitReference,
-              var fileName = assetContainer.getDarwinFileName(),
-              !fileName.isEmpty
+              let templateName = assetContainer.getDarwinFileName(),
+              !templateName.isEmpty,
+              let fileName = renderedFileName(templateName, for: entry, version: pkgSource.version),
+              let downloadURL = URL(string: "\(repoURL)/releases/download/\(gitTag)/\(fileName)")
         else {
             return .unknown
         }
-
-        do {
-            var registryInfo = try entry.toDictionary()
-            registryInfo["version"] = pkgSource.version
-            fileName = try RegistryItemTemplateParser.process(
-                template: fileName, with: registryInfo
-            )
-        } catch {
-            return .unknown
-        }
-
-        guard let downloadURL = URL(string: "\(repoURL)/releases/download/\(gitTag)/\(fileName)") else {
-            return .unknown
-        }
         return .binaryDownload(source: pkgSource, url: downloadURL)
+    }
+
+    private static func renderedFileName(_ template: String, for entry: RegistryItem, version: String) -> String? {
+        guard var registryInfo = try? entry.toDictionary() else { return nil }
+        registryInfo["version"] = version
+        return try? RegistryItemTemplateParser.process(template: template, with: registryInfo)
     }
 
     private static func parseGithubSourceBuild(

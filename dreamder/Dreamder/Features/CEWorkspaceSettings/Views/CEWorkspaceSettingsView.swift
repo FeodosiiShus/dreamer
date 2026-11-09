@@ -7,17 +7,43 @@
 
 import SwiftUI
 
+@Observable
+final class CEWorkspaceSettingsSheetState {
+    var selectedTaskID: UUID?
+    var showsAddTaskSheet: Bool
+
+    init(selectedTaskID: UUID? = nil, showsAddTaskSheet: Bool = false) {
+        self.selectedTaskID = selectedTaskID
+        self.showsAddTaskSheet = showsAddTaskSheet
+    }
+
+    func beginAddingTask() {
+        selectedTaskID = nil
+        showsAddTaskSheet = true
+    }
+}
+
 struct CEWorkspaceSettingsView: View {
     var dismiss: () -> Void
 
     @Environment(CEWorkspaceSettings.self) private var workspaceSettingsManager
     @Environment(WorkspaceDocument.self) private var workspace
 
-    @State var selectedTaskID: UUID?
-    @State var showAddTaskSheet: Bool = false
+    @State private var sheetState: CEWorkspaceSettingsSheetState
+
+    init(dismiss: @escaping () -> Void, selectedTaskID: UUID? = nil, showAddTaskSheet: Bool = false) {
+        self.dismiss = dismiss
+        _sheetState = State(
+            initialValue: CEWorkspaceSettingsSheetState(
+                selectedTaskID: selectedTaskID,
+                showsAddTaskSheet: showAddTaskSheet
+            )
+        )
+    }
 
     var body: some View {
         @Bindable var workspaceSettingsManager = workspaceSettingsManager
+        @Bindable var sheetState = sheetState
         VStack(spacing: 0) {
             Form {
                 Section {
@@ -34,18 +60,15 @@ struct CEWorkspaceSettingsView: View {
                 Section {
                     CEWorkspaceSettingsTaskListView(
                         settings: workspaceSettingsManager.settings,
-                        selectedTaskID: $selectedTaskID,
-                        showAddTaskSheet: $showAddTaskSheet
+                        selectedTaskID: $sheetState.selectedTaskID,
+                        showAddTaskSheet: $sheetState.showsAddTaskSheet
                     )
                 } header: {
                     Text("Tasks")
                 } footer: {
                     HStack {
                         Spacer()
-                        Button {
-                            selectedTaskID = nil
-                            showAddTaskSheet = true
-                        } label: {
+                        Button(action: sheetState.beginAddingTask) {
                             Text("Add Task...")
                         }
                     }
@@ -57,9 +80,7 @@ struct CEWorkspaceSettingsView: View {
             Divider()
             HStack {
                 Spacer()
-                Button {
-                    dismiss()
-                } label: {
+                Button(action: dismiss) {
                     Text("Done")
                         .frame(minWidth: 56)
                 }
@@ -67,9 +88,9 @@ struct CEWorkspaceSettingsView: View {
             }
             .padding()
         }
-        .sheet(isPresented: $showAddTaskSheet) {
+        .sheet(isPresented: $sheetState.showsAddTaskSheet) {
             if let selectedTaskIndex = workspaceSettingsManager.settings.tasks.firstIndex(where: {
-                $0.id == selectedTaskID
+                $0.id == sheetState.selectedTaskID
             }) {
                 EditCETaskView(
                     task: workspaceSettingsManager.settings.tasks[selectedTaskIndex],
@@ -80,8 +101,4 @@ struct CEWorkspaceSettingsView: View {
             }
         }
     }
-}
-
-#Preview {
-    CEWorkspaceSettingsView(dismiss: { print("Dismiss") })
 }

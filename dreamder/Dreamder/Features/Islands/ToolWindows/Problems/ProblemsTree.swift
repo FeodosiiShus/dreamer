@@ -70,13 +70,72 @@ nonisolated enum ProblemsTab: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+nonisolated enum ProblemSeverityGroup: String, CaseIterable, Identifiable, Sendable {
+    case errors
+    case warnings
+    case weakWarnings
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .errors: "Errors"
+        case .warnings: "Warnings"
+        case .weakWarnings: "Weak Warnings and Hints"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .errors: "status/error"
+        case .warnings: "status/warning"
+        case .weakWarnings: "status/info"
+        }
+    }
+
+    static func group(of severity: WorkspaceDiagnostic.Severity) -> ProblemSeverityGroup {
+        switch severity {
+        case .error: .errors
+        case .warning: .warnings
+        case .information, .hint: .weakWarnings
+        }
+    }
+}
+
+nonisolated struct ProblemsSeverityFilter: Equatable, Sendable {
+    private(set) var hidden: Set<ProblemSeverityGroup> = []
+
+    func isShown(_ group: ProblemSeverityGroup) -> Bool {
+        !hidden.contains(group)
+    }
+
+    func isShown(_ severity: WorkspaceDiagnostic.Severity) -> Bool {
+        isShown(ProblemSeverityGroup.group(of: severity))
+    }
+
+    func toggling(_ group: ProblemSeverityGroup) -> ProblemsSeverityFilter {
+        var copy = self
+        if copy.hidden.contains(group) {
+            copy.hidden.remove(group)
+        } else {
+            copy.hidden.insert(group)
+        }
+        return copy
+    }
+
+    func apply(to diagnostics: [WorkspaceDiagnostic]) -> [WorkspaceDiagnostic] {
+        hidden.isEmpty ? diagnostics : diagnostics.filter { isShown($0.severity) }
+    }
+}
+
 nonisolated enum ProblemsTreeBuilder {
     static func instances(
         diagnosticsByFile: [URL: [WorkspaceDiagnostic]],
-        root: URL?
+        root: URL?,
+        filter: ProblemsSeverityFilter = ProblemsSeverityFilter()
     ) -> [ProblemFileNode] {
         diagnosticsByFile.compactMap { url, diagnostics in
-            node(url: url, diagnostics: diagnostics, root: root)
+            node(url: url, diagnostics: diagnostics, root: root, filter: filter)
         }
         .sorted { lhs, rhs in
             let left = (lhs.directory, lhs.name)
@@ -91,13 +150,19 @@ nonisolated enum ProblemsTreeBuilder {
         }
     }
 
-    static func node(url: URL, diagnostics: [WorkspaceDiagnostic], root: URL?) -> ProblemFileNode? {
-        guard !diagnostics.isEmpty else { return nil }
+    static func node(
+        url: URL,
+        diagnostics: [WorkspaceDiagnostic],
+        root: URL?,
+        filter: ProblemsSeverityFilter = ProblemsSeverityFilter()
+    ) -> ProblemFileNode? {
+        let remaining = filter.apply(to: diagnostics)
+        guard !remaining.isEmpty else { return nil }
         return ProblemFileNode(
             url: url,
             name: url.lastPathComponent,
             directory: relativeDirectory(of: url, root: root),
-            diagnostics: sort(diagnostics)
+            diagnostics: sort(remaining)
         )
     }
 

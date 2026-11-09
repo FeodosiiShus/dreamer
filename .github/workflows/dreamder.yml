@@ -58,9 +58,22 @@ jobs:
             dreamder
             platform/vcs-log/graph/testData
             platform/platform-tests/testData/diff
+            platform/platform-tests/testData/editor/multiCaret
+            platform/platform-tests/testData/codeInsight/commentByLine
+            platform/platform-tests/testData/codeInsight/selectWordAction
+            platform/platform-tests/testData/codeInsight/selectWordWithoutPSIAction
+            platform/platform-resources/src/keymaps
             platform/lang-impl/testData/editor/findInEditor
             plugins/git4idea/testData/widgetTree
             plugins/markdown/test/data
+            java/java-tests/testData/codeInsight/commentByLine
+            java/java-tests/testData/codeInsight/commentByBlock
+            java/java-tests/testData/codeInsight/joinLines
+            java/java-tests/testData/codeInsight/moveStatementAction
+            xml/tests/testData/codeInsight/commentByLine
+            xml/tests/testData/codeInsight/commentByBlock
+            json/backend/tests/testData/commenter
+            python/testData/joinLines
       - name: Select Xcode
         run: sudo xcode-select -s "$XCODE_DEVELOPER_DIR"
       - uses: actions/cache@v6
@@ -71,6 +84,8 @@ jobs:
       - name: Build
         run: make build
       - name: Unit tests with coverage
+        env:
+          TEST_RUNNER_DREAMDER_STALL_SAMPLE_DIR: ${{ github.workspace }}/dreamder/.build/logs/stalls
         run: make coverage
       - name: Headless smoke
         run: make smoke
@@ -117,7 +132,7 @@ jobs:
           path: dreamder/.build/Dreamder-dSYM.zip
           if-no-files-found: error
       - name: Upload logs
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: logs-${{ matrix.runner }}

@@ -36,14 +36,4 @@ nonisolated extension Date {
 
         return formatter.string(from: self)
     }
-
-    @MainActor static var logFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss.SSSS"
-        return formatter
-    }()
-
-    @MainActor func logFormatted() -> String {
-        Self.logFormatter.string(from: self)
-    }
 }

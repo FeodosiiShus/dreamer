@@ -37,9 +37,14 @@ nonisolated enum MarkdownHeaderAnchor {
                 case .image:
                     break
                 case .inlineLink:
-                    builder.append(
-                        contentsOf: linkTextPieces(units, nodes: nodes, link: node).joined(separator: [space])
-                    )
+                    if let linkText = nodes.first(where: {
+                        $0.kind == .linkText && $0.range.location == node.range.location
+                    }) {
+                        builder.append(
+                            contentsOf: linkTextPieces(units, nodes: nodes, linkText: linkText)
+                                .joined(separator: [space])
+                        )
+                    }
                 case .htmlTag where isHtmlComment(units, node: node):
                     hasComment = true
                 default:
@@ -58,10 +63,6 @@ nonisolated enum MarkdownHeaderAnchor {
             while let last = builder.last, MarkdownText.isJavaWhitespace(last) { builder.removeLast() }
         }
         return normalizedAnchor(String(decoding: builder, as: UTF16.self))
-    }
-
-    static func anchor(forHeaderContent content: String) -> String? {
-        rawAnchor(forHeaderContent: content)
     }
 
     static func uniqueAnchors(forRawAnchors raws: [String]) -> [String] {
@@ -156,13 +157,8 @@ nonisolated enum MarkdownHeaderAnchor {
     private static func linkTextPieces(
         _ units: [UInt16],
         nodes: [MarkdownInlineNode],
-        link: MarkdownInlineNode
+        linkText: MarkdownInlineNode
     ) -> [[UInt16]] {
-        guard let linkText = nodes.first(where: {
-            $0.kind == .linkText && $0.range.location == link.range.location
-        }) else {
-            return []
-        }
         let content = linkText.contentRange
         let range = content.location..<(content.location + content.length)
         let children = topLevelNodes(nodes, in: range)

@@ -3,7 +3,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct StructureViewModelTests {
     private func makeWorkspace(_ dir: URL) throws -> WorkspaceDocument {
         try "struct Outer {\n    let value: Int\n    func run() {}\n}\n\nfunc topLevel() {}\n"

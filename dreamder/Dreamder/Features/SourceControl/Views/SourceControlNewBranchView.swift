@@ -7,16 +7,62 @@
 
 import SwiftUI
 
+@Observable
+@MainActor
+final class SourceControlNewBranchModel {
+    var name: String = ""
+    @ObservationIgnored let fromBranch: Binding<GitBranch?>
+    @ObservationIgnored var manager: SourceControlManager?
+    @ObservationIgnored var dismiss: (() -> Void)?
+    @ObservationIgnored private(set) var submission: Task<Void, Never>?
+
+    init(fromBranch: Binding<GitBranch?>) {
+        self.fromBranch = fromBranch
+    }
+
+    func attach(manager: SourceControlManager, dismiss: @escaping () -> Void) {
+        self.manager = manager
+        self.dismiss = dismiss
+    }
+
+    func cancel() {
+        dismiss?()
+    }
+
+    func submit() {
+        submission = Task { await perform() }
+    }
+
+    func perform() async {
+        guard let manager, let branch = fromBranch.wrappedValue ?? manager.currentBranch else { return }
+        do {
+            try await manager.newBranch(name: name, from: branch)
+            dismiss?()
+        } catch {
+            await manager.showAlertForError(
+                title: "Failed to create branch",
+                error: error
+            )
+        }
+    }
+}
+
 struct SourceControlNewBranchView: View {
     @Environment(\.dismiss)
     var dismiss
 
     @Environment(SourceControlManager.self) private var sourceControlManager
 
-    @State var name: String = ""
+    @State private var model: SourceControlNewBranchModel
     @Binding var fromBranch: GitBranch?
 
+    init(fromBranch: Binding<GitBranch?>, model: SourceControlNewBranchModel? = nil) {
+        _fromBranch = fromBranch
+        _model = State(initialValue: model ?? SourceControlNewBranchModel(fromBranch: fromBranch))
+    }
+
     var body: some View {
+        @Bindable var model = model
         if let branch = fromBranch ?? sourceControlManager.currentBranch {
             VStack(spacing: 0) {
                 Form {
@@ -27,7 +73,7 @@ struct SourceControlNewBranchView: View {
                                 ? branch.longName.replacingOccurrences(of: "refs/remotes/", with: "")
                                 : branch.name
                         )
-                        TextField("To", value: $name, formatter: RegexFormatter(pattern: "[^a-zA-Z0-9_-]"))
+                        TextField("To", value: $model.name, formatter: RegexFormatter(pattern: "[^a-zA-Z0-9_-]"))
                     } header: {
                         Text("Create a new branch")
                         Text(
@@ -39,45 +85,27 @@ struct SourceControlNewBranchView: View {
                 .formStyle(.grouped)
                 .scrollDisabled(true)
                 .scrollContentBackground(.hidden)
-                .onSubmit { submit(branch) }
+                .onSubmit(model.submit)
                 HStack {
                     Spacer()
-                    Button {
-                        dismiss()
-                    } label: {
+                    Button(action: model.cancel) {
                         Text("Cancel")
                             .frame(minWidth: 56)
                     }
-                    Button {
-                        submit(branch)
-                    } label: {
+                    Button(action: model.submit) {
                         Text("Create")
                             .frame(minWidth: 56)
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(name.isEmpty)
+                    .disabled(model.name.isEmpty)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
                 .padding(.bottom, 20)
             }
             .frame(width: 500)
-        }
-    }
-
-    /// Creates a new branch from the specifiied source branch
-    func submit(_ branch: GitBranch) {
-        Task {
-            do {
-                try await sourceControlManager.newBranch(name: name, from: branch)
-                await MainActor.run {
-                    dismiss()
-                }
-            } catch {
-                await sourceControlManager.showAlertForError(
-                    title: "Failed to create branch",
-                    error: error
-                )
+            .onAppear {
+                model.attach(manager: sourceControlManager, dismiss: dismiss.callAsFunction)
             }
         }
     }

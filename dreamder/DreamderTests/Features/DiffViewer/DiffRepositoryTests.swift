@@ -3,7 +3,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct DiffRepositoryTests {
     private func repository(_ root: URL) throws -> DiffRepository {
         let document = WorkspaceDocument()
@@ -11,13 +11,13 @@ struct DiffRepositoryTests {
         return try #require(DiffRepository(workspace: document))
     }
 
-    private func makeFixture(_ dir: URL) throws -> GitMergeFixture {
-        let fixture = try GitMergeFixture(root: dir)
+    private func makeFixture(_ dir: URL) async throws -> GitMergeFixture {
+        let fixture = try await GitMergeFixture(root: dir)
         try fixture.write("keep.txt", "keep\n")
         try fixture.write("edit.txt", "before\n")
         try fixture.write("remove.txt", "remove\n")
         try fixture.write("old-name.txt", "renamed content\nline two\nline three\n")
-        try fixture.commit("base")
+        try await fixture.commit("base")
         return fixture
     }
 
@@ -29,12 +29,12 @@ struct DiffRepositoryTests {
     @Test
     func workingTreeRequestsCoverEveryChangeKindSortedByPath() async throws {
         try await withTempDir { dir in
-            let fixture = try makeFixture(dir)
+            let fixture = try await makeFixture(dir)
             try fixture.write("edit.txt", "after\n")
-            try fixture.run("rm", "-q", "remove.txt")
+            try await fixture.run("rm", "-q", "remove.txt")
             try fixture.write("staged-new.txt", "new\n")
-            try fixture.run("add", "staged-new.txt")
-            try fixture.run("mv", "old-name.txt", "new-name.txt")
+            try await fixture.run("add", "staged-new.txt")
+            try await fixture.run("mv", "old-name.txt", "new-name.txt")
             try fixture.write("Untracked 10.txt", "u\n")
             try fixture.write("Untracked 9.txt", "u\n")
 
@@ -61,7 +61,7 @@ struct DiffRepositoryTests {
     @Test
     func cleanTreeHasNoRequests() async throws {
         try await withTempDir { dir in
-            _ = try makeFixture(dir)
+            _ = try await makeFixture(dir)
             #expect(try await repository(dir).workingTreeRequests(against: "HEAD").isEmpty)
         }
     }
@@ -69,7 +69,7 @@ struct DiffRepositoryTests {
     @Test
     func loadReadsHistoryAndWorkingTreeSides() async throws {
         try await withTempDir { dir in
-            let fixture = try makeFixture(dir)
+            let fixture = try await makeFixture(dir)
             try fixture.write("edit.txt", "after\n")
             let repo = try repository(dir)
             let request = repo.workingTreeRequest(status: .modified, path: "edit.txt", originalPath: nil, ref: "HEAD")
@@ -84,9 +84,9 @@ struct DiffRepositoryTests {
     @Test
     func loadMarksBinaryAndMissingSides() async throws {
         try await withTempDir { dir in
-            let fixture = try makeFixture(dir)
+            let fixture = try await makeFixture(dir)
             try Data([0x50, 0x4E, 0x47, 0x00, 0x01]).write(to: dir.appending(path: "image.bin"))
-            try fixture.commit("binary")
+            try await fixture.commit("binary")
             try Data([0x50, 0x4E, 0x47, 0x00, 0x02]).write(to: dir.appending(path: "image.bin"))
             let repo = try repository(dir)
 
@@ -108,11 +108,11 @@ struct DiffRepositoryTests {
     @Test
     func commitRequestComparesAgainstParentOrNothingForRootCommit() async throws {
         try await withTempDir { dir in
-            let fixture = try makeFixture(dir)
-            let root = try fixture.run("rev-parse", "HEAD").trimmingCharacters(in: .whitespacesAndNewlines)
+            let fixture = try await makeFixture(dir)
+            let root = try await fixture.run("rev-parse", "HEAD").trimmingCharacters(in: .whitespacesAndNewlines)
             try fixture.write("edit.txt", "after\n")
-            try fixture.commit("second")
-            let head = try fixture.run("rev-parse", "HEAD").trimmingCharacters(in: .whitespacesAndNewlines)
+            try await fixture.commit("second")
+            let head = try await fixture.run("rev-parse", "HEAD").trimmingCharacters(in: .whitespacesAndNewlines)
             let repo = try repository(dir)
 
             let change = repo.commitRequest(path: "edit.txt", status: .modified, commit: head, parent: root)

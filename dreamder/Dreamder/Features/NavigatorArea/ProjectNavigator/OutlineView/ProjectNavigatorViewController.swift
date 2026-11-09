@@ -14,10 +14,7 @@ import OSLog
 /// Adds a ``outlineView`` inside a ``scrollView`` which shows the folder structure of the
 /// currently open project.
 final class ProjectNavigatorViewController: NSViewController {
-    static let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "",
-        category: "ProjectNavigatorViewController"
-    )
+    static let logger = Logger(subsystem: "dev.dreamder.Dreamder", category: "ProjectNavigatorViewController")
 
     let scrollView = NSScrollView()
     let outlineView: NSOutlineView = ProjectNavigatorNSOutlineView()
@@ -65,6 +62,30 @@ final class ProjectNavigatorViewController: NSViewController {
     var shouldSendSelectionUpdate: Bool = true
 
     var shouldReloadAfterDoneEditing: Bool = false
+
+    var confirmReplace: ((String) -> Bool)?
+
+    var confirmRollback: ((URL) -> Bool)?
+
+    var pasteboard: any PasteboardAccess = SystemPasteboard()
+
+    var autosavesExpandedItems = true
+
+    var settings: Settings = .shared
+
+    var pendingCreation: PendingCreation?
+
+    var pendingReveal: CEWorkspaceFile?
+
+    var pasteTask: Task<Void, Never>?
+
+    lazy var sortModes = ProjectNavigatorSortModes(
+        rootURL: workspace?.workspaceFileManager?.folderUrl ?? URL(fileURLWithPath: "/")
+    )
+
+    var clipboard: ProjectNavigatorClipboard {
+        ProjectNavigatorClipboard(pasteboard: pasteboard)
+    }
 
     var filterIsEmpty: Bool {
         workspace?.navigatorFilter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true
@@ -130,7 +151,9 @@ final class ProjectNavigatorViewController: NSViewController {
         self.outlineView.dataSource = self
         self.outlineView.delegate = self
         self.outlineView.autosaveExpandedItems = true
-        self.outlineView.autosaveName = workspace?.workspaceFileManager?.folderUrl.path ?? ""
+        self.outlineView.autosaveName = autosavesExpandedItems
+            ? workspace?.workspaceFileManager?.folderUrl.path ?? ""
+            : nil
         self.outlineView.headerView = nil
         self.outlineView.menu = ProjectNavigatorMenu(self)
         self.outlineView.menu?.delegate = self
@@ -186,12 +209,41 @@ final class ProjectNavigatorViewController: NSViewController {
 
     @objc
     func expandAll(_ sender: Any?) {
-        outlineView.expandItem(nil, expandChildren: true)
+        content.forEach(expandIncludedFolders)
+    }
+
+    func expandIncludedFolders(_ folder: CEWorkspaceFile) {
+        guard folder.isFolder, !exclusion(for: folder).isExcluded else { return }
+        outlineView.expandItem(folder)
+        for child in visibleChildren(of: folder) where child.isFolder {
+            expandIncludedFolders(child)
+        }
+    }
+
+    func exclusion(for item: CEWorkspaceFile) -> ProjectNavigatorExclusion {
+        ProjectNavigatorExclusion.resolve(
+            url: item.url,
+            isFolder: item.isFolder,
+            parentURL: item.parent?.url,
+            scope: workspace?.fileScope
+        )
     }
 
     @objc
     func collapseAll(_ sender: Any?) {
-        outlineView.collapseItem(nil, collapseChildren: true)
+        content.forEach { collapse($0, collapseChildren: true) }
+    }
+
+    func collapse(_ item: Any?, collapseChildren: Bool = false) {
+        outlineView.collapseItem(item, collapseChildren: collapseChildren)
+    }
+
+    func toggleExpansion(of item: CEWorkspaceFile) {
+        if outlineView.isItemExpanded(item) {
+            collapse(item)
+        } else {
+            outlineView.expandItem(item)
+        }
     }
 
     /// Updates the selection of the ``outlineView`` whenever it changes.
@@ -216,24 +268,9 @@ final class ProjectNavigatorViewController: NSViewController {
         guard let item = outlineView.item(atRow: outlineView.clickedRow) as? CEWorkspaceFile else { return }
 
         if item.isFolder {
-            if outlineView.isItemExpanded(item) {
-                outlineView.collapseItem(item)
-            } else {
-                outlineView.expandItem(item)
-            }
-        } else if Settings[\.navigation].navigationStyle == .openInTabs {
+            toggleExpansion(of: item)
+        } else if settings.preferences.navigation.navigationStyle == .openInTabs {
             workspace?.editorManager?.activeEditor.openTab(file: item, asTemporary: false)
-        }
-    }
-
-    /// Get the appropriate color for the items icon depending on the users preferences.
-    /// - Parameter item: The `FileItem` to get the color for
-    /// - Returns: A `NSColor` for the given `FileItem`.
-    private func color(for item: CEWorkspaceFile) -> NSColor {
-        if !item.isFolder && iconColor == .color {
-            return NSColor(item.iconColor)
-        } else {
-            return .secondaryLabelColor
         }
     }
 
@@ -247,19 +284,17 @@ final class ProjectNavigatorViewController: NSViewController {
         if workspace.sourceControlFilter || !filterIsEmpty {
             outlineView.autosaveExpandedItems = false
             /// Expand all items for search.
-            outlineView.expandItem(outlineView.item(atRow: 0), expandChildren: true)
+            content.forEach(expandIncludedFolders)
         } else {
             restoreExpandedState()
             outlineView.autosaveExpandedItems = true
         }
 
-        if let root = content.first(where: { $0.isRoot }), let children = filteredContentChildren[root] {
-            if children.isEmpty {
-                noResultsLabel.isHidden = false
-                outlineView.hideRows(at: IndexSet(integer: 0))
-            } else {
-                noResultsLabel.isHidden = true
-            }
+        let rootChildren = content.first(where: { $0.isRoot }).flatMap { filteredContentChildren[$0] }
+        let hasNoResults = rootChildren?.isEmpty == true
+        noResultsLabel.isHidden = !hasNoResults
+        if hasNoResults {
+            outlineView.hideRows(at: IndexSet(integer: 0))
         }
     }
 
@@ -305,7 +340,7 @@ final class ProjectNavigatorViewController: NSViewController {
     /// Restores the expanded state of items when finish searching.
     private func restoreExpandedState() {
         let copy = expandedItems
-        outlineView.collapseItem(outlineView.item(atRow: 0), collapseChildren: true)
+        collapse(outlineView.item(atRow: 0), collapseChildren: true)
 
         for item in copy {
             expandParentsRecursively(of: item)

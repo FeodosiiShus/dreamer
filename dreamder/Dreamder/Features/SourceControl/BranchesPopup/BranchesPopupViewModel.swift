@@ -21,6 +21,15 @@ final class BranchesPopupViewModel {
     private let dismissPopup: () -> Void
 
     var dialogs = BranchesPopupDialogs.live
+    var namePrompt: (_ title: String, _ message: String, _ placeholder: String, _ initialValue: String) -> String? = {
+        title, message, placeholder, initialValue in
+        BranchesPopupPrompt.name(
+            title: title,
+            message: message,
+            placeholder: placeholder,
+            initialValue: initialValue
+        )
+    }
     var notify: @MainActor (BranchesPopupNotificationRequest) -> Void = BranchesPopupNotifications.post
     var presentRefActions: ((BranchesPopupRow) -> Void)?
     var comparePresenter: ((WorkspaceDocument, String, String) -> Void)?
@@ -124,8 +133,7 @@ final class BranchesPopupViewModel {
                 BranchesComparePresenter.show(workspace: workspace, branch: branch, current: current)
             }
         }
-        self.openConflicts = { [weak workspace] in
-            guard let workspace else { return }
+        self.openConflicts = {
             Task { @MainActor in
                 MergeToolPresenter.showConflicts(workspace: workspace)
             }
@@ -182,7 +190,7 @@ final class BranchesPopupViewModel {
 
     var emptyMessage: String? {
         guard rows.allSatisfy({ !$0.isSelectable }) else { return nil }
-        return trimmedQuery.isEmpty ? "Branch not found" : "Nothing found"
+        return "Nothing found"
     }
 
     var preferredHeight: CGFloat {
@@ -412,7 +420,7 @@ final class BranchesPopupViewModel {
             case .mergeAbort: try await self.sourceControlManager.branchOpsMergeAbort()
             case .cherryPickAbort: try await self.sourceControlManager.branchOpsCherryPickAbort()
             case .cherryPickContinue: try await self.sourceControlManager.branchOpsCherryPickContinue()
-            case .revertAbort: break
+            case .revertAbort: _ = try await self.sourceControlManager.gitClient.run(arguments: ["revert", "--abort"])
             case .rebaseContinue: try await self.sourceControlManager.branchOpsRebaseContinue()
             case .rebaseSkip: try await self.sourceControlManager.branchOpsRebaseSkip()
             }
@@ -770,8 +778,7 @@ final class BranchesPopupViewModel {
                     isInitial = false
                     continue
                 }
-                guard let self else { return }
-                refreshTree()
+                self?.refreshTree()
             }
         }
     }
@@ -805,9 +812,8 @@ final class BranchesPopupViewModel {
             return preferred.flatMap { match in leaves.first { $0.id == match.itemID } }
                 ?? leaves.first(where: { $0.ref?.isCurrent == true })
                 ?? leaves.first(where: { $0.kind == .action })
-                ?? leaves.first
         }
-        return topRow(in: leaves.filter { $0.kind == .action }, matcher: matcher, name: \.title)
+        return topRow(in: leaves.filter { $0.kind == .action }, matcher: matcher) { $0.title }
             ?? preferredBranchRow(in: leaves, matcher: matcher)
             ?? leaves.first
     }
@@ -821,17 +827,17 @@ final class BranchesPopupViewModel {
         if let preferred, let row = leaves.first(where: { $0.id == preferred.itemID }) {
             return row
         }
-        return topRow(in: leaves.filter { $0.kind == .ref }, matcher: matcher) { $0.ref?.shortName ?? $0.title }
+        return topRow(in: leaves.filter { $0.kind == .ref }, matcher: matcher) { $0.ref?.shortName }
     }
 
     private func topRow(
         in rows: [BranchesPopupRow],
         matcher: BranchesPopupMatcher,
-        name: (BranchesPopupRow) -> String
+        name: (BranchesPopupRow) -> String?
     ) -> BranchesPopupRow? {
         var best: (row: BranchesPopupRow, weight: Int)?
         for row in rows {
-            guard let weight = matcher.weight(name(row)) else { continue }
+            guard let weight = name(row).flatMap(matcher.weight) else { continue }
             if let current = best, current.weight >= weight { continue }
             best = (row, weight)
         }
@@ -840,13 +846,13 @@ final class BranchesPopupViewModel {
 
     private func appendNodes(_ nodes: [BranchesPopupNode], depth: Int, to rows: inout [BranchesPopupRow]) {
         for node in nodes {
-            if node.kind == .group {
+            guard let ref = node.ref else {
                 rows.append(groupRow(node, depth: depth))
                 guard isExpanded(node.id) else { continue }
                 appendNodes(node.children, depth: depth + 1, to: &rows)
-            } else {
-                rows.append(refRow(node, depth: depth))
+                continue
             }
+            rows.append(refRow(node, ref: ref, depth: depth))
         }
     }
 
@@ -864,12 +870,7 @@ final class BranchesPopupViewModel {
     ) -> String? {
         isBlockingInput = true
         defer { isBlockingInput = false }
-        return BranchesPopupPrompt.name(
-            title: title,
-            message: message,
-            placeholder: placeholder,
-            initialValue: initialValue
-        )
+        return namePrompt(title, message, placeholder, initialValue)
     }
 
     private func showWorktreePathDialog(_ suggested: String) -> String? {
@@ -883,25 +884,21 @@ final class BranchesPopupViewModel {
         if validation == .exists, overwrite {
             return true
         }
-        guard validation == .valid else {
-            dialogs.error(
-                "Invalid Branch Name",
-                BranchesPopupBranchName.errorMessage(for: validation, name: name) ?? "Branch name is not valid"
-            )
+        if let message = BranchesPopupBranchName.errorMessage(for: validation, name: name) {
+            dialogs.error("Invalid Branch Name", message)
             return false
         }
         return true
     }
 
     private func deleteLocalBranch(_ ref: BranchesPopupRef) {
-        weak let restorer = self
         track {
             do {
                 let tip = try await self.sourceControlManager.branchOpsRevision(ref.name)
                 do {
                     try await self.sourceControlManager.branchOpsDeleteLocalBranch(ref.name)
                 } catch GitClient.GitClientError.branchNotFullyMerged {
-                    let base = self.detectedCurrentBranchName ?? "HEAD"
+                    let base = self.currentBranchName
                     let commits = (try? await self.sourceControlManager.branchOpsUnmergedCommits(
                         branch: ref.name,
                         base: base
@@ -918,7 +915,9 @@ final class BranchesPopupViewModel {
                         title: "Deleted Branch: \(ref.name)",
                         description: "Branch '\(ref.name)' was deleted.",
                         actionTitle: "Restore",
-                        action: { restorer?.restoreBranch(name: ref.name, tip: tip) }
+                        action: self.restoreAction(failureTitle: "Failed to restore branch '\(ref.name)'") { manager in
+                            try await manager.branchOpsRestoreBranch(name: ref.name, at: tip)
+                        }
                     )
                 )
             } catch {
@@ -974,7 +973,6 @@ final class BranchesPopupViewModel {
     }
 
     private func deleteTag(_ ref: BranchesPopupRef) {
-        weak let restorer = self
         track {
             do {
                 let tip = try await self.sourceControlManager.branchOpsRevision(ref.name)
@@ -985,7 +983,9 @@ final class BranchesPopupViewModel {
                         title: "Deleted Tag: \(ref.name)",
                         description: "Tag '\(ref.name)' was deleted.",
                         actionTitle: "Restore",
-                        action: { restorer?.restoreTag(name: ref.name, tip: tip) }
+                        action: self.restoreAction(failureTitle: "Failed to restore tag '\(ref.name)'") { manager in
+                            try await manager.branchOpsRestoreTag(name: ref.name, at: tip)
+                        }
                     )
                 )
             } catch {
@@ -997,30 +997,21 @@ final class BranchesPopupViewModel {
         }
     }
 
-    private func restoreBranch(name: String, tip: String) {
-        track {
-            do {
-                try await self.sourceControlManager.branchOpsRestoreBranch(name: name, at: tip)
-                await self.refreshAfterOperation()
-            } catch {
-                await self.sourceControlManager.showAlertForError(
-                    title: "Failed to restore branch '\(name)'",
-                    error: error
-                )
-            }
-        }
-    }
-
-    private func restoreTag(name: String, tip: String) {
-        track {
-            do {
-                try await self.sourceControlManager.branchOpsRestoreTag(name: name, at: tip)
-                await self.refreshAfterOperation()
-            } catch {
-                await self.sourceControlManager.showAlertForError(
-                    title: "Failed to restore tag '\(name)'",
-                    error: error
-                )
+    private func restoreAction(
+        failureTitle: String,
+        _ restore: @escaping @MainActor (SourceControlManager) async throws -> Void
+    ) -> () -> Void {
+        let manager = sourceControlManager
+        return { [weak self] in
+            self?.runningOperations += 1
+            Task { @MainActor in
+                do {
+                    try await restore(manager)
+                    await self?.refreshAfterOperation()
+                } catch {
+                    await manager.showAlertForError(title: failureTitle, error: error)
+                }
+                self?.runningOperations -= 1
             }
         }
     }
@@ -1031,7 +1022,7 @@ final class BranchesPopupViewModel {
                 title: "Branch '\(source)' merged with conflicts",
                 description: "Resolve the conflicts to complete the merge.",
                 actionTitle: "Resolve Conflicts…",
-                action: { [weak self] in self?.openConflicts?() }
+                action: { [openConflicts = self.openConflicts] in openConflicts?() }
             )
         )
     }
@@ -1042,7 +1033,7 @@ final class BranchesPopupViewModel {
                 title: "Rebase stopped with conflicts",
                 description: "Rebase onto '\(source)' stopped with conflicts. Resolve them or abort the rebase.",
                 actionTitle: "Resolve Conflicts…",
-                action: { [weak self] in self?.openConflicts?() }
+                action: { [openConflicts = self.openConflicts] in openConflicts?() }
             )
         )
     }
@@ -1181,28 +1172,27 @@ final class BranchesPopupViewModel {
         )
     }
 
-    private func refRow(_ node: BranchesPopupNode, depth: Int) -> BranchesPopupRow {
-        let isFavorite = node.ref.map { favorites.contains($0.id) } ?? false
+    private func refRow(_ node: BranchesPopupNode, ref: BranchesPopupRef, depth: Int) -> BranchesPopupRow {
+        let isFavorite = favorites.contains(ref.id)
         return BranchesPopupRow(
             id: node.id,
             kind: .ref,
             title: node.title,
-            iconName: iconName(for: node.ref, isFavorite: isFavorite),
+            iconName: iconName(for: ref, isFavorite: isFavorite),
             shortcut: nil,
             detail: node.detail,
-            counters: node.ref?.counterText,
+            counters: ref.counterText,
             matchRanges: matchRanges(for: node.title),
             depth: depth,
             isExpanded: false,
-            ref: node.ref,
+            ref: ref,
             action: nil,
             ongoingAction: nil,
             isFavorite: isFavorite
         )
     }
 
-    private func iconName(for ref: BranchesPopupRef?, isFavorite: Bool) -> String? {
-        guard let ref else { return nil }
+    private func iconName(for ref: BranchesPopupRef, isFavorite: Bool) -> String {
         if ref.isCurrent {
             return isFavorite ? "vcs/currentBranchFavoriteLabel" : "vcs/currentBranchLabel"
         }

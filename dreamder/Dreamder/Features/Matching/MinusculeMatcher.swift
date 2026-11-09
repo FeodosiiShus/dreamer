@@ -51,13 +51,13 @@ nonisolated struct MinusculeMatcher: Sendable {
     func matchingDegree(_ name: String) -> Int {
         let units = Array(name.utf16)
         let resolved = resolve(units)
-        return degree(units, valueStartCaseMatch: false, fragments: resolved.ranges, usesMain: resolved.usesMain)
+        return degree(units, valueStartCaseMatch: false, fragments: resolved.ranges, core: resolved.core)
     }
 
     func matchingDegree(_ name: String, valueStartCaseMatch: Bool, fragments: [Range<Int>]?) -> Int {
         let units = Array(name.utf16)
-        let usesMain = resolve(units).usesMain
-        return degree(units, valueStartCaseMatch: valueStartCaseMatch, fragments: fragments, usesMain: usesMain)
+        let core = resolve(units).core
+        return degree(units, valueStartCaseMatch: valueStartCaseMatch, fragments: fragments, core: core)
     }
 
     func isStartMatch(_ name: String) -> Bool {
@@ -69,28 +69,27 @@ nonisolated struct MinusculeMatcher: Sendable {
         let units = Array(name.utf16)
         let resolved = resolve(units)
         guard let fragments = resolved.ranges else { return nil }
-        let value = degree(units, valueStartCaseMatch: false, fragments: fragments, usesMain: resolved.usesMain)
+        let value = degree(units, valueStartCaseMatch: false, fragments: fragments, core: resolved.core)
         return (fragments, value)
     }
 
-    private func resolve(_ units: [UInt16]) -> (ranges: [Range<Int>]?, usesMain: Bool) {
+    private func resolve(_ units: [UInt16]) -> (ranges: [Range<Int>]?, core: MinusculeMatcherCore) {
         let mainRanges = main.match(units)
         if let mainRanges, !mainRanges.isEmpty {
-            return (mainRanges, true)
+            return (mainRanges, main)
         }
         guard let fallback else {
-            return (mainRanges, true)
+            return (mainRanges, main)
         }
-        return (fallback.match(units), false)
+        return (fallback.match(units), fallback)
     }
 
     private func degree(
         _ units: [UInt16],
         valueStartCaseMatch: Bool,
         fragments: [Range<Int>]?,
-        usesMain: Bool
+        core: MinusculeMatcherCore
     ) -> Int {
-        let core = usesMain ? main : (fallback ?? main)
         let base = core.matchingDegree(units, valueStartCaseMatch: valueStartCaseMatch, fragments: fragments)
         guard preferStartMatch, let first = fragments?.first, first.lowerBound == 0 else {
             return base

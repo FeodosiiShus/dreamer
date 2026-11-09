@@ -14,7 +14,7 @@ import OSLog
 @Observable
 @MainActor
 final class SourceControlManager {
-    let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "SourceControlManager")
+    let logger = Logger(subsystem: "dev.dreamder.Dreamder", category: "SourceControlManager")
 
     let gitClient: GitClient
     let changedFilesRefresh = CoalescedRefresh()
@@ -191,7 +191,6 @@ final class SourceControlManager {
     private func showAlert(title: String, message: String) async {
         await MainActor.run {
             lastAlert = SourceControlAlert(title: title, message: message)
-            guard !DreamderHeadless.isEnabled else { return }
             let alert = NSAlert()
             alert.messageText = title
             alert.informativeText = message

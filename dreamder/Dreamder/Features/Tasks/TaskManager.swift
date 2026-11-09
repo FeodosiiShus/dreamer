@@ -13,22 +13,87 @@ import Observation
 @Observable
 class TaskManager {
     var activeTasks: [UUID: CEActiveTask] = [:]
-    var selectedTaskID: UUID?
+    var selectedTaskID: UUID? {
+        didSet {
+            guard !isApplyingFallbackSelection else { return }
+            selectionIsFallback = false
+            persistSelection()
+        }
+    }
     var taskShowingOutput: UUID?
+    private(set) var discoveredSections: [RunConfigurationSection] = []
+    var lastRunTask: CETask?
 
     let workspaceSettings: CEWorkspaceSettingsData
 
     private var workspaceURL: URL?
     @ObservationIgnored private var settingsTask: Task<Void, Never>?
+    @ObservationIgnored private var discoveryTask: Task<Void, Never>?
+    private let discovery: TaskDiscovery?
+    private let selectionDefaults: UserDefaults
+    private let settings: Settings
+    @ObservationIgnored private var persistedSelectionID: UUID?
+    @ObservationIgnored private var selectionIsFallback = true
+    @ObservationIgnored private var isApplyingFallbackSelection = false
 
-    init(workspaceSettings: CEWorkspaceSettingsData, workspaceURL: URL?) {
+    init(
+        workspaceSettings: CEWorkspaceSettingsData,
+        workspaceURL: URL?,
+        discovery: TaskDiscovery? = nil,
+        selectionDefaults: UserDefaults = .standard,
+        settings: Settings = SettingsScope.current ?? .shared
+    ) {
         self.workspaceURL = workspaceURL
         self.workspaceSettings = workspaceSettings
+        self.selectionDefaults = selectionDefaults
+        self.settings = settings
+        self.discovery = discovery ?? workspaceURL.map { root in
+            TaskDiscovery(rootURL: root, isExcluded: { url in
+                ExcludedDirectories.rules(covering: url).isExcluded(url)
+            })
+        }
+        persistedSelectionID = Self.selectionKey(for: workspaceURL)
+            .flatMap { selectionDefaults.string(forKey: $0) }
+            .flatMap { UUID(uuidString: $0) }
         startObservingSettings()
+        updateSelectedTaskID()
+        startDiscovery()
     }
 
     isolated deinit {
         settingsTask?.cancel()
+        discoveryTask?.cancel()
+    }
+
+    private static func selectionKey(for workspaceURL: URL?) -> String? {
+        workspaceURL.map { "dreamder.selectedTask." + $0.standardizedFileURL.path(percentEncoded: false) }
+    }
+
+    private func persistSelection() {
+        guard let key = Self.selectionKey(for: workspaceURL) else { return }
+        persistedSelectionID = selectedTaskID
+        if let selectedTaskID {
+            selectionDefaults.set(selectedTaskID.uuidString, forKey: key)
+        } else {
+            selectionDefaults.removeObject(forKey: key)
+        }
+    }
+
+    private func startDiscovery() {
+        guard discovery != nil else { return }
+        discoveryTask = Task { [weak self] in
+            await self?.refreshDiscoveredTasks()
+        }
+    }
+
+    func refreshDiscoveredTasks() async {
+        guard let discovery else { return }
+        applyDiscoveredGroups(await discovery.discover())
+    }
+
+    func applyDiscoveredGroups(_ groups: [DiscoveredTaskGroup]) {
+        discoveredSections = groups.map(RunConfigurationSection.init(group:))
+        updateSelectedTaskID()
     }
 
     private func startObservingSettings() {
@@ -46,30 +111,63 @@ class TaskManager {
         if let selectedTaskID {
             return availableTasks.first { $0.id == selectedTaskID }
         }
-        return availableTasks.first
+        return fallbackSelectionID.flatMap { id in availableTasks.first { $0.id == id } }
     }
 
     var availableTasks: [CETask] {
-        return workspaceSettings.tasks
+        runConfigurationSections.flatMap(\.tasks)
+    }
+
+    var runConfigurationSections: [RunConfigurationSection] {
+        let userTasks = workspaceSettings.tasks
+        var sections: [RunConfigurationSection] = []
+        if !userTasks.isEmpty {
+            sections.append(RunConfigurationSection(userTasks: userTasks))
+        }
+        let taken = Set(userTasks.map { RunConfigurationSection.commandKey(for: $0) })
+        for section in discoveredSections {
+            let remaining = section.tasks.filter { !taken.contains(RunConfigurationSection.commandKey(for: $0)) }
+            if !remaining.isEmpty {
+                sections.append(section.replacingTasks(remaining))
+            }
+        }
+        return sections
+    }
+
+    var hasRunningTasks: Bool {
+        activeTasks.values.contains { $0.status == .running }
     }
 
     func taskStatus(taskID: UUID) -> CETaskStatus {
         return self.activeTasks[taskID]?.status ?? .notRunning
     }
 
+    private var fallbackSelectionID: UUID? {
+        let tasks = availableTasks
+        if let persistedSelectionID, tasks.contains(where: { $0.id == persistedSelectionID }) {
+            return persistedSelectionID
+        }
+        return tasks.first?.id
+    }
+
     func updateSelectedTaskID() {
-        if let selectedTaskID, availableTasks.contains(where: { $0.id == selectedTaskID }) { return }
-        selectedTaskID = availableTasks.first?.id
+        let tasks = availableTasks
+        if let selectedTaskID, tasks.contains(where: { $0.id == selectedTaskID }), !selectionIsFallback { return }
+        isApplyingFallbackSelection = true
+        selectedTaskID = fallbackSelectionID
+        isApplyingFallbackSelection = false
+        selectionIsFallback = true
     }
 
     func executeActiveTask() {
-        guard let task = workspaceSettings.tasks.first(where: { $0.id == selectedTaskID }) else { return }
+        guard let task = availableTasks.first(where: { $0.id == selectedTaskID }) else { return }
         Task {
             await runTask(task: task)
         }
     }
 
     func runTask(task: CETask) async {
+        lastRunTask = task
         // A process can only be started once, that means we have to renew the Process and Pipe
         // but don't initialize a new object.
         if let activeTask = activeTasks[task.id] {
@@ -81,7 +179,7 @@ class TaskManager {
             }
             activeTask.run(workspaceURL: workspaceURL)
         } else {
-            let runningTask = CEActiveTask(task: task)
+            let runningTask = CEActiveTask(task: task, settings: settings)
             runningTask.run(workspaceURL: workspaceURL)
             await MainActor.run {
                 activeTasks[task.id] = runningTask
@@ -160,6 +258,39 @@ class TaskManager {
         for (id, _) in activeTasks {
             interruptTask(taskID: id)
         }
+    }
+
+    @discardableResult
+    func rerunLastTask() -> Task<Void, Never>? {
+        guard let lastRunTask else { return nil }
+        return Task {
+            await runTask(task: lastRunTask)
+        }
+    }
+
+    @discardableResult
+    func saveDiscoveredTask(_ task: CETask) -> CETask? {
+        guard task.source != CETask.workspaceSource else { return nil }
+        let existingNames = Set(workspaceSettings.tasks.map(\.name))
+        var name = task.name
+        var suffix = 2
+        while existingNames.contains(name) {
+            name = "\(task.name) (\(suffix))"
+            suffix += 1
+        }
+        let saved = CETask(
+            name: name,
+            target: "My Mac",
+            workingDirectory: task.workingDirectory,
+            command: task.command,
+            environmentVariables: task.environmentVariables
+        )
+        let wasSelected = selectedTaskID == task.id
+        workspaceSettings.tasks.append(saved)
+        if wasSelected {
+            selectedTaskID = saved.id
+        }
+        return saved
     }
 
     func deleteTask(taskID: UUID) {

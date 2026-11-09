@@ -97,7 +97,6 @@ nonisolated struct LSPClientRequestHandler: Sendable {
 
         case let .workspaceCodeLensRefresh(reply):
             await reply(nil)
-            await environment.refresh(.codeLens)
 
         case let .workspaceSemanticTokenRefresh(reply):
             await reply(nil)

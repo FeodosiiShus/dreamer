@@ -13,6 +13,10 @@ nonisolated protocol Loopable {
     func allProperties() throws -> [String: Any]
 }
 
+nonisolated enum LoopableError: Error, Equatable {
+    case notAStructOrClass
+}
+
 nonisolated extension Loopable {
 
     /// returns all child properties and their associated values of `self`
@@ -36,8 +40,7 @@ nonisolated extension Loopable {
         let mirror = Mirror(reflecting: self)
 
         guard let style = mirror.displayStyle, style == .struct || style == .class else {
-            // TODO: Throw a proper error
-            throw NSError() // swiftlint:disable:this discouraged_direct_init
+            throw LoopableError.notAStructOrClass
         }
 
         for (property, value) in mirror.children {

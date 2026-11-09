@@ -22,10 +22,6 @@ nonisolated struct MarkdownListItemPrefix: Equatable, Sendable {
         markerText + " "
     }
 
-    var contentColumn: Int {
-        contentStart
-    }
-
     var checkboxText: String? {
         checkbox.map { $0 ? "[x] " : "[ ] " }
     }
@@ -62,7 +58,7 @@ nonisolated struct MarkdownListItemPrefix: Equatable, Sendable {
     }
 
     static func parse(line: Substring) -> MarkdownListItemPrefix? {
-        parse(units: Array(line.utf16)[...])
+        parse(units: ArraySlice(Array(line.utf16)))
     }
 
     static func parse(units: ArraySlice<UInt16>) -> MarkdownListItemPrefix? {

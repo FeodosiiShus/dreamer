@@ -13,19 +13,43 @@ final class GitGutterCoordinator: TextViewCoordinator {
     private var repositoryObservation: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
     private var headTask: Task<Void, Never>?
-    private var debounceWorkItem: DispatchWorkItem?
+    private var memoryTask: Task<Void, Never>?
+    private var debounceTask: Task<Void, Never>?
+    private let debounceInterval: Duration
     private var changes: [GitLineChange] = []
     private var headText: String?
     private var isTrackingRepository = false
     private var isUntrackedFile = false
 
-    private struct Snapshot {
+    private nonisolated struct Snapshot: Sendable {
         let changes: [GitLineChange]
         let untracked: Bool
     }
 
-    init(codeFile: CodeFileDocument) {
+    private nonisolated struct RepositorySignature: Equatable, Sendable {
+        var isGitRepository = false
+        var branchName: String?
+        var ahead = 0
+        var behind = 0
+        var changedFiles: Set<GitChangedFile> = []
+        var unsyncedAhead = 0
+        var unsyncedBehind = 0
+
+        @MainActor
+        init(manager: SourceControlManager) {
+            isGitRepository = manager.isGitRepository
+            branchName = manager.currentBranch?.longName
+            ahead = manager.currentBranch?.ahead ?? 0
+            behind = manager.currentBranch?.behind ?? 0
+            changedFiles = Set(manager.changedFiles)
+            unsyncedAhead = manager.numberOfUnsyncedCommits.ahead
+            unsyncedBehind = manager.numberOfUnsyncedCommits.behind
+        }
+    }
+
+    init(codeFile: CodeFileDocument, debounceInterval: Duration = .milliseconds(500)) {
         fileURL = codeFile.fileURL
+        self.debounceInterval = debounceInterval
     }
 
     func prepareCoordinator(controller: TextViewController) {
@@ -39,11 +63,14 @@ final class GitGutterCoordinator: TextViewCoordinator {
         }
         self.workspace = workspace
         guard let manager = workspace.sourceControlManager else { return }
-        repositoryObservation = Task { [weak self, weak manager] in
-            let states = Observations { [weak manager] in manager?.isGitRepository ?? false }
-            for await isRepository in states {
+        repositoryObservation = Task { [weak self, manager] in
+            let signatures = Observations { RepositorySignature(manager: manager) }
+            var previous: RepositorySignature?
+            for await signature in signatures {
                 guard let self else { return }
-                if isRepository {
+                guard signature != previous else { continue }
+                previous = signature
+                if signature.isGitRepository {
                     refreshFromGit()
                 } else {
                     stopTracking()
@@ -51,6 +78,10 @@ final class GitGutterCoordinator: TextViewCoordinator {
             }
         }
     }
+
+    var currentChanges: [GitLineChange] { changes }
+
+    var loadedHeadText: String? { headText }
 
     func textViewDidChangeText(controller: TextViewController) {
         installMarkerViewIfNeeded(controller: controller)
@@ -62,8 +93,10 @@ final class GitGutterCoordinator: TextViewCoordinator {
         refreshTask = nil
         headTask?.cancel()
         headTask = nil
-        debounceWorkItem?.cancel()
-        debounceWorkItem = nil
+        memoryTask?.cancel()
+        memoryTask = nil
+        debounceTask?.cancel()
+        debounceTask = nil
         repositoryObservation?.cancel()
         repositoryObservation = nil
         if let gutterFrameObserver {
@@ -92,7 +125,7 @@ final class GitGutterCoordinator: TextViewCoordinator {
         view.frame = Self.markerFrame(in: gutter)
         view.previousContent = { [weak self] change in self?.previousContent(for: change) }
         view.rollback = { [weak self] change in self?.rollback(change) }
-        view.showDiff = { [weak self] change in self?.showDiff(for: change) }
+        view.showDiff = { [weak self] _ in self?.showDiff() }
         gutter.addSubview(view)
         markerView = view
         view.changes = changes
@@ -134,6 +167,12 @@ final class GitGutterCoordinator: TextViewCoordinator {
     }
 
     private func stopTracking() {
+        refreshTask?.cancel()
+        refreshTask = nil
+        headTask?.cancel()
+        headTask = nil
+        memoryTask?.cancel()
+        memoryTask = nil
         isTrackingRepository = false
         isUntrackedFile = false
         headText = nil
@@ -153,24 +192,18 @@ final class GitGutterCoordinator: TextViewCoordinator {
         }
         let gitClient = manager.gitClient
         refreshTask = Task { [weak self] in
-            let snapshot = await Task.detached(priority: .utility) {
-                await Self.loadSnapshot(gitClient: gitClient, path: relativePath)
-            }.value
-            guard !Task.isCancelled else { return }
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.apply(snapshot: snapshot)
-                self.loadHeadText(gitClient: gitClient, path: relativePath)
-            }
+            let snapshot = await Self.loadSnapshot(gitClient: gitClient, path: relativePath)
+            guard !Task.isCancelled, let self else { return }
+            apply(snapshot: snapshot)
+            loadHeadText(gitClient: gitClient, path: relativePath)
         }
     }
 
     private func apply(snapshot: Snapshot) {
         isTrackingRepository = true
         isUntrackedFile = snapshot.untracked
-        if snapshot.untracked {
-            let lineCount = TextDiff.lines(in: controller?.textView.string ?? "").count
-            apply(changes: GitLineChange.wholeFileAdded(lineCount: lineCount))
+        if snapshot.untracked, let textView = controller?.textView {
+            apply(changes: GitLineChange.wholeFileAdded(lineCount: TextDiff.lines(in: textView.string).count))
         } else {
             apply(changes: snapshot.changes)
         }
@@ -180,15 +213,10 @@ final class GitGutterCoordinator: TextViewCoordinator {
         headTask?.cancel()
         let quotedObject = GitClient.logGraphQuote("HEAD:./\(path)")
         headTask = Task { [weak self] in
-            let headText = await Task.detached(priority: .utility) {
-                try? await gitClient.run("show \(quotedObject)")
-            }.value
-            guard !Task.isCancelled else { return }
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.headText = headText
-                self.refreshFromMemory()
-            }
+            let headText = try? await gitClient.run("show \(quotedObject)")
+            guard !Task.isCancelled, let self else { return }
+            self.headText = headText
+            refreshFromMemory()
         }
     }
 
@@ -201,30 +229,37 @@ final class GitGutterCoordinator: TextViewCoordinator {
         return String(target.dropFirst(prefix.count))
     }
 
+    @concurrent
     private static func loadSnapshot(gitClient: GitClient, path: String) async -> Snapshot {
         let quotedPath = GitClient.logGraphQuote(path)
-        let diff = (try? await gitClient.run(
-            "-c core.quotePath=false diff --no-color -U0 HEAD -- \(quotedPath)"
-        )) ?? ""
+        let diff = await output(of: "-c core.quotePath=false diff --no-color -U0 HEAD -- \(quotedPath)", in: gitClient)
         let parsed = GitLineChange.markers(inDiff: diff)
         guard parsed.isEmpty else {
             return Snapshot(changes: parsed, untracked: false)
         }
-        let untrackedOutput = (try? await gitClient.run(
-            "-c core.quotePath=false ls-files --others --exclude-standard -- \(quotedPath)"
-        )) ?? ""
+        let untrackedOutput = await output(
+            of: "-c core.quotePath=false ls-files --others --exclude-standard -- \(quotedPath)",
+            in: gitClient
+        )
         let untracked = !untrackedOutput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return Snapshot(changes: [], untracked: untracked)
     }
 
+    @concurrent
+    private static func output(of command: String, in gitClient: GitClient) async -> String {
+        guard let output = try? await gitClient.run(command) else { return "" }
+        return output
+    }
+
     private func scheduleMemoryRefresh() {
-        debounceWorkItem?.cancel()
-        let item = DispatchWorkItem { [weak self] in
-            self?.debounceWorkItem = nil
-            self?.refreshFromMemory()
+        debounceTask?.cancel()
+        let interval = debounceInterval
+        debounceTask = Task { [weak self] in
+            try? await Task.sleep(for: interval)
+            guard !Task.isCancelled, let self else { return }
+            debounceTask = nil
+            refreshFromMemory()
         }
-        debounceWorkItem = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: item)
     }
 
     private func refreshFromMemory() {
@@ -232,15 +267,16 @@ final class GitGutterCoordinator: TextViewCoordinator {
         guard headText != nil || isUntrackedFile else { return }
         let currentText = textView.string
         let headText = self.headText
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            let changes = Self.markers(headText: headText, currentText: currentText)
-            DispatchQueue.main.async {
-                self?.apply(changes: changes)
-            }
+        memoryTask?.cancel()
+        memoryTask = Task { [weak self] in
+            let changes = await Self.markers(headText: headText, currentText: currentText)
+            guard !Task.isCancelled, let self, self.isTrackingRepository else { return }
+            apply(changes: changes)
         }
     }
 
-    private nonisolated static func markers(headText: String?, currentText: String) -> [GitLineChange] {
+    @concurrent
+    private static func markers(headText: String?, currentText: String) async -> [GitLineChange] {
         guard let headText else {
             return GitLineChange.wholeFileAdded(lineCount: TextDiff.lines(in: currentText).count)
         }
@@ -326,10 +362,8 @@ final class GitGutterCoordinator: TextViewCoordinator {
         character == 0x0A || character == 0x0D
     }
 
-    private func showDiff(for change: GitLineChange) {
+    private func showDiff() {
         guard let fileURL, let workspace else { return }
-        MainActor.assumeIsolated {
-            DiffViewerPresenter.showFileDiff(workspace: workspace, fileURL: fileURL, against: "HEAD")
-        }
+        DiffViewerPresenter.showFileDiff(workspace: workspace, fileURL: fileURL, against: "HEAD")
     }
 }

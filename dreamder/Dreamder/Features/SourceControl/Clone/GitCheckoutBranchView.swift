@@ -16,11 +16,18 @@ struct GitCheckoutBranchView: View {
     private var openDocument: (URL) -> Void
 
     init(
+        viewModel: GitCheckoutBranchViewModel,
+        openDocument: @escaping (URL) -> Void
+    ) {
+        _viewModel = State(initialValue: viewModel)
+        self.openDocument = openDocument
+    }
+
+    init(
         repoLocalPath: URL,
         openDocument: @escaping (URL) -> Void
     ) {
-        _viewModel = State(wrappedValue: GitCheckoutBranchViewModel(repoPath: repoLocalPath))
-        self.openDocument = openDocument
+        self.init(viewModel: GitCheckoutBranchViewModel(repoPath: repoLocalPath), openDocument: openDocument)
     }
     var body: some View {
         VStack(spacing: 8) {
@@ -36,9 +43,6 @@ struct GitCheckoutBranchView: View {
                     Text("Select a branch to checkout")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
-                        .alignmentGuide(.trailing) { context in
-                        context[.trailing]
-                    }
                     Picker("", selection: $viewModel.selectedBranch, content: {
                         ForEach(viewModel.branches, id: \.self) { branch in
                             Text(branch.name.replacingOccurrences(of: "origin/", with: ""))
@@ -48,22 +52,9 @@ struct GitCheckoutBranchView: View {
                     .labelsHidden()
 
                     HStack {
-                        Button("Cancel") {
-                            dismiss()
-                        }
-                        Button("Checkout") {
-                            Task {
-                                await viewModel.checkoutBranch()
-                                await MainActor.run {
-                                    dismiss()
-                                    openDocument(viewModel.repoPath)
-                                }
-                            }
-                        }
-                        .keyboardShortcut(.defaultAction)
-                    }
-                    .alignmentGuide(.trailing) { context in
-                        context[.trailing]
+                        Button("Cancel", action: dismiss.callAsFunction)
+                        Button("Checkout", action: checkout)
+                            .keyboardShortcut(.defaultAction)
                     }
                     .offset(x: 145)
                 }
@@ -75,6 +66,14 @@ struct GitCheckoutBranchView: View {
             .task {
                 await viewModel.loadBranches()
             }
+        }
+    }
+
+    func checkout() {
+        Task {
+            await viewModel.checkoutBranch()
+            dismiss()
+            openDocument(viewModel.repoPath)
         }
     }
 }

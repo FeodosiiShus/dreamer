@@ -2,7 +2,16 @@ import AppKit
 import SwiftUI
 
 struct SearchEverywhereToolbarWidget: View {
-    @State private var isHovering = false
+    @State private var hover: MainToolbarHoverState
+    private let send: @MainActor (Selector) -> Void
+
+    init(
+        hover: MainToolbarHoverState = MainToolbarHoverState(),
+        send: @escaping @MainActor (Selector) -> Void = SearchEverywhereToolbarWidget.sendToResponderChain
+    ) {
+        _hover = State(initialValue: hover)
+        self.send = send
+    }
 
     var body: some View {
         Button(action: openSearchEverywhere) {
@@ -22,21 +31,21 @@ struct SearchEverywhereToolbarWidget: View {
             }
             .padding(.horizontal, 12)
             .frame(width: 260, height: Islands.toolbarControlHeight)
-            .mainToolbarGlass(isHovering: isHovering)
+            .mainToolbarGlass(isHovering: hover.isHovering)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
+        .onHover(perform: hover.setHovering)
         .help("Search everywhere")
         .accessibilityLabel("Search everywhere")
         .fixedSize()
     }
 
-    private func openSearchEverywhere() {
-        NSApp.sendAction(
-            #selector(DreamderWindowController.openSearchEverywhere(_:)),
-            to: nil,
-            from: nil
-        )
+    static func sendToResponderChain(_ action: Selector) {
+        _ = NSApp.sendAction(action, to: nil, from: nil)
+    }
+
+    func openSearchEverywhere() {
+        send(#selector(DreamderWindowController.openSearchEverywhere(_:)))
     }
 }

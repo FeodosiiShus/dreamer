@@ -4,7 +4,7 @@ import SwiftUI
 struct ProblemsToolWindow: View {
     @Environment(WorkspaceDocument.self) private var workspace
 
-    @Service private var lspService: LSPService
+    private var lspService: LSPService { .shared }
 
     init() {}
 
@@ -13,22 +13,118 @@ struct ProblemsToolWindow: View {
     }
 }
 
+@Observable
+@MainActor
+final class ProblemsToolWindowModel {
+    enum Selection: Hashable {
+        case file(URL)
+        case diagnostic(WorkspaceDiagnostic)
+    }
+
+    var tab: ProblemsTab = .file
+    private(set) var severityFilter = ProblemsSeverityFilter()
+    private(set) var collapsedFiles: Set<URL> = []
+    private(set) var selection: Selection?
+    private(set) var focusRequests = 0
+
+    func select(_ item: ProblemsTab) {
+        tab = item
+    }
+
+    func toggleSeverity(_ group: ProblemSeverityGroup) {
+        severityFilter = severityFilter.toggling(group)
+    }
+
+    func activation(workspace: WorkspaceDocument) -> () -> KeyPress.Result {
+        { self.activateSelection(workspace: workspace) }
+    }
+
+    func opening(_ diagnostic: WorkspaceDiagnostic, fileURL: URL, workspace: WorkspaceDocument) -> () -> Void {
+        { self.openDiagnostic(diagnostic, fileURL: fileURL, workspace: workspace) }
+    }
+
+    func pullProjectDiagnostics(
+        workspace: WorkspaceDocument,
+        lspService: LSPService,
+        puller: WorkspaceDiagnosticsPuller
+    ) async {
+        guard tab == .project else { return }
+        await puller.pullAll(service: lspService, workspace: workspace)
+    }
+
+    func selectFile(_ url: URL) {
+        focusRequests += 1
+        selection = .file(url)
+    }
+
+    func selectDiagnostic(_ diagnostic: WorkspaceDiagnostic) {
+        focusRequests += 1
+        selection = .diagnostic(diagnostic)
+    }
+
+    func toggleFile(_ url: URL) {
+        selection = .file(url)
+        toggleCollapsed(url)
+    }
+
+    func openDiagnostic(_ diagnostic: WorkspaceDiagnostic, fileURL: URL, workspace: WorkspaceDocument) {
+        selection = .diagnostic(diagnostic)
+        open(diagnostic, fileURL: fileURL, workspace: workspace)
+    }
+
+    func toggleCollapsed(_ url: URL) {
+        if collapsedFiles.contains(url) {
+            collapsedFiles.remove(url)
+        } else {
+            collapsedFiles.insert(url)
+        }
+    }
+
+    @discardableResult
+    func activateSelection(workspace: WorkspaceDocument) -> KeyPress.Result {
+        switch selection {
+        case .file(let url):
+            EditorLocationNavigation.open(fileURL: url, line: 1, column: 1, workspace: workspace)
+        case .diagnostic(let diagnostic):
+            open(diagnostic, fileURL: diagnostic.fileURL, workspace: workspace)
+        case nil:
+            break
+        }
+        return .handled
+    }
+
+    private func open(_ diagnostic: WorkspaceDiagnostic, fileURL: URL, workspace: WorkspaceDocument) {
+        EditorLocationNavigation.open(
+            fileURL: fileURL,
+            line: diagnostic.startLine + 1,
+            column: diagnostic.startColumn + 1,
+            workspace: workspace
+        )
+    }
+}
+
 struct ProblemsToolWindowContent: View {
     let store: DiagnosticsStore
     let lspService: LSPService
+    let puller: WorkspaceDiagnosticsPuller
 
     @Environment(WorkspaceDocument.self) private var workspace
     @Environment(EditorManager.self) private var editorManager
     @Environment(ToolWindowManager.self) private var toolWindowManager
 
-    @State private var tab: ProblemsTab = .file
-    @State private var collapsedFiles: Set<URL> = []
-    @State private var selection: ProblemsSelection?
+    @State private var model: ProblemsToolWindowModel
     @FocusState private var isFocused: Bool
 
-    private enum ProblemsSelection: Hashable {
-        case file(URL)
-        case diagnostic(WorkspaceDiagnostic)
+    init(
+        store: DiagnosticsStore,
+        lspService: LSPService,
+        model: ProblemsToolWindowModel = ProblemsToolWindowModel(),
+        puller: WorkspaceDiagnosticsPuller = .shared
+    ) {
+        self.store = store
+        self.lspService = lspService
+        self.puller = puller
+        self._model = State(initialValue: model)
     }
 
     private var activeFileURL: URL? {
@@ -39,25 +135,31 @@ struct ProblemsToolWindowContent: View {
         workspace.workspaceFileManager?.folderUrl ?? workspace.fileURL
     }
 
-    private var fileDiagnostics: [WorkspaceDiagnostic] {
-        guard let activeFileURL else { return [] }
-        return store.diagnostics(for: activeFileURL)
+    private var fileNodes: [ProblemFileNode] {
+        guard let activeFileURL,
+              let node = ProblemsTreeBuilder.node(
+                  url: activeFileURL,
+                  diagnostics: store.diagnostics(for: activeFileURL),
+                  root: root,
+                  filter: model.severityFilter
+              ) else {
+            return []
+        }
+        return [node]
+    }
+
+    private var projectNodes: [ProblemFileNode] {
+        ProblemsTreeBuilder.instances(
+            diagnosticsByFile: store.diagnosticsByFile,
+            root: root,
+            filter: model.severityFilter
+        )
     }
 
     private var nodes: [ProblemFileNode] {
-        switch tab {
-        case .file:
-            guard let activeFileURL,
-                  let node = ProblemsTreeBuilder.node(
-                      url: activeFileURL,
-                      diagnostics: store.diagnostics(for: activeFileURL),
-                      root: root
-                  ) else {
-                return []
-            }
-            return [node]
-        case .project:
-            return ProblemsTreeBuilder.instances(diagnosticsByFile: store.diagnosticsByFile, root: root)
+        switch model.tab {
+        case .file: fileNodes
+        case .project: projectNodes
         }
     }
 
@@ -73,15 +175,19 @@ struct ProblemsToolWindowContent: View {
                     ToolWindowTab(
                         title: item.title(count: count(for: item)),
                         icon: nil,
-                        isSelected: item == tab
-                    ) {
-                        tab = item
-                    }
+                        isSelected: item == model.tab,
+                        action: bound(model.select, item)
+                    )
                 }
             } actions: {
-                ToolWindowActionButton(icon: "general/hide", help: "Hide") {
-                    toolWindowManager.hide(.problems)
+                ForEach(ProblemSeverityGroup.allCases) { group in
+                    ProblemSeverityToggle(
+                        group: group,
+                        isOn: model.severityFilter.isShown(group),
+                        action: bound(model.toggleSeverity, group)
+                    )
                 }
+                ToolWindowActionButton(icon: "general/hide", help: "Hide", action: toolWindowManager.hideCallback(for: .problems))
             }
 
             if nodes.isEmpty {
@@ -92,6 +198,9 @@ struct ProblemsToolWindowContent: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear)
+        .task(id: model.tab) {
+            await model.pullProjectDiagnostics(workspace: workspace, lspService: lspService, puller: puller)
+        }
     }
 
     private var tree: some View {
@@ -99,7 +208,7 @@ struct ProblemsToolWindowContent: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(nodes) { node in
                     fileRow(node)
-                    if !collapsedFiles.contains(node.url) {
+                    if !model.collapsedFiles.contains(node.url) {
                         ForEach(node.diagnostics) { diagnostic in
                             diagnosticRow(diagnostic, fileURL: node.url)
                         }
@@ -111,15 +220,13 @@ struct ProblemsToolWindowContent: View {
         .focusable()
         .focusEffectDisabled()
         .focused($isFocused)
-        .onKeyPress(.return) {
-            activateSelection()
-            return .handled
-        }
+        .onKeyPress(.return, action: model.activation(workspace: workspace))
+        .onChange(of: model.focusRequests) { isFocused = true }
     }
 
     private var emptyState: some View {
         let state: ProblemsEmptyState
-        switch tab {
+        switch model.tab {
         case .file:
             state = ProblemsEmptyState.file(
                 hasLanguageServer: hasLanguageServer,
@@ -144,8 +251,8 @@ struct ProblemsToolWindowContent: View {
     }
 
     private func fileRow(_ node: ProblemFileNode) -> some View {
-        let isCollapsed = collapsedFiles.contains(node.url)
-        let isSelected = selection == .file(node.url)
+        let isCollapsed = model.collapsedFiles.contains(node.url)
+        let isSelected = model.selection == .file(node.url)
         return HStack(spacing: 6) {
             Image(isCollapsed ? "general/chevronRight" : "general/chevronDown")
                 .resizable()
@@ -178,18 +285,12 @@ struct ProblemsToolWindowContent: View {
                 .padding(.horizontal, 4)
         )
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) {
-            selection = .file(node.url)
-            toggleCollapsed(node.url)
-        }
-        .onTapGesture {
-            isFocused = true
-            selection = .file(node.url)
-        }
+        .onTapGesture(count: 2, perform: bound(model.toggleFile, node.url))
+        .onTapGesture(perform: bound(model.selectFile, node.url))
     }
 
     private func diagnosticRow(_ diagnostic: WorkspaceDiagnostic, fileURL: URL) -> some View {
-        let isSelected = selection == .diagnostic(diagnostic)
+        let isSelected = model.selection == .diagnostic(diagnostic)
         return HStack(spacing: 6) {
             Image(diagnostic.severity.iconName)
                 .resizable()
@@ -219,49 +320,45 @@ struct ProblemsToolWindowContent: View {
                 .padding(.horizontal, 4)
         )
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) {
-            selection = .diagnostic(diagnostic)
-            open(diagnostic, fileURL: fileURL)
-        }
-        .onTapGesture {
-            isFocused = true
-            selection = .diagnostic(diagnostic)
-        }
-    }
-
-    private func toggleCollapsed(_ url: URL) {
-        if collapsedFiles.contains(url) {
-            collapsedFiles.remove(url)
-        } else {
-            collapsedFiles.insert(url)
-        }
+        .onTapGesture(count: 2, perform: model.opening(diagnostic, fileURL: fileURL, workspace: workspace))
+        .onTapGesture(perform: bound(model.selectDiagnostic, diagnostic))
     }
 
     private func count(for tab: ProblemsTab) -> Int {
-        switch tab {
-        case .file:
-            fileDiagnostics.count
-        case .project:
-            store.diagnosticsByFile.values.reduce(0) { $0 + $1.count }
+        let items = switch tab {
+        case .file: fileNodes
+        case .project: projectNodes
         }
+        return items.reduce(0) { $0 + $1.counts.total }
+    }
+}
+
+struct ProblemSeverityToggle: View {
+    let group: ProblemSeverityGroup
+    let isOn: Bool
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(group.iconName)
+                .resizable()
+                .frame(width: 14, height: 14)
+                .opacity(isOn ? 1 : 0.35)
+                .frame(width: 26, height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: Islands.controlRadius)
+                        .fill(isHovering ? Islands.actionHover : (isOn ? Islands.selection : .clear))
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Show \(group.title)")
+        .onHover(perform: setHovering)
     }
 
-    private func activateSelection() {
-        guard let selection else { return }
-        switch selection {
-        case .file(let url):
-            EditorLocationNavigation.open(fileURL: url, line: 1, column: 1, workspace: workspace)
-        case .diagnostic(let diagnostic):
-            open(diagnostic, fileURL: diagnostic.fileURL)
-        }
-    }
-
-    private func open(_ diagnostic: WorkspaceDiagnostic, fileURL: URL) {
-        EditorLocationNavigation.open(
-            fileURL: fileURL,
-            line: diagnostic.startLine + 1,
-            column: diagnostic.startColumn + 1,
-            workspace: workspace
-        )
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
     }
 }

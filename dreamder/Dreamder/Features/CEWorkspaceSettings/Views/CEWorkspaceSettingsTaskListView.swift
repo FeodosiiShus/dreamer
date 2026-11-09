@@ -23,27 +23,68 @@ struct CEWorkspaceSettingsTaskListView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
         } else {
             ForEach(settings.tasks) { task in
-                TaskTile(task: task)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        self.selectedTaskID = task.id
-                        self.showAddTaskSheet = true
-                    }
-                    .contextMenu {
-                        Button {
-                            self.selectedTaskID = task.id
-                            self.showAddTaskSheet = true
-                        } label: {
-                            Text("Edit")
-                        }
-                        Button {
-                            settings.tasks.removeAll { $0.id == task.id }
-                            try? workspaceSettingsManager.savePreferences()
-                            taskManager.deleteTask(taskID: task.id)
-                        } label: {
-                            Text("Delete")
-                        }
-                    }
+                TaskRow(
+                    task: task,
+                    settings: settings,
+                    workspaceSettings: workspaceSettingsManager,
+                    taskManager: taskManager,
+                    onEdit: edit
+                )
+            }
+        }
+    }
+
+    func edit(_ task: CETask) {
+        selectedTaskID = task.id
+        showAddTaskSheet = true
+    }
+
+    static func delete(
+        _ task: CETask,
+        in settings: CEWorkspaceSettingsData,
+        _ workspaceSettings: CEWorkspaceSettings,
+        _ taskManager: TaskManager
+    ) {
+        settings.tasks.removeAll { $0.id == task.id }
+        try? workspaceSettings.savePreferences()
+        taskManager.deleteTask(taskID: task.id)
+    }
+
+    struct TaskRow: View {
+        let task: CETask
+        let settings: CEWorkspaceSettingsData
+        let workspaceSettings: CEWorkspaceSettings
+        let taskManager: TaskManager
+        let onEdit: (CETask) -> Void
+
+        func edit() {
+            onEdit(task)
+        }
+
+        func delete() {
+            CEWorkspaceSettingsTaskListView.delete(task, in: settings, workspaceSettings, taskManager)
+        }
+
+        var body: some View {
+            TaskTile(task: task)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: edit)
+                .contextMenu {
+                    TaskContextMenu(onEdit: edit, onDelete: delete)
+                }
+        }
+    }
+
+    struct TaskContextMenu: View {
+        let onEdit: () -> Void
+        let onDelete: () -> Void
+
+        var body: some View {
+            Button(action: onEdit) {
+                Text("Edit")
+            }
+            Button(action: onDelete) {
+                Text("Delete")
             }
         }
     }

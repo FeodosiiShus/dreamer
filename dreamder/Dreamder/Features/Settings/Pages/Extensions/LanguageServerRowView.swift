@@ -9,10 +9,65 @@ import SwiftUI
 
 private let iconSize: CGFloat = 26
 
+@Observable
+@MainActor
+final class LanguageServerRowState {
+    var isHovering: Bool
+    var showMore: Bool
+    var showingRemovalConfirmation = false
+    var isRemoving = false
+    var removalError: Error?
+    var showingRemovalError = false
+
+    init(isHovering: Bool = false, showMore: Bool = false) {
+        self.isHovering = isHovering
+        self.showMore = showMore
+    }
+
+    var removalErrorMessage: String {
+        removalError?.localizedDescription ?? "An unknown error occurred"
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
+    }
+
+    func toggleShowMore() {
+        showMore.toggle()
+    }
+
+    func requestRemoval() {
+        showingRemovalConfirmation = true
+    }
+
+    func dismissRemovalConfirmation() {
+        showingRemovalConfirmation = false
+    }
+
+    func dismissRemovalError() {
+        showingRemovalError = false
+    }
+
+    func remove(packageName: String, using registryManager: RegistryManager) {
+        isRemoving = true
+        Task {
+            do {
+                try await registryManager.removeLanguageServer(packageName: packageName)
+                isRemoving = false
+            } catch {
+                isRemoving = false
+                removalError = error
+                showingRemovalError = true
+            }
+        }
+    }
+}
+
 struct LanguageServerRowView: View, Equatable {
     let package: RegistryItem
+    let registryManager: RegistryManager
     let onCancel: (() -> Void)
-    let onInstall: (() async -> Void)
+    let onInstall: ((RegistryItem) async -> Void)
 
     private var isInstalled: Bool {
         registryManager.installedLanguageServers[package.name] != nil
@@ -21,24 +76,20 @@ struct LanguageServerRowView: View, Equatable {
         registryManager.installedLanguageServers[package.name]?.isEnabled ?? false
     }
 
-    @State private var isHovering: Bool = false
-    @State private var showingRemovalConfirmation = false
-    @State private var isRemoving = false
-    @State private var removalError: Error?
-    @State private var showingRemovalError = false
-
-    @State private var showMore: Bool = false
-
-    @Environment(RegistryManager.self) private var registryManager
+    @State private var model: LanguageServerRowState
 
     init(
         package: RegistryItem,
+        registryManager: RegistryManager,
+        model: LanguageServerRowState = LanguageServerRowState(),
         onCancel: @escaping (() -> Void),
-        onInstall: @escaping () async -> Void
+        onInstall: @escaping (RegistryItem) async -> Void
     ) {
         self.package = package
+        self.registryManager = registryManager
         self.onCancel = onCancel
         self.onInstall = onInstall
+        _model = State(initialValue: model)
     }
 
     var body: some View {
@@ -52,17 +103,14 @@ struct LanguageServerRowView: View, Equatable {
                             Text(package.sanitizedDescription)
                                 .font(.footnote)
                                 .foregroundColor(.secondary)
-                                .lineLimit(showMore ? nil : 1)
+                                .lineLimit(model.showMore ? nil : 1)
                                 .truncationMode(.tail)
-                            if showMore {
-                                Button(package.homepagePretty) {
-                                    guard let url = package.homepageURL else { return }
-                                    NSWorkspace.shared.open(url)
-                                }
-                                .buttonStyle(.plain)
-                                .foregroundColor(Color(NSColor.linkColor))
-                                .font(.footnote)
-                                .cursor(.pointingHand)
+                            if model.showMore {
+                                Button(package.homepagePretty, action: openHomepage)
+                                    .buttonStyle(.plain)
+                                    .foregroundColor(Color(NSColor.linkColor))
+                                    .font(.footnote)
+                                    .cursor(.pointingHand)
                                 if let installerName = package.installMethod?.packageManagerType?.rawValue {
                                     Text("Install using \(installerName)")
                                         .font(.footnote)
@@ -70,13 +118,11 @@ struct LanguageServerRowView: View, Equatable {
                                 }
                             }
                         }
-                        if isHovering {
+                        if model.isHovering {
                             HStack {
                                 Spacer()
-                                Button {
-                                    showMore.toggle()
-                                } label: {
-                                    Text(showMore ? "Show Less" : "Show More")
+                                Button(action: model.toggleShowMore) {
+                                    Text(model.showMore ? "Show Less" : "Show More")
                                         .font(.footnote)
                                 }
                                 .buttonStyle(.plain)
@@ -99,54 +145,67 @@ struct LanguageServerRowView: View, Equatable {
 
             installationButton()
         }
-        .onHover { hovering in
-            isHovering = hovering
-        }
-        .alert("Remove \(package.sanitizedName)?", isPresented: $showingRemovalConfirmation) {
-            Button("Cancel", role: .cancel) { }
-            Button("Remove", role: .destructive) {
-                removeLanguageServer()
-            }
-        } message: {
-            Text("Are you sure you want to remove this language server? This action cannot be undone.")
-        }
-        .alert("Removal Failed", isPresented: $showingRemovalError) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(removalError?.localizedDescription ?? "An unknown error occurred")
-        }
+        .onHover(perform: model.setHovering)
+        .alert(
+            "Remove \(package.sanitizedName)?",
+            isPresented: $model.showingRemovalConfirmation,
+            actions: removalActions,
+            message: removalMessage
+        )
+        .alert(
+            "Removal Failed",
+            isPresented: $model.showingRemovalError,
+            actions: removalFailedActions,
+            message: removalFailedMessage
+        )
     }
 
     @ViewBuilder
-    private func installationButton() -> some View {
+    func removalActions() -> some View {
+        Button("Cancel", role: .cancel, action: model.dismissRemovalConfirmation)
+        Button("Remove", role: .destructive, action: removeLanguageServer)
+    }
+
+    @ViewBuilder
+    func removalMessage() -> some View {
+        Text("Are you sure you want to remove this language server? This action cannot be undone.")
+    }
+
+    @ViewBuilder
+    func removalFailedActions() -> some View {
+        Button("OK", role: .cancel, action: model.dismissRemovalError)
+    }
+
+    @ViewBuilder
+    func removalFailedMessage() -> some View {
+        Text(model.removalErrorMessage)
+    }
+
+    @ViewBuilder
+    func installationButton() -> some View {
         if isInstalled {
             installedRow()
         } else if registryManager.runningInstall?.package.name == package.name {
             isInstallingRow()
-        } else if isHovering {
+        } else if model.isHovering {
             isHoveringRow()
         }
     }
 
     @ViewBuilder
-    private func installedRow() -> some View {
+    func installedRow() -> some View {
         HStack {
-            if isRemoving {
+            if model.isRemoving {
                 CECircularProgressView()
                     .frame(width: 20, height: 20)
-            } else if isHovering {
-                Button {
-                    showingRemovalConfirmation = true
-                } label: {
+            } else if model.isHovering {
+                Button(action: model.requestRemoval) {
                     Text("Remove")
                 }
             }
             Toggle(
                 "",
-                isOn: Binding(
-                    get: { isEnabled },
-                    set: { registryManager.setPackageEnabled(packageName: package.name, enabled: $0) }
-                )
+                isOn: Binding(get: { isEnabled }, set: setEnabled)
             )
             .toggleStyle(.switch)
             .controlSize(.small)
@@ -155,15 +214,13 @@ struct LanguageServerRowView: View, Equatable {
     }
 
     @ViewBuilder
-    private func isInstallingRow() -> some View {
+    func isInstallingRow() -> some View {
         HStack {
             ZStack {
                 CECircularProgressView()
                     .frame(width: 20, height: 20)
 
-                Button {
-                    onCancel()
-                } label: {
+                Button(action: onCancel) {
                     Image(systemName: "stop.fill")
                         .font(.system(size: 8))
                         .foregroundColor(.blue)
@@ -175,35 +232,27 @@ struct LanguageServerRowView: View, Equatable {
     }
 
     @ViewBuilder
-    private func failedRow() -> some View {
-        Button {
-            Task {
-                await onInstall()
-            }
-        } label: {
+    func failedRow() -> some View {
+        Button(action: install) {
             Text("Retry")
                 .foregroundColor(.red)
         }
     }
 
     @ViewBuilder
-    private func isHoveringRow() -> some View {
-        Button {
-            Task {
-                await onInstall()
-            }
-        } label: {
+    func isHoveringRow() -> some View {
+        Button(action: install) {
             Text("Install")
         }
         .disabled(registryManager.isInstalling)
     }
 
     @ViewBuilder
-    private func letterIcon() -> some View {
+    func letterIcon() -> some View {
         RoundedRectangle(cornerRadius: iconSize / 4, style: .continuous)
             .fill(background)
             .overlay {
-                Text(String(package.sanitizedName.first ?? Character("")))
+                Text(String(package.sanitizedName.first ?? "?"))
                     .font(.system(size: iconSize * 0.65))
                     .foregroundColor(.primary)
             }
@@ -216,22 +265,23 @@ struct LanguageServerRowView: View, Equatable {
             .frame(width: iconSize, height: iconSize)
     }
 
-    private func removeLanguageServer() {
-        isRemoving = true
+    func install() {
         Task {
-            do {
-                try await registryManager.removeLanguageServer(packageName: package.name)
-                await MainActor.run {
-                    isRemoving = false
-                }
-            } catch {
-                await MainActor.run {
-                    isRemoving = false
-                    removalError = error
-                    showingRemovalError = true
-                }
-            }
+            await onInstall(package)
         }
+    }
+
+    func setEnabled(_ enabled: Bool) {
+        registryManager.setPackageEnabled(packageName: package.name, enabled: enabled)
+    }
+
+    func openHomepage() {
+        guard let url = package.homepageURL else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    func removeLanguageServer() {
+        model.remove(packageName: package.name, using: registryManager)
     }
 
     private var background: AnyShapeStyle {

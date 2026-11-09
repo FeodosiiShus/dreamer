@@ -23,7 +23,7 @@ extension NSMenuItem {
         fixAlternate(newValue)
 
         if self.title == "Open Recent" {
-            self.submenu = FileCommands.recentProjectsMenu.makeMenu()
+            FileCommands.recentProjectsMenu.attachMenu(to: self)
         }
 
         if self.title == "OpenWindowAction" || self.title.isEmpty {

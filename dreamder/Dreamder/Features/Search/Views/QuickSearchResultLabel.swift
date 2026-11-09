@@ -13,7 +13,6 @@ import SwiftUI
 struct QuickSearchResultLabel: NSViewRepresentable {
     let labelName: String
     let charactersToHighlight: [NSRange]
-    let maximumNumberOfLines: Int = 1
     var nsLabelName: NSAttributedString?
 
     public func makeNSView(context: Context) -> some NSTextField {
@@ -27,7 +26,7 @@ struct QuickSearchResultLabel: NSViewRepresentable {
         label.allowsDefaultTighteningForTruncation = false
         label.cell?.truncatesLastVisibleLine = true
         label.cell?.wraps = true
-        label.maximumNumberOfLines = maximumNumberOfLines
+        label.maximumNumberOfLines = 1
         label.attributedStringValue = nsLabelName ?? highlight()
         return label
     }

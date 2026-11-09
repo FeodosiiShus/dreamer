@@ -20,43 +20,60 @@ struct FindCommands: Commands {
     var body: some Commands {
         CommandMenu("Find") {
             Group {
-                Button("Find...") {
-                    send(.showFindPanel)
-                }
-                .keyboardShortcut("f")
-
-                Button("Find and Replace...") {
-                    send(.init(rawValue: 12) ?? .showFindPanel)
-                }
-                .keyboardShortcut("f", modifiers: [.option, .command])
-
-                Button("Find Next") {
-                    send(.next)
-                }
-                .keyboardShortcut("g")
-
-                Button("Find Previous") {
-                    send(.previous)
-                }
-                .keyboardShortcut("g", modifiers: [.shift, .command])
-
-                Button("Use Selection for Find") {
-                    send(.setFindString)
-                }
-                .keyboardShortcut("e", modifiers: [.command, .option])
-
-                Button("Jump to Selection") {
-                    NSApp.sendAction(#selector(NSTextView.centerSelectionInVisibleArea(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut("j")
+                FindButtons(responder: responder)
             }
             .disabled(!hasResponder)
         }
     }
+}
 
-    func send(_ action: NSFindPanelAction) {
-        let item = NSMenuItem()
-        item.tag = Int(action.rawValue)
-        responder?.perform(Self.selector, with: item)
+extension FindCommands {
+    struct FindButtons: View {
+        let responder: NSResponder?
+        var jumpTarget: Any?
+
+        var body: some View {
+            Button("Find...") {
+                send(.showFindPanel)
+            }
+            .keymapShortcut(.find)
+
+            Button("Find and Replace...") {
+                send(tag: Self.findAndReplaceTag)
+            }
+            .keymapShortcut(.findAndReplace)
+
+            Button("Find Next") {
+                send(.next)
+            }
+            .keymapShortcut(.findNext)
+
+            Button("Find Previous") {
+                send(.previous)
+            }
+            .keymapShortcut(.findPrevious)
+
+            Button("Use Selection for Find") {
+                send(.setFindString)
+            }
+            .keymapShortcut(.useSelectionForFind)
+
+            Button("Jump to Selection") {
+                NSApp.sendAction(#selector(NSTextView.centerSelectionInVisibleArea(_:)), to: jumpTarget, from: nil)
+            }
+            .keymapShortcut(.jumpToSelection)
+        }
+
+        static let findAndReplaceTag = 12
+
+        func send(_ action: NSFindPanelAction) {
+            send(tag: Int(action.rawValue))
+        }
+
+        func send(tag: Int) {
+            let item = NSMenuItem()
+            item.tag = tag
+            responder?.perform(FindCommands.selector, with: item)
+        }
     }
 }

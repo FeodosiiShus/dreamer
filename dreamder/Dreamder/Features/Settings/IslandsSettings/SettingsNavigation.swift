@@ -56,6 +56,22 @@ enum SettingsNavigation {
         nodes.flatMap { $0.pages.map(\.name) }
     }
 
+    nonisolated static func pageSelection(
+        afterSearch nodes: [SettingsCategoryNode],
+        selected: SettingsPage.Name
+    ) -> SettingsPage.Name {
+        let names = visiblePageNames(nodes)
+        guard let first = names.first, !names.contains(selected) else { return selected }
+        return first
+    }
+
+    nonisolated static func pageSelection(
+        afterDeveloperPageVisibility showsDeveloperPage: Bool,
+        selected: SettingsPage.Name
+    ) -> SettingsPage.Name {
+        showsDeveloperPage || selected != .developer ? selected : defaultPage
+    }
+
     private static let searchKeys: [SettingsPage.Name: [String]] = {
         var keys: [SettingsPage.Name: [String]] = [:]
         for name in SettingsPage.Category.allCases.flatMap(\.pages) {
@@ -63,7 +79,7 @@ enum SettingsNavigation {
                 .filter(\.isSetting)
                 .map(\.settingName)
             let shortcuts = name == .keybindings
-                ? KeybindingManager.shared.keyboardShortcuts.values.map(\.description)
+                ? KeymapCommand.allCases.map(\.title)
                 : []
             keys[name] = unique(settings + shortcuts)
         }

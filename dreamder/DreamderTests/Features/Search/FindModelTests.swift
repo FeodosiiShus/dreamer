@@ -158,6 +158,11 @@ struct FindModelTests {
     }
 
     @Test
+    func isWholeWordAcceptsAnEmptyRangeAtTheStartOfTheText() {
+        #expect(wholeWord("foo", 0, 0))
+    }
+
+    @Test
     func replaceAllSubstitutesLiteralText() throws {
         let literal = model(find: "ipsum", replace: "$1 dolor")
         let regex = try #require(literal.compileMatcher())

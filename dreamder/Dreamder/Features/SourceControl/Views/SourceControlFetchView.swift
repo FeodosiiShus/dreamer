@@ -7,12 +7,44 @@
 
 import SwiftUI
 
+@Observable
+@MainActor
+final class SourceControlFetchModel {
+    @ObservationIgnored var manager: SourceControlManager?
+    @ObservationIgnored var dismiss: (() -> Void)?
+
+    func attach(manager: SourceControlManager, dismiss: @escaping () -> Void) {
+        self.manager = manager
+        self.dismiss = dismiss
+    }
+
+    func cancel() {
+        dismiss?()
+    }
+
+    func perform() async {
+        guard let manager else { return }
+        do {
+            try await manager.fetch()
+            dismiss?()
+        } catch {
+            await manager.showAlertForError(title: "Failed to fetch changes", error: error)
+        }
+    }
+}
+
 struct SourceControlFetchView: View {
     @Environment(\.dismiss)
     private var dismiss
 
     @Environment(SourceControlManager.self) private var sourceControlManager
     @Environment(WorkspaceDocument.self) private var workspace
+
+    @State private var model: SourceControlFetchModel
+
+    init(model: SourceControlFetchModel = SourceControlFetchModel()) {
+        _model = State(initialValue: model)
+    }
 
     var projectName: String {
         workspace.workspaceFileManager?.folderUrl.lastPathComponent ?? "Empty"
@@ -44,9 +76,7 @@ struct SourceControlFetchView: View {
                         .font(.subheadline)
                 }
                 Spacer()
-                Button {
-                    dismiss()
-                } label: {
+                Button(action: model.cancel) {
                     Text("Cancel")
                         .frame(minWidth: 48)
                 }
@@ -56,12 +86,8 @@ struct SourceControlFetchView: View {
         }
         .frame(width: 420)
         .task {
-            do {
-                try await sourceControlManager.fetch()
-                dismiss()
-            } catch {
-                await sourceControlManager.showAlertForError(title: "Failed to fetch changes", error: error)
-            }
+            model.attach(manager: sourceControlManager, dismiss: dismiss.callAsFunction)
+            await model.perform()
         }
     }
 }

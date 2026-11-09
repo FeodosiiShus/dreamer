@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Dreamder
 
-@MainActor @Suite
+@MainActor @Suite(.uiGate)
 struct ToolWindowLayoutTests {
     @Test
     func storedToolWindowFallsBackToDefaultWhenMissing() {

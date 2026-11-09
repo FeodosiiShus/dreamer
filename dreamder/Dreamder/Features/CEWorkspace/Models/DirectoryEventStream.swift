@@ -54,43 +54,60 @@ nonisolated final class DirectoryEventStream: Sendable {
     ///                       defaults to 0.1s.
     ///   - callback: A callback provided that the ``DirectoryEventStream`` will send events to. See
     ///               ``DirectoryEventStream``'s documentation for detailed information.
-    init(directory: String, debounceDuration: TimeInterval = 0.1, callback: @escaping EventCallback) {
+    init(
+        directory: String,
+        exclusionPaths: [String] = [],
+        debounceDuration: TimeInterval = 0.1,
+        callback: @escaping EventCallback
+    ) {
         self.debounceDuration = debounceDuration
         self.callback = callback
         self.streamRef = Mutex(nil)
         streamRef.withLock { stream in
-            stream = Self.makeStream(owner: self, directory: directory, debounceDuration: debounceDuration)
+            stream = Self.makeStream(
+                owner: self,
+                directories: [directory],
+                exclusionPaths: exclusionPaths,
+                debounceDuration: debounceDuration
+            )
         }
     }
 
-    private static func makeStream(
+    static func makeStream(
         owner: DirectoryEventStream,
-        directory: String,
+        directories: [String],
+        exclusionPaths: [String],
         debounceDuration: TimeInterval
     ) -> sending FSEventStreamRef? {
-        let selfPtr = UnsafeMutableRawPointer(Unmanaged.passUnretained(owner).toOpaque())
+        let box = DirectoryEventStreamOwner(owner)
 
         var context = FSEventStreamContext(
             version: 0,
-            info: selfPtr,
-            retain: nil,
-            release: nil,
+            info: Unmanaged.passUnretained(box).toOpaque(),
+            retain: { info in
+                guard let info else { return nil }
+                return UnsafeRawPointer(Unmanaged<DirectoryEventStreamOwner>.fromOpaque(info).retain().toOpaque())
+            },
+            release: { info in
+                guard let info else { return }
+                Unmanaged<DirectoryEventStreamOwner>.fromOpaque(info).release()
+            },
             copyDescription: nil
         )
         let contextPtr = withUnsafeMutablePointer(to: &context) { ptr in UnsafeMutablePointer(ptr) }
 
-        let cfDirectory = directory as CFString
-        let pathsToWatch = [cfDirectory] as CFArray
+        let pathsToWatch = directories as CFArray
 
-        guard let ref = FSEventStreamCreate(
+        guard let ref = withExtendedLifetime(box, { FSEventStreamCreate(
             kCFAllocatorDefault,
             // swiflint:ignore:next opening_brace
             { streamRef, clientCallBackInfo, numEvents, eventPaths, eventFlags, eventIds in
-                guard let clientCallBackInfo else { return }
-                Unmanaged<DirectoryEventStream>
-                    .fromOpaque(clientCallBackInfo)
-                    .takeUnretainedValue()
-                    .eventStreamHandler(streamRef, numEvents, eventPaths, eventFlags, eventIds)
+                guard let clientCallBackInfo,
+                      let stream = Unmanaged<DirectoryEventStreamOwner>
+                        .fromOpaque(clientCallBackInfo)
+                        .takeUnretainedValue()
+                        .stream else { return }
+                stream.eventStreamHandler(streamRef, numEvents, eventPaths, eventFlags, eventIds)
             },
             contextPtr,
             pathsToWatch,
@@ -107,10 +124,13 @@ nonisolated final class DirectoryEventStream: Sendable {
                 // Useful for us, always sends after the debounce duration.
                 | kFSEventStreamCreateFlagNoDefer
             )
-        ) else {
+        ) }) else {
             return nil
         }
-        FSEventStreamSetDispatchQueue(ref, DispatchQueue.global(qos: .default))
+        if !exclusionPaths.isEmpty {
+            _ = FSEventStreamSetExclusionPaths(ref, exclusionPaths as CFArray)
+        }
+        FSEventStreamSetDispatchQueue(ref, DispatchQueue(label: "dev.dreamder.DirectoryEventStream", qos: .utility))
         FSEventStreamStart(ref)
         return ref
     }
@@ -140,27 +160,33 @@ nonisolated final class DirectoryEventStream: Sendable {
         _ eventFlags: UnsafePointer<FSEventStreamEventFlags>,
         _ eventIds: UnsafePointer<FSEventStreamEventId>
     ) {
-        guard let eventDictionaries = unsafeBitCast(eventPaths, to: NSArray.self) as? [NSDictionary] else {
-            return
+        let events = Self.events(
+            fromPayload: unsafeBitCast(eventPaths, to: NSArray.self),
+            flags: UnsafeBufferPointer(start: eventFlags, count: numEvents)
+        )
+        if !events.isEmpty {
+            callback(events)
+        }
+    }
+
+    static func events(fromPayload payload: NSArray, flags: some Sequence<FSEventStreamEventFlags>) -> [Event] {
+        guard let eventDictionaries = payload as? [NSDictionary] else {
+            return []
         }
 
         var events: [Event] = []
 
-        for (index, dictionary) in eventDictionaries.enumerated() {
-            // Get get file id use dictionary[kFSEventStreamEventExtendedFileIDKey] as? UInt64
-            guard let path = dictionary[kFSEventStreamEventExtendedDataPathKey] as? String
-            else {
+        for (dictionary, flag) in zip(eventDictionaries, flags) {
+            guard let path = dictionary[kFSEventStreamEventExtendedDataPathKey] as? String else {
                 continue
             }
 
-            let fsEvents = getEventsFromFlags(eventFlags[index])
-
-            for event in fsEvents {
+            for event in Self.events(fromFlags: flag) {
                 events.append(.init(path: path, eventType: event))
             }
         }
 
-        callback(events)
+        return events
     }
 
     /// Parses ``FSEvent`` from the raw flag value.
@@ -172,7 +198,7 @@ nonisolated final class DirectoryEventStream: Sendable {
     /// `kFSEventStreamEventFlagNone (0x00000000)` frequently without more information.
     /// - Parameter raw: The int value received from the FSEventStream
     /// - Returns: A `Set` of ``FSEvent``'s if at least one valid was found, or `[]` otherwise.
-    private func getEventsFromFlags(_ raw: FSEventStreamEventFlags) -> Set<FSEvent> {
+    static func events(fromFlags raw: FSEventStreamEventFlags) -> Set<FSEvent> {
         var events: Set<FSEvent> = []
 
         if raw == 0 {
@@ -201,5 +227,13 @@ nonisolated final class DirectoryEventStream: Sendable {
         }
 
         return events
+    }
+}
+
+nonisolated private final class DirectoryEventStreamOwner: Sendable {
+    weak let stream: DirectoryEventStream?
+
+    init(_ stream: DirectoryEventStream) {
+        self.stream = stream
     }
 }

@@ -11,17 +11,12 @@ import LanguageClient
 import LanguageServerProtocol
 import OSLog
 
-nonisolated private let languageServerLogger = Logger(
-    subsystem: Bundle.main.bundleIdentifier ?? "",
-    category: "LanguageServer"
-)
-
 /// A client for language servers.
 class LanguageServer<DocumentType: LanguageServerDocument> {
     let logger: Logger
 
     /// Identifies which language the server belongs to
-    let languageId: LanguageIdentifier
+    let languageId: LSPLanguage
     /// Holds information about the language server binary
     let binary: LanguageServerBinary
     /// A cache to hold responses from the server, to minimize duplicate server requests
@@ -34,6 +29,10 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
     /// Use this property when adding new objects that need to track file data, or have a state associated with the
     /// language server and a document. For example, the content coordinator.
     let openFiles: LanguageServerFileMap<DocumentType>
+
+    let terminationEvents: AsyncStream<Void>
+
+    let connectionGate: InitializationGatedConnection?
 
     /// Maps the language server's highlight config to one Dreamder can read. See ``SemanticTokenMap``.
     let highlightMap: SemanticTokenMap?
@@ -52,14 +51,18 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
     var serverInfo: ServerInfo?
 
     init(
-        languageId: LanguageIdentifier,
+        languageId: LSPLanguage,
         binary: LanguageServerBinary,
         lspInstance: InitializingServer,
         lspPid: pid_t,
         serverCapabilities: ServerCapabilities,
         rootPath: URL,
-        logContainer: LanguageServerLogContainer
+        logContainer: LanguageServerLogContainer,
+        terminationEvents: AsyncStream<Void> = AsyncStream<Void>.makeStream().stream,
+        connectionGate: InitializationGatedConnection? = nil
     ) {
+        self.terminationEvents = terminationEvents
+        self.connectionGate = connectionGate
         self.languageId = languageId
         self.binary = binary
         self.lspInstance = lspInstance
@@ -86,7 +89,7 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
     ///   - workspacePath: The path of the workspace being opened.
     /// - Returns: An initialized language server.
     static func createServer(
-        for languageId: LanguageIdentifier,
+        for languageId: LSPLanguage,
         with binary: LanguageServerBinary,
         workspacePath: String
     ) async throws -> LanguageServer {
@@ -96,17 +99,23 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
             environment: binary.env
         )
 
-        let logContainer = LanguageServerLogContainer(language: languageId)
+        let logContainer = LanguageServerLogContainer(languageID: languageId.rawValue)
+        let (terminations, terminationContinuation) = AsyncStream<Void>.makeStream()
         let (connection, process) = try makeLocalServerConnection(
             languageId: languageId,
             executionParams: executionParams,
-            logContainer: logContainer
+            logContainer: logContainer,
+            onTermination: {
+                terminationContinuation.yield()
+                terminationContinuation.finish()
+            }
         )
         let gate = InitializationGatedConnection(connection)
         let initializationOptions = await LanguageServerDiscovery.resolvedInitializationOptions(
             for: languageId,
             workspacePath: workspacePath,
-            searchPaths: LSPProcessEnvironment.shared.searchPaths
+            searchPaths: LSPProcessEnvironment.shared.searchPaths,
+            inlayHints: Settings[\.textEditing].inlayHints
         )
         let server = InitializingServer(
             server: gate,
@@ -125,7 +134,9 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
             lspPid: process.processIdentifier,
             serverCapabilities: initializationResponse.capabilities,
             rootPath: URL(filePath: workspacePath),
-            logContainer: logContainer
+            logContainer: logContainer,
+            terminationEvents: terminations,
+            connectionGate: gate
         )
         languageServer.serverInfo = initializationResponse.serverInfo
         return languageServer
@@ -139,80 +150,138 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
     ///   - executionParams: The parameters for executing the local process.
     /// - Returns: A new connection to the language server.
     static func makeLocalServerConnection(
-        languageId: LanguageIdentifier,
+        languageId: LSPLanguage,
         executionParams: Process.ExecutionParameters,
-        logContainer: LanguageServerLogContainer
+        logContainer: LanguageServerLogContainer,
+        onTermination: @escaping @Sendable () -> Void
     ) throws -> (connection: JSONRPCServerConnection, process: Process) {
+        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "LanguageServer")
         do {
             let (channel, process) = try DataChannel.localProcessChannel(
                 parameters: executionParams,
                 terminationHandler: { [weak logContainer] in
-                    languageServerLogger.debug("Terminated data channel for \(languageId.rawValue)")
+                    logger.debug("Terminated data channel for \(languageId.rawValue)")
                     Task { @MainActor in
                         logContainer?.appendLog(
                             LogMessageParams(type: .error, message: "Data Channel Terminated Unexpectedly")
                         )
                     }
+                    onTermination()
                 }
             )
             return (JSONRPCServerConnection(dataChannel: channel), process)
         } catch {
-            languageServerLogger.warning("Failed to initialize data channel for \(languageId.rawValue)")
+            logger.warning("Failed to initialize data channel for \(languageId.rawValue)")
             throw error
         }
     }
 
     // MARK: - Get Init Params
 
-    // swiftlint:disable function_body_length
-    static func getInitParams(
-        workspacePath: String,
-        initializationOptions: LSPAny? = nil
-    ) -> InitializingServer.InitializeParamsProvider {
-        let provider: InitializingServer.InitializeParamsProvider = {
-            // Text Document Capabilities
-            let textDocumentCapabilities = TextDocumentClientCapabilities(
-                completion: CompletionClientCapabilities(
-                    dynamicRegistration: true,
-                    completionItem: CompletionClientCapabilities.CompletionItem(
-                        snippetSupport: true,
-                        commitCharactersSupport: true,
-                        documentationFormat: [MarkupKind.plaintext],
-                        deprecatedSupport: true,
-                        preselectSupport: true,
-                        tagSupport: ValueSet(valueSet: [CompletionItemTag.deprecated]),
-                        insertReplaceSupport: true,
-                        resolveSupport: CompletionClientCapabilities.CompletionItem.ResolveSupport(
-                            properties: ["documentation", "details"]
-                        ),
-                        insertTextModeSupport: ValueSet(valueSet: [InsertTextMode.adjustIndentation]),
-                        labelDetailsSupport: true
+    nonisolated static func textDocumentCapabilities() -> TextDocumentClientCapabilities {
+        let markupKinds: [MarkupKind] = [.markdown, .plaintext]
+        var capabilities = TextDocumentClientCapabilities(
+            completion: CompletionClientCapabilities(
+                dynamicRegistration: true,
+                completionItem: CompletionClientCapabilities.CompletionItem(
+                    snippetSupport: true,
+                    commitCharactersSupport: true,
+                    documentationFormat: [MarkupKind.plaintext],
+                    deprecatedSupport: true,
+                    preselectSupport: true,
+                    tagSupport: ValueSet(valueSet: [CompletionItemTag.deprecated]),
+                    insertReplaceSupport: true,
+                    resolveSupport: CompletionClientCapabilities.CompletionItem.ResolveSupport(
+                        properties: ["documentation", "detail", "additionalTextEdits"]
                     ),
-                    completionItemKind: ValueSet(valueSet: [CompletionItemKind.text, CompletionItemKind.method]),
-                    contextSupport: true,
-                    insertTextMode: InsertTextMode.asIs,
-                    completionList: CompletionClientCapabilities.CompletionList(
-                        itemDefaults: ["default1", "default2"]
-                    )
+                    insertTextModeSupport: ValueSet(valueSet: [InsertTextMode.adjustIndentation]),
+                    labelDetailsSupport: true
                 ),
-                // swiftlint:disable:next line_length
-                // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#semanticTokensClientCapabilities
-                semanticTokens: SemanticTokensClientCapabilities(
-                    dynamicRegistration: false,
-                    requests: .init(range: false, delta: true),
-                    tokenTypes: SemanticTokenTypes.allStrings,
-                    tokenModifiers: SemanticTokenModifiers.allStrings,
-                    formats: [.relative],
-                    overlappingTokenSupport: true,
-                    multilineTokenSupport: true,
-                    serverCancelSupport: false,
-                    augmentsSyntaxTokens: true
+                completionItemKind: ValueSet<CompletionItemKind>.all,
+                contextSupport: true,
+                insertTextMode: InsertTextMode.asIs
+            ),
+            hover: HoverClientCapabilities(dynamicRegistration: false, contentFormat: markupKinds),
+            signatureHelp: SignatureHelpClientCapabilities(
+                dynamicRegistration: false,
+                signatureInformation: SignatureHelpClientCapabilities.SignatureInformation(
+                    documentationFormat: markupKinds,
+                    labelOffsetSupport: true,
+                    activeParameterSupport: true
                 ),
-                inlayHint: InlayHintClientCapabilities(dynamicRegistration: false)
+                contextSupport: true
+            ),
+            documentSymbol: DocumentSymbolClientCapabilities(
+                dynamicRegistration: false,
+                symbolKind: ValueSet<SymbolKind>.all,
+                hierarchicalDocumentSymbolSupport: true
+            ),
+            codeAction: CodeActionClientCapabilities(
+                dynamicRegistration: false,
+                codeActionLiteralSupport: CodeActionClientCapabilities.CodeActionLiteralSupport(
+                    codeActionKind: ValueSet(valueSet: [
+                        CodeActionKind.Quickfix,
+                        CodeActionKind.Refactor,
+                        CodeActionKind.RefactorExtract,
+                        CodeActionKind.RefactorInline,
+                        CodeActionKind.RefactorRewrite,
+                        CodeActionKind.Source,
+                        CodeActionKind.SourceOrganizeImports,
+                        CodeActionKind.SourceFixAll
+                    ])
+                ),
+                isPreferredSupport: true,
+                disabledSupport: true,
+                dataSupport: true,
+                resolveSupport: CodeActionClientCapabilities.ResolveSupport(properties: ["edit"]),
+                honorsChangeAnnotations: false
+            ),
+            rename: RenameClientCapabilities(
+                dynamicRegistration: false,
+                prepareSupport: true,
+                prepareSupportDefaultBehavior: .Identifier,
+                honorsChangeAnnotations: false
+            ),
+            publishDiagnostics: PublishDiagnosticsClientCapabilities(
+                relatedInformation: true,
+                tagSupport: ValueSet(valueSet: [DiagnosticTag.unnecessary, DiagnosticTag.deprecated]),
+                versionSupport: true
+            ),
+            foldingRange: FoldingRangeClientCapabilities(dynamicRegistration: false, lineFoldingOnly: true),
+            semanticTokens: SemanticTokensClientCapabilities(
+                dynamicRegistration: false,
+                requests: .init(range: false, delta: true),
+                tokenTypes: SemanticTokenTypes.allStrings,
+                tokenModifiers: SemanticTokenModifiers.allStrings,
+                formats: [.relative],
+                overlappingTokenSupport: true,
+                multilineTokenSupport: true,
+                serverCancelSupport: false,
+                augmentsSyntaxTokens: true
             )
+        )
+        capabilities.inlayHint = InlayHintClientCapabilities(dynamicRegistration: false)
+        return capabilities
+    }
 
-            // Workspace File Operations Capabilities
-            let fileOperations = ClientCapabilities.Workspace.FileOperations(
+    nonisolated static func workspaceCapabilities() -> ClientCapabilities.Workspace {
+        ClientCapabilities.Workspace(
+            applyEdit: true,
+            workspaceEdit: nil,
+            didChangeConfiguration: DidChangeConfigurationClientCapabilities(dynamicRegistration: true),
+            didChangeWatchedFiles: DidChangeWatchedFilesClientCapabilities(dynamicRegistration: true),
+            symbol: WorkspaceSymbolClientCapabilities(
+                dynamicRegistration: true,
+                symbolKind: nil,
+                tagSupport: nil,
+                resolveSupport: []
+            ),
+            executeCommand: GenericDynamicRegistration(dynamicRegistration: false),
+            workspaceFolders: true,
+            configuration: true,
+            semanticTokens: SemanticTokensWorkspaceClientCapabilities(refreshSupport: true),
+            codeLens: nil,
+            fileOperations: ClientCapabilities.Workspace.FileOperations(
                 dynamicRegistration: true,
                 didCreate: true,
                 willCreate: true,
@@ -221,28 +290,14 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
                 didDelete: true,
                 willDelete: true
             )
+        )
+    }
 
-            // Workspace Capabilities
-            let workspaceCapabilities = ClientCapabilities.Workspace(
-                applyEdit: true,
-                workspaceEdit: nil,
-                didChangeConfiguration: DidChangeConfigurationClientCapabilities(dynamicRegistration: true),
-                didChangeWatchedFiles: DidChangeWatchedFilesClientCapabilities(dynamicRegistration: true),
-                symbol: WorkspaceSymbolClientCapabilities(
-                    dynamicRegistration: true,
-                    symbolKind: nil,
-                    tagSupport: nil,
-                    resolveSupport: []
-                ),
-                executeCommand: nil,
-                workspaceFolders: true,
-                configuration: true,
-                semanticTokens: nil,
-                codeLens: nil,
-                fileOperations: fileOperations
-            )
-
-            let windowClientCapabilities = WindowClientCapabilities(
+    nonisolated static func clientCapabilities() -> ClientCapabilities {
+        ClientCapabilities(
+            workspace: workspaceCapabilities(),
+            textDocument: textDocumentCapabilities(),
+            window: WindowClientCapabilities(
                 workDoneProgress: true,
                 showMessage: ShowMessageRequestClientCapabilities(
                     messageActionItem: ShowMessageRequestClientCapabilities.MessageActionItemCapabilities(
@@ -252,29 +307,35 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
                 showDocument: ShowDocumentClientCapabilities(
                     support: true
                 )
-            )
+            ),
+            general: nil,
+            experimental: nil
+        )
+    }
 
-            // All Client Capabilities
-            let capabilities = ClientCapabilities(
-                workspace: workspaceCapabilities,
-                textDocument: textDocumentCapabilities,
-                window: windowClientCapabilities,
-                general: nil,
-                experimental: nil
-            )
-             return InitializeParams(
-                processId: nil,
-                locale: nil,
-                rootPath: nil,
-                rootUri: "file://" + workspacePath, // Make it a URI
-                initializationOptions: initializationOptions ?? [],
-                capabilities: capabilities,
-                trace: nil,
-                workspaceFolders: nil
-             )
-        }
+    nonisolated static func initializeParams(
+        workspacePath: String,
+        initializationOptions: LSPAny?
+    ) -> InitializeParams {
+        InitializeParams(
+            processId: nil,
+            locale: nil,
+            rootPath: nil,
+            rootUri: LSPWorkspaceFolders.uri(forWorkspacePath: workspacePath),
+            initializationOptions: initializationOptions ?? [],
+            capabilities: clientCapabilities(),
+            trace: nil,
+            workspaceFolders: [LSPWorkspaceFolders.folder(forWorkspacePath: workspacePath)]
+        )
+    }
+
+    static func getInitParams(
+        workspacePath: String,
+        initializationOptions: LSPAny? = nil
+    ) -> InitializingServer.InitializeParamsProvider {
+        let params = initializeParams(workspacePath: workspacePath, initializationOptions: initializationOptions)
+        let provider: InitializingServer.InitializeParamsProvider = { params }
         return provider
-        // swiftlint:enable function_body_length
     }
 
     // MARK: - Shutdown
@@ -282,22 +343,10 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
     /// Shuts down the language server and exits it.
     public func shutdown() async throws {
         self.logger.info("Shutting down language server")
+        connectionGate?.close()
         workDoneProgress.shutDown()
         dynamicCapabilities.removeAll()
         try await self.lspInstance.shutdownAndExit()
-    }
-
-    @discardableResult
-    func cancelWorkDoneProgress(_ token: ProgressToken) async -> Bool {
-        guard workDoneProgress.takeCancellation(for: token) else { return false }
-        do {
-            try await lspInstance.sendNotification(
-                .windowWorkDoneProgressCancel(WorkDoneProgressCancelParams(token: token))
-            )
-        } catch {
-            logger.warning("Failed to cancel work done progress: \(error)")
-        }
-        return true
     }
 }
 

@@ -41,8 +41,8 @@ class LanguageServerLogContainer: UtilityAreaOutputSource {
     private var stream: AsyncStream<LanguageServerMessage>
     private(set) var logs: [LanguageServerMessage] = []
 
-    init(language: LanguageIdentifier) {
-        id = language.rawValue
+    init(languageID: String) {
+        id = languageID
         (stream, streamContinuation) = AsyncStream<LanguageServerMessage>.makeStream(
             bufferingPolicy: .bufferingNewest(0)
         )

@@ -67,7 +67,7 @@ enum BranchesPopupMenuFactory {
         case .update:
             return item(title) { model.update(ref) }
         case .push:
-            return item(title, keyEquivalent: "k", modifiers: [.command, .shift]) { model.push(ref) }
+            return item(title, command: .gitPush) { model.push(ref) }
         case .trackedBranch:
             return trackedBranchItem(title: title, ref: ref, model: model, context: context)
         case .pullRebase:
@@ -113,17 +113,19 @@ enum BranchesPopupMenuFactory {
 
     private static func item(
         _ title: String,
-        keyEquivalent: String = "",
-        modifiers: NSEvent.ModifierFlags = [],
+        command: KeymapCommand? = nil,
         handler: @escaping () -> Void
     ) -> NSMenuItem {
         let action = BranchesPopupMenuAction(handler)
         let menuItem = NSMenuItem(
             title: title,
             action: #selector(BranchesPopupMenuAction.invoke(_:)),
-            keyEquivalent: keyEquivalent
+            keyEquivalent: ""
         )
-        menuItem.keyEquivalentModifierMask = modifiers
+        menuItem.keyEquivalentModifierMask = []
+        if let command {
+            Keymap.shared.apply(command, to: menuItem)
+        }
         menuItem.target = action
         menuItem.representedObject = action
         menuItem.isEnabled = true

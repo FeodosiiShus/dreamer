@@ -11,23 +11,23 @@ extension WorkspaceDocument.SearchState {
     /// Adds the contents of the current workspace URL to the search index.
     /// That means that the contents of the workspace will be indexed and searchable.
     func addProjectToIndex() {
+        rebuildIndex(reloadingScope: true)
+    }
+
+    private func rebuildIndex(reloadingScope: Bool) {
         indexGeneration += 1
         let generation = indexGeneration
         indexingTask?.cancel()
 
         if let previousNotificationID = indexingNotificationID {
-            NotificationCenter.default.post(
-                name: .taskNotification,
-                object: nil,
-                userInfo: ["id": previousNotificationID, "action": "delete"]
-            )
+            postTaskNotification(["id": previousNotificationID, "action": "delete"])
             indexingNotificationID = nil
         }
 
         let runIndexer = SearchIndexer.Memory.create()
         indexer = runIndexer
 
-        guard let url = workspace?.fileURL, let runIndexer else {
+        guard let scope = workspace?.fileScope, let runIndexer else {
             indexStatus = .done
             return
         }
@@ -42,102 +42,129 @@ extension WorkspaceDocument.SearchState {
             "message": "Creating an index to enable fast and accurate searches within your codebase.",
             "isLoading": true
         ]
-        NotificationCenter.default.post(name: .taskNotification, object: nil, userInfo: createInfo)
+        postTaskNotification(createInfo)
 
-        indexingTask = Task.detached { [weak self] in
-            guard let self else { return }
-
-            let filePaths = Self.fileURLs(at: url, excluding: ExcludedDirectories.rules(covering: url))
-            let asyncController = SearchIndexer.AsyncManager(index: runIndexer)
-            var lastProgress: Double = 0
-
-            for await (file, index) in AsyncFileIterator(fileURLs: filePaths) {
-                guard await self.isCurrentIndexRun(generation) else { return }
-                _ = await asyncController.addText(files: [file], flushWhenComplete: false)
-                let progress = Double(index) / Double(filePaths.count)
-
-                // Send only if difference is > 0.5%, to keep updates from sending too frequently
-                if progress - lastProgress > 0.005 || index == filePaths.count - 1 {
-                    lastProgress = progress
-                    guard await self.isCurrentIndexRun(generation) else { return }
-                    await MainActor.run {
-                        self.indexStatus = .indexing(progress: progress)
-                        let updateInfo: [String: Any] = [
-                            "id": uuidString,
-                            "action": "update",
-                            "percentage": progress
-                        ]
-                        NotificationCenter.default.post(name: .taskNotification, object: nil, userInfo: updateInfo)
-                    }
+        if reloadingScope {
+            scope.reload()
+        }
+        let changes = scope.changes()
+        indexingTask = Task { [weak self] in
+            await Self.runIndexing(
+                scope: scope,
+                indexer: runIndexer,
+                changes: changes,
+                publishProgress: { progress in
+                    self?.publishIndexProgress(progress, generation: generation, notificationID: uuidString) ?? false
+                },
+                finish: {
+                    self?.finishIndexRun(generation: generation, notificationID: uuidString) ?? false
+                },
+                restart: {
+                    self?.restartIndexRun(after: generation)
                 }
+            )
+        }
+    }
+
+    nonisolated private static let progressReportingThreshold = 0.005
+
+    @concurrent
+    private static func runIndexing(
+        scope: WorkspaceFileScope,
+        indexer: SearchIndexer,
+        changes: AsyncStream<WorkspaceFileChange>,
+        publishProgress: @MainActor @Sendable (Double) -> Bool,
+        finish: @MainActor @Sendable () -> Bool,
+        restart: @MainActor @Sendable () -> Void
+    ) async {
+        let filePaths = await scope.enumerateFiles(limit: nil)
+        let asyncController = SearchIndexer.AsyncManager(index: indexer)
+        var lastProgress: Double = 0
+
+        let files = AsyncFileIterator(fileURLs: filePaths, isIndexable: { scope.isIndexableText($0) })
+        for await (file, index) in files {
+            guard !Task.isCancelled else { return }
+            _ = await asyncController.addText(files: [file], flushWhenComplete: false)
+            let progress = Double(index) / Double(filePaths.count)
+
+            if progress - lastProgress > progressReportingThreshold || index == filePaths.count - 1 {
+                lastProgress = progress
+                guard await publishProgress(progress) else { return }
             }
-            asyncController.index.flush()
+        }
+        indexer.flush()
 
-            guard await self.isCurrentIndexRun(generation) else { return }
+        guard await finish() else { return }
 
-            await MainActor.run {
-                self.indexStatus = .done
-                self.indexingNotificationID = nil
-                let updateInfo: [String: Any] = [
-                    "id": uuidString,
-                    "action": "update",
-                    "title": "Finished indexing",
-                    "isLoading": false
-                ]
-                NotificationCenter.default.post(name: .taskNotification, object: nil, userInfo: updateInfo)
-
-                let deleteInfo: [String: Any] = [
-                    "id": uuidString,
-                    "action": "deleteWithDelay",
-                    "delay": 4.0
-                ]
-                NotificationCenter.default.post(name: .taskNotification, object: nil, userInfo: deleteInfo)
+        for await change in changes {
+            guard !Task.isCancelled else { return }
+            switch change {
+            case .reset:
+                await restart()
+                return
+            case .delta(let updated, let removed):
+                await apply(updated: updated, removed: removed, to: indexer, scope: scope)
             }
         }
     }
 
-    private func isCurrentIndexRun(_ generation: Int) async -> Bool {
-        await MainActor.run {
-            self.indexGeneration == generation
+    private func publishIndexProgress(_ progress: Double, generation: Int, notificationID: String) -> Bool {
+        let isCurrent = indexGeneration == generation
+        if isCurrent {
+            indexStatus = .indexing(progress: progress)
+            let updateInfo: [String: Any] = [
+                "id": notificationID,
+                "action": "update",
+                "percentage": progress
+            ]
+            postTaskNotification(updateInfo)
+        }
+        return isCurrent
+    }
+
+    private func finishIndexRun(generation: Int, notificationID: String) -> Bool {
+        let isCurrent = indexGeneration == generation
+        if isCurrent {
+            indexStatus = .done
+            indexingNotificationID = nil
+            postTaskNotification(["id": notificationID, "action": "delete"])
+        }
+        return isCurrent
+    }
+
+    private func restartIndexRun(after generation: Int) {
+        if indexGeneration == generation {
+            rebuildIndex(reloadingScope: false)
         }
     }
 
-    nonisolated static func fileURLs(at url: URL, excluding exclusions: ExclusionRules) -> [URL] {
-        guard let enumerator = FileManager.default.enumerator(
-            at: url,
-            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else {
-            return []
-        }
-        var urls: [URL] = []
-        for case let fileURL as URL in enumerator {
-            let isDirectory = (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
-            if isDirectory {
-                if exclusions.isExclusionRoot(fileURL) {
-                    enumerator.skipDescendants()
-                }
-                continue
-            }
-            urls.append(fileURL)
-        }
-        return urls
+    private func postTaskNotification(_ info: [String: Any]) {
+        var scoped = info
+        scoped["workspace"] = workspace?.taskNotificationHandler.workspaceURL
+        notificationCenter.post(name: .taskNotification, object: nil, userInfo: scoped)
     }
 
-    /// Retrieves the contents of a files  from the specified file paths.
-    ///
-    /// - Parameter filePaths: An array of file URLs representing the paths of the files.
-    ///
-    /// - Returns: An array of `TextFile` objects containing the standardised file URLs and text content.
-    func getFileContent(from filePaths: [URL]) async -> [SearchIndexer.AsyncManager.TextFile] {
-        var textFiles = [SearchIndexer.AsyncManager.TextFile]()
-        for file in filePaths {
-            if let content = try? String(contentsOf: file, encoding: .utf8) {
-                textFiles.append(
-                    SearchIndexer.AsyncManager.TextFile(url: file.standardizedFileURL, text: content)
-                )
+    @concurrent
+    static func apply(
+        updated: [URL],
+        removed: [URL],
+        to indexer: SearchIndexer,
+        scope: WorkspaceFileScope
+    ) async {
+        if !removed.isEmpty {
+            let removedPaths = WorkspaceRemovedPaths(removed.map(\.standardizedFileURL))
+            indexer.removeDocuments(urls: indexer.documents().filter { removedPaths.covers($0) })
+        }
+        var files: [SearchIndexer.AsyncManager.TextFile] = []
+        for url in updated {
+            let indexedURL = url.standardizedFileURL
+            if scope.isIndexableText(url), let content = try? String(contentsOf: url, encoding: .utf8) {
+                files.append(SearchIndexer.AsyncManager.TextFile(url: indexedURL, text: content))
+            } else {
+                _ = indexer.removeDocument(url: indexedURL)
             }
         }
-        return textFiles
+        _ = await SearchIndexer.AsyncManager(index: indexer).addText(files: files, flushWhenComplete: false)
+        indexer.flush()
     }
 }

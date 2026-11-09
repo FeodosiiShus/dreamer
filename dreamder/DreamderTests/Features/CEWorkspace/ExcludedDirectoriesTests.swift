@@ -3,13 +3,9 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct ExcludedDirectoriesTests {
     private let root = URL(fileURLWithPath: "/tmp/dreamder-exclusions-\(UUID().uuidString)", isDirectory: true)
-
-    private func defaults() -> UserDefaults {
-        UserDefaults(suiteName: "dreamder.tests.exclusions.\(UUID().uuidString)") ?? .standard
-    }
 
     @Test
     func nodeModulesAreExcludedByDefaultAndTheirContentsToo() {
@@ -22,8 +18,10 @@ struct ExcludedDirectoriesTests {
     }
 
     @Test
-    func markingAndCancellingIsRememberedPerProject() {
-        let store = defaults()
+    func markingAndCancellingIsRememberedPerProject() throws {
+        let isolated = try makeIsolatedDefaults()
+        defer { removeIsolatedDefaults(isolated.defaults, suiteName: isolated.suiteName) }
+        let store = isolated.defaults
         let model = ExcludedDirectories(rootURL: root, defaults: store)
         let generated = root.appending(path: "generated")
         let modules = root.appending(path: "node_modules")
@@ -53,14 +51,16 @@ struct ExcludedDirectoriesTests {
                 try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try "x".write(to: url, atomically: true, encoding: .utf8)
             }
-            let model = ExcludedDirectories(rootURL: dir, defaults: defaults())
+            let isolated = try makeIsolatedDefaults()
+            defer { removeIsolatedDefaults(isolated.defaults, suiteName: isolated.suiteName) }
+            let model = ExcludedDirectories(rootURL: dir, defaults: isolated.defaults)
             model.exclude(dir.appending(path: "generated"))
 
-            let indexed = WorkspaceDocument.SearchState.fileURLs(at: dir, excluding: model.rules)
-                .map { $0.lastPathComponent }
-            #expect(indexed == ["a.swift"])
+            let scope = WorkspaceFileScope(rootURL: dir)
+            let enumerated = await scope.enumerateFiles().map(\.lastPathComponent)
+            #expect(enumerated == ["a.swift"])
 
-            let scanned = await SearchEverywhereFileScanner.urls(in: dir).map(\.lastPathComponent)
+            let scanned = await SearchEverywhereFileScanner.urls(scope: scope).map(\.lastPathComponent)
             #expect(scanned == ["a.swift"])
         }
     }

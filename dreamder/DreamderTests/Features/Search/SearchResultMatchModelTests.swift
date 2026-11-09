@@ -4,7 +4,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct SearchResultMatchModelTests {
     private static let boldFont = NSFont.systemFont(ofSize: 13, weight: .bold)
     private static let regularFont = NSFont.systemFont(ofSize: 13, weight: .regular)

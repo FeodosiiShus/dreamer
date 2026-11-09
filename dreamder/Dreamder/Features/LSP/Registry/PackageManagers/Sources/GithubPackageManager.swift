@@ -7,14 +7,18 @@
 
 import Foundation
 
+typealias PackageFileDownload = @Sendable (URLRequest) async throws -> (URL, URLResponse)
+
 final class GithubPackageManager: PackageManagerProtocol {
     private let installationDirectory: URL
+    private let download: PackageFileDownload
 
-    let shellClient: ShellClient
-
-    init(installationDirectory: URL) {
+    init(
+        installationDirectory: URL,
+        download: @escaping PackageFileDownload = { try await URLSession.shared.download(for: $0) }
+    ) {
         self.installationDirectory = installationDirectory
-        self.shellClient = .live()
+        self.download = download
     }
 
     // MARK: - PackageManagerProtocol
@@ -98,15 +102,15 @@ final class GithubPackageManager: PackageManagerProtocol {
         url: URL,
         installDir installationDirectory: URL
     ) -> PackageManagerInstallStep {
-        PackageManagerInstallStep(
+        let download = self.download
+        return PackageManagerInstallStep(
             name: "Download Binary Executable",
             confirmation: .none
         ) { model in
             do {
                 model.status("Downloading \(url)")
                 let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 120.0)
-                // TODO: Progress Updates
-                let (tempURL, response) = try await URLSession.shared.download(for: request)
+                let (tempURL, response) = try await download(request)
 
                 guard let httpResponse = response as? HTTPURLResponse,
                       (200...299).contains(httpResponse.statusCode) else {
@@ -116,24 +120,15 @@ final class GithubPackageManager: PackageManagerProtocol {
                     )
                 }
 
-                let fileName = url.lastPathComponent
                 let downloadPath = installationDirectory.appending(path: source.entryName)
-                let packagePath = downloadPath.appending(path: fileName)
-                if FileManager.default.fileExists(atPath: packagePath.path()) {
+                let packagePath = downloadPath.appending(path: url.lastPathComponent)
+                if FileManager.default.fileExists(atPath: packagePath.path(percentEncoded: false)) {
                     try FileManager.default.removeItem(at: packagePath)
                 }
 
                 try FileManager.default.moveItem(at: tempURL, to: packagePath)
-
-                if !FileManager.default.fileExists(atPath: packagePath.path) {
-                    throw RegistryManagerError.downloadFailed(
-                        url: url,
-                        error: NSError(domain: "Could not download package", code: -1)
-                    )
-                }
             } catch {
                 if error is RegistryManagerError {
-                    // Keep error info for known errors thrown here.
                     throw error
                 }
                 throw RegistryManagerError.downloadFailed(
@@ -141,7 +136,6 @@ final class GithubPackageManager: PackageManagerProtocol {
                     error: error
                 )
             }
-
         }
     }
 
@@ -154,43 +148,34 @@ final class GithubPackageManager: PackageManagerProtocol {
     ) -> PackageManagerInstallStep {
         PackageManagerInstallStep(
             name: "Decompress Binary Executable",
-            confirmation: .none,
+            confirmation: .none
         ) { model in
             let fileName = url.lastPathComponent
             let downloadPath = installationDirectory.appending(path: source.entryName)
             let packagePath = downloadPath.appending(path: fileName)
+            let workingDirectory = downloadPath.path(percentEncoded: false)
+            let archivePath = packagePath.path(percentEncoded: false).escapedDirectory()
 
-            if packagePath.pathExtension == "tar" || packagePath.pathExtension == ".zip" {
+            if packagePath.pathExtension == "zip" {
                 model.status("Decompressing \(fileName)")
-                try FileManager.default.unzipItem(at: packagePath, to: downloadPath, progress: model.progress)
-                if FileManager.default.fileExists(atPath: packagePath.path(percentEncoded: false)) {
-                    try FileManager.default.removeItem(at: packagePath)
-                }
-                model.status("Decompressed to '\(downloadPath.path(percentEncoded: false))'")
-            } else if packagePath.lastPathComponent.hasSuffix(".tar.gz") {
+                try FileManager.default.unzipItem(at: packagePath, to: downloadPath)
+                try FileManager.default.removeItem(at: packagePath)
+                model.status("Decompressed to '\(workingDirectory)'")
+            } else if fileName.hasSuffix(".tar.gz") {
                 model.status("Decompressing \(fileName) using `tar`")
-                _ = try await model.executeInDirectory(
-                    in: packagePath.deletingLastPathComponent().path(percentEncoded: false),
-                    [
-                        "tar",
-                        "-xzf",
-                        packagePath.path(percentEncoded: false).escapedDirectory(),
-                    ]
-                )
+                _ = try await model.executeInDirectory(in: workingDirectory, ["tar", "-xzf", archivePath])
+            } else if packagePath.pathExtension == "tar" {
+                model.status("Decompressing \(fileName) using `tar`")
+                _ = try await model.executeInDirectory(in: workingDirectory, ["tar", "-xf", archivePath])
             } else if packagePath.pathExtension == "gz" {
                 model.status("Decompressing \(fileName) using `gunzip`")
-                _ = try await model.executeInDirectory(
-                    in: packagePath.deletingLastPathComponent().path(percentEncoded: false),
-                    [
-                        "gunzip",
-                        "-f",
-                        packagePath.path(percentEncoded: false).escapedDirectory(),
-                    ]
-                )
+                _ = try await model.executeInDirectory(in: workingDirectory, ["gunzip", "-f", archivePath])
             }
 
             let executablePath = downloadPath.appending(path: url.deletingPathExtension().lastPathComponent)
-            try FileManager.default.makeExecutable(executablePath)
+            if FileManager.default.fileExists(atPath: executablePath.path(percentEncoded: false)) {
+                try FileManager.default.makeExecutable(executablePath)
+            }
         }
     }
 

@@ -10,11 +10,13 @@ import LanguageServerProtocol
 
 extension LanguageServer {
     func requestGoToDefinition(for documentURI: String, position: Position) async throws -> DefinitionResponse {
+        await flushPendingEdits(for: documentURI)
         do {
             let cacheKey = CacheKey(
                 uri: documentURI,
                 requestType: "goToDefinition",
-                extraData: NoExtraData()
+                position: position,
+                documentVersion: openFiles.documentVersion(for: documentURI)
             )
             if let cachedResponse: DefinitionResponse = lspCache.get(key: cacheKey, as: DefinitionResponse.self) {
                 return cachedResponse

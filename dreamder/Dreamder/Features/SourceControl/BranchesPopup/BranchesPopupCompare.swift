@@ -137,6 +137,7 @@ struct BranchesCompareView: View {
 @MainActor
 final class BranchesCompareWindowController: NSWindowController, NSWindowDelegate {
     var onClose: (() -> Void)?
+    private let compareWindow: NSWindow
 
     init(model: BranchesCompareViewModel) {
         let window = NSWindow(
@@ -151,6 +152,7 @@ final class BranchesCompareWindowController: NSWindowController, NSWindowDelegat
         window.minSize = NSSize(width: 520, height: 360)
         window.isReleasedWhenClosed = false
         window.contentViewController = NSHostingController(rootView: BranchesCompareView(model: model))
+        compareWindow = window
         super.init(window: window)
         window.delegate = self
     }
@@ -160,8 +162,7 @@ final class BranchesCompareWindowController: NSWindowController, NSWindowDelegat
     }
 
     func place(relativeTo parent: NSWindow?) {
-        guard let window else { return }
-        let size = window.frame.size
+        let size = compareWindow.frame.size
         var origin = NSPoint.zero
         if let parent {
             origin = NSPoint(
@@ -174,7 +175,7 @@ final class BranchesCompareWindowController: NSWindowController, NSWindowDelegat
                 y: screen.visibleFrame.midY - size.height / 2
             )
         }
-        window.setFrame(NSRect(origin: origin, size: size), display: false)
+        compareWindow.setFrame(NSRect(origin: origin, size: size), display: false)
     }
 
     func windowWillClose(_ notification: Notification) {

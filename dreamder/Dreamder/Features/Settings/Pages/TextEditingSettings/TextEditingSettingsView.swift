@@ -41,6 +41,18 @@ struct TextEditingSettingsView: View {
                 autocompleteBraces
                 enableTypeOverCompletion
             }
+            Section("Actions on save") {
+                formatOnSave
+                stripTrailingSpaces
+                keepTrailingSpacesOnCaretLine
+                ensureFinalNewline
+            }
+            Section("Inlay hints") {
+                inlayHintsEnabled
+                inlayParameterNames
+                inlayTypes
+                inlayReturnTypes
+            }
             Section {
                 bracketPairHighlight
             }
@@ -49,6 +61,41 @@ struct TextEditingSettingsView: View {
                 warningCharacters
             }
         }
+    }
+
+    func intBinding(_ keyPath: WritableKeyPath<SettingsData.TextEditingSettings, Int>) -> Binding<Double> {
+        Binding<Double>(
+            get: { Double(textEditing[keyPath: keyPath]) },
+            set: { textEditing[keyPath: keyPath] = Int($0) }
+        )
+    }
+
+    func openInvisibleCharacterSettings() {
+        isShowingInvisibleCharacterSettings = true
+    }
+
+    func openWarningCharactersSettings() {
+        isShowingWarningCharactersSettings = true
+    }
+
+    func openInvisibleCharacterSettingsIfEnabled() {
+        if textEditing.invisibleCharacters.enabled {
+            openInvisibleCharacterSettings()
+        }
+    }
+
+    func openWarningCharactersSettingsIfEnabled() {
+        if textEditing.warningCharacters.enabled {
+            openWarningCharactersSettings()
+        }
+    }
+
+    func invisiblesSheetContent() -> some View {
+        InvisiblesSettingsView(invisibleCharacters: $textEditing.invisibleCharacters)
+    }
+
+    func warningCharactersSheetContent() -> some View {
+        WarningCharactersView(warningCharacters: $textEditing.warningCharacters)
     }
 }
 
@@ -67,6 +114,30 @@ private extension TextEditingSettingsView {
         )
     }
 
+    @ViewBuilder private var inlayHintsEnabled: some View {
+        Toggle("Show inlay hints", isOn: $textEditing.inlayHints.enabled)
+    }
+
+    @ViewBuilder private var inlayParameterNames: some View {
+        Picker("Parameter name hints", selection: $textEditing.inlayHints.parameterNames) {
+            Text("None").tag(InlayHintSettings.ParameterNameHints.none)
+            Divider()
+            Text("Literals").tag(InlayHintSettings.ParameterNameHints.literals)
+            Text("All").tag(InlayHintSettings.ParameterNameHints.all)
+        }
+        .disabled(!textEditing.inlayHints.enabled)
+    }
+
+    @ViewBuilder private var inlayTypes: some View {
+        Toggle("Type hints", isOn: $textEditing.inlayHints.types)
+            .disabled(!textEditing.inlayHints.enabled)
+    }
+
+    @ViewBuilder private var inlayReturnTypes: some View {
+        Toggle("Return type hints", isOn: $textEditing.inlayHints.returnTypes)
+            .disabled(!textEditing.inlayHints.enabled)
+    }
+
     @ViewBuilder private var fontWeightSelector: some View {
         FontWeightPicker(selection: $textEditing.font.weight)
     }
@@ -82,16 +153,34 @@ private extension TextEditingSettingsView {
         Toggle("Enable type-over completion", isOn: $textEditing.enableTypeOverCompletion)
     }
 
+    @ViewBuilder private var stripTrailingSpaces: some View {
+        Picker("Remove trailing spaces on", selection: $textEditing.stripTrailingSpaces) {
+            Text("None").tag(TrailingSpacesMode.none)
+            Divider()
+            Text("Modified lines").tag(TrailingSpacesMode.modifiedLines)
+            Text("All lines").tag(TrailingSpacesMode.allLines)
+        }
+    }
+
+    @ViewBuilder private var keepTrailingSpacesOnCaretLine: some View {
+        Toggle("Keep trailing spaces on caret line", isOn: $textEditing.keepTrailingSpacesOnCaretLine)
+            .disabled(textEditing.stripTrailingSpaces == .none)
+    }
+
+    @ViewBuilder private var ensureFinalNewline: some View {
+        Toggle("Ensure every saved file ends with a line break", isOn: $textEditing.ensureFinalNewline)
+    }
+
+    @ViewBuilder private var formatOnSave: some View {
+        Toggle("Format on save", isOn: $textEditing.formatOnSave)
+    }
+
     @ViewBuilder private var wrapLinesToEditorWidth: some View {
         Toggle("Wrap lines to editor width", isOn: $textEditing.wrapLinesToEditorWidth)
     }
 
     @ViewBuilder private var useSystemCursor: some View {
-        if #available(macOS 14, *) {
-            Toggle("Use System Cursor", isOn: $textEditing.useSystemCursor)
-        } else {
-            EmptyView()
-        }
+        Toggle("Use System Cursor", isOn: $textEditing.useSystemCursor)
     }
 
     @ViewBuilder private var overscroll: some View {
@@ -141,10 +230,7 @@ private extension TextEditingSettingsView {
                 HStack {
                     Stepper(
                         "Indent Width",
-                        value: Binding<Double>(
-                            get: { Double(textEditing.indentOption.spaceCount) },
-                            set: { textEditing.indentOption.spaceCount = Int($0) }
-                        ),
+                        value: intBinding(\.indentOption.spaceCount),
                         in: 0...10,
                         step: 1,
                         format: .number
@@ -161,10 +247,7 @@ private extension TextEditingSettingsView {
         HStack(alignment: .top) {
             Stepper(
                 "Tab Width",
-                value: Binding<Double>(
-                    get: { Double(textEditing.defaultTabWidth) },
-                    set: { textEditing.defaultTabWidth = Int($0) }
-                ),
+                value: intBinding(\.defaultTabWidth),
                 in: 1...16,
                 step: 1,
                 format: .number
@@ -237,10 +320,7 @@ private extension TextEditingSettingsView {
 
         Stepper(
             "Reformat at Column",
-            value: Binding<Double>(
-                get: { Double(textEditing.reformatAtColumn) },
-                set: { textEditing.reformatAtColumn = Int($0) }
-            ),
+            value: intBinding(\.reformatAtColumn),
             in: 40...200,
             step: 1,
             format: .number
@@ -253,22 +333,14 @@ private extension TextEditingSettingsView {
             Text("Show Invisible Characters")
             Spacer()
             Toggle(isOn: $textEditing.invisibleCharacters.enabled, label: { EmptyView() })
-            Button {
-                isShowingInvisibleCharacterSettings = true
-            } label: {
+            Button(action: openInvisibleCharacterSettings) {
                 Text("Configure...")
             }
             .disabled(textEditing.invisibleCharacters.enabled == false)
         }
         .contentShape(Rectangle())
-        .onTapGesture {
-            if textEditing.invisibleCharacters.enabled {
-                isShowingInvisibleCharacterSettings = true
-            }
-        }
-        .sheet(isPresented: $isShowingInvisibleCharacterSettings) {
-            InvisiblesSettingsView(invisibleCharacters: $textEditing.invisibleCharacters)
-        }
+        .onTapGesture(perform: openInvisibleCharacterSettingsIfEnabled)
+        .sheet(isPresented: $isShowingInvisibleCharacterSettings, content: invisiblesSheetContent)
     }
 
     @ViewBuilder private var warningCharacters: some View {
@@ -276,21 +348,13 @@ private extension TextEditingSettingsView {
             Text("Show Warning Characters")
             Spacer()
             Toggle(isOn: $textEditing.warningCharacters.enabled, label: { EmptyView() })
-            Button {
-                isShowingWarningCharactersSettings = true
-            } label: {
+            Button(action: openWarningCharactersSettings) {
                 Text("Configure...")
             }
             .disabled(textEditing.warningCharacters.enabled == false)
         }
         .contentShape(Rectangle())
-        .onTapGesture {
-            if textEditing.warningCharacters.enabled {
-                isShowingWarningCharactersSettings = true
-            }
-        }
-        .sheet(isPresented: $isShowingWarningCharactersSettings) {
-            WarningCharactersView(warningCharacters: $textEditing.warningCharacters)
-        }
+        .onTapGesture(perform: openWarningCharactersSettingsIfEnabled)
+        .sheet(isPresented: $isShowingWarningCharactersSettings, content: warningCharactersSheetContent)
     }
 }

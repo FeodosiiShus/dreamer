@@ -177,4 +177,13 @@ struct BranchesPopupRefActionsTests {
         #expect(titles.contains("Rebase 'HEAD' onto 'feature'") == false)
         #expect(titles.contains("Checkout and Rebase onto 'HEAD'") == false)
     }
+
+    @Test
+    func trackedBranchTitleNamesTheRemoteTrackingBranchOrNothing() {
+        let feature = local("feature")
+        let tracked = remote("origin/feature")
+
+        #expect(BranchesPopupRefActions.title(for: .trackedBranch, ref: feature, context: context(tracked: tracked)) == "Tracked Branch 'origin/feature'")
+        #expect(BranchesPopupRefActions.title(for: .trackedBranch, ref: feature, context: context()) == "Tracked Branch ''")
+    }
 }

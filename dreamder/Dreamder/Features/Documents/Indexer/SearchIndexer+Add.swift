@@ -111,7 +111,9 @@ nonisolated extension SearchIndexer {
     /// - Returns: `true` if the document was successfully removed, `false` otherwise. 
     /// **Note:** If the document didn't exist, this also returns `true`.
     public func removeDocument(url: URL) -> Bool {
-        let document = SKDocumentCreateWithURL(url as CFURL).takeRetainedValue()
+        guard let document = SKDocumentCreateWithURL(url as CFURL)?.takeRetainedValue() else {
+            return false
+        }
         return self.remove(document: document)
     }
 

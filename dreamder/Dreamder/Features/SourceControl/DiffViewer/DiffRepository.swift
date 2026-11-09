@@ -48,10 +48,14 @@ struct DiffRepository {
     let gitClient: GitClient
     let rootURL: URL
 
+    init(gitClient: GitClient, rootURL: URL) {
+        self.gitClient = gitClient
+        self.rootURL = rootURL
+    }
+
     init?(workspace: WorkspaceDocument) {
         guard let manager = workspace.sourceControlManager else { return nil }
-        gitClient = manager.gitClient
-        rootURL = manager.repositoryURL
+        self.init(gitClient: manager.gitClient, rootURL: manager.repositoryURL)
     }
 
     func workingTreeRequests(against ref: String) async throws -> [DiffFileRequest] {
@@ -66,7 +70,7 @@ struct DiffRepository {
         var seen = Set<String>()
 
         for entry in Self.parseNameStatus(tracked) {
-            guard !entry.path.isEmpty, seen.insert(entry.path).inserted else { continue }
+            guard seen.insert(entry.path).inserted else { continue }
             requests.append(workingTreeRequest(
                 status: entry.status,
                 path: entry.path,
@@ -142,7 +146,7 @@ struct DiffRepository {
         return (tree?.isEmpty == false) ? .binary : .empty
     }
 
-    private static func parseNameStatus(
+    static func parseNameStatus(
         _ output: String
     ) -> [(status: GitStatus, path: String, originalPath: String?)] {
         output.split(separator: "\n").compactMap { line -> (status: GitStatus, path: String, originalPath: String?)? in

@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import Combine
 
 extension NSWindow {
     var isSettingsWindow: Bool {
@@ -21,24 +20,27 @@ extension NSApplication {
 }
 
 extension View {
-    func constrainHeightToWindow() -> some View {
-        modifier(ConstrainHeightToWindowViewModifier())
+    func constrainHeightToWindow(
+        of window: @escaping @MainActor () -> NSWindow? = { NSApp.settingsWindow }
+    ) -> some View {
+        modifier(ConstrainHeightToWindowViewModifier(window: window))
     }
 }
 
 struct ConstrainHeightToWindowViewModifier: ViewModifier {
-    @State var height: CGFloat = 100
+    let window: @MainActor () -> NSWindow?
+
+    @State private var windowHeight: CGFloat?
 
     func body(content: Content) -> some View {
         content
-            .frame(height: height-100)
-            .onReceive(frameChanges) { newValue in
-                height = newValue.height
+            .frame(height: windowHeight.map { $0 - Self.reservedHeight })
+            .onAppear { windowHeight = window()?.frame.height }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResizeNotification)) { notification in
+                guard let resized = notification.object as? NSWindow, resized === window() else { return }
+                windowHeight = resized.frame.height
             }
     }
 
-    private var frameChanges: AnyPublisher<NSRect, Never> {
-        guard let window = NSApp.settingsWindow else { return Empty().eraseToAnyPublisher() }
-        return window.publisher(for: \.frame).eraseToAnyPublisher()
-    }
+    private static let reservedHeight: CGFloat = 100
 }

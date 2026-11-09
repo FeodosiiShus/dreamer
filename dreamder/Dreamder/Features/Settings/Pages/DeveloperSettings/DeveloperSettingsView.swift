@@ -15,6 +15,11 @@ struct DeveloperSettingsView: View {
 
     @AppSettings(\.developerSettings.showInternalDevelopmentInspector)
     var showInternalDevelopmentInspector
+    let tableModel: KeyValueTableModel
+
+    init(tableModel: KeyValueTableModel = KeyValueTableModel()) {
+        self.tableModel = tableModel
+    }
 
     var body: some View {
         SettingsForm {
@@ -25,15 +30,13 @@ struct DeveloperSettingsView: View {
             Section {
                 KeyValueTable(
                     items: $lspBinaries,
-                    validKeys: LanguageIdentifier.allCases.map { $0.rawValue },
+                    validKeys: LSPLanguage.knownRawValues,
                     keyColumnName: "Language",
                     valueColumnName: "Language Server Path",
-                    newItemInstruction: "Add a language server"
+                    newItemInstruction: "Add a language server",
+                    model: tableModel
                 ) {
-                    Text("Add a language server")
-                    Text(
-                        "Specify the absolute path to your LSP binary and its associated language."
-                    )
+                    newItemHeader
                 } actionBarTrailing: {
                     EmptyView()
                 }
@@ -42,6 +45,13 @@ struct DeveloperSettingsView: View {
                 Text("LSP Binaries")
                 Text("Specify the language and the absolute path to the language server binary.")
             }
+        }
+    }
+
+    var newItemHeader: some View {
+        Group {
+            Text("Add a language server")
+            Text("Specify the absolute path to your LSP binary and its associated language.")
         }
     }
 }

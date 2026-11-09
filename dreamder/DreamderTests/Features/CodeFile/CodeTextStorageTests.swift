@@ -3,7 +3,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct CodeTextStorageTests {
     @MainActor
     private final class EditRecorder: NSObject, NSTextStorageDelegate {

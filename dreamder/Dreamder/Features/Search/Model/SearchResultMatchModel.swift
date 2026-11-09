@@ -14,13 +14,15 @@ class SearchResultMatchModel: Hashable, Identifiable {
         rangeWithinFile: Range<String.Index>,
         file: CEWorkspaceFile,
         lineContent: String,
-        keywordRange: Range<String.Index>
+        keywordRange: Range<String.Index>,
+        usage: FindUsage? = nil
     ) {
         self.id = UUID()
         self.file = file
         self.rangeWithinFile = rangeWithinFile
         self.lineContent = lineContent
         self.keywordRange = keywordRange
+        self.usage = usage
     }
 
     var id: UUID
@@ -28,6 +30,8 @@ class SearchResultMatchModel: Hashable, Identifiable {
     var rangeWithinFile: Range<String.Index>
     var lineContent: String
     var keywordRange: Range<String.Index>
+    var usage: FindUsage?
+    var isSkipped = false
 
     static func == (lhs: SearchResultMatchModel, rhs: SearchResultMatchModel) -> Bool {
         return lhs.id == rhs.id
@@ -150,7 +154,7 @@ nonisolated struct FileMatchSnapshot: Sendable {
         )
     }
 
-    private static func displayText(for matched: String) -> String {
+    static func displayText(for matched: String) -> String {
         var display = ""
         var count = 0
         for character in matched {

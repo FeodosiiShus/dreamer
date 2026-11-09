@@ -7,7 +7,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct MarkdownHighlightProviderQueryTests {
     private func query(
         _ provider: MarkdownHighlightProvider,

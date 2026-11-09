@@ -23,9 +23,7 @@ struct SettingsSearchField: View {
                 .foregroundStyle(Islands.foreground)
                 .focused($isFocused)
             if !text.isEmpty {
-                Button {
-                    text = ""
-                } label: {
+                Button(action: clear) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 11))
                         .foregroundStyle(Islands.secondaryForeground)
@@ -45,8 +43,14 @@ struct SettingsSearchField: View {
                 .stroke(isFocused ? Islands.accent : Islands.popupBorder, lineWidth: 1)
         }
         .contentShape(Rectangle())
-        .onTapGesture {
-            isFocused = true
-        }
+        .onTapGesture(perform: focus)
+    }
+
+    func clear() {
+        text = ""
+    }
+
+    func focus() {
+        isFocused = true
     }
 }

@@ -18,7 +18,11 @@ struct EditorTabBarTrailingAccessories: View {
 
     @Environment(Editor.self) private var editor
 
-    @State private var isHovering = false
+    @State private var isHovering: Bool
+
+    init(isHovering: Bool = false) {
+        _isHovering = State(initialValue: isHovering)
+    }
 
     private var markdownFileURL: URL? {
         let url = editor.selectedTab?.file.url
@@ -45,35 +49,26 @@ struct EditorTabBarTrailingAccessories: View {
         }
     }
 
+    private var tabActions: EditorTabBarEditorActions {
+        EditorTabBarEditorActions(editor: editor, editorManager: editorManager, workspace: workspace)
+    }
+
     private var actionsMenu: some View {
-        Menu {
-            Button("Split Right") {
-                editorManager.split(editor, .trailing, workspace: workspace)
-            }
-            Button("Split Down") {
-                editorManager.split(editor, .bottom, workspace: workspace)
-            }
+        let actions = tabActions
+        return Menu {
+            Button("Split Right", action: actions.splitRight)
+            Button("Split Down", action: actions.splitDown)
             if editorManager.isInSplitter(editor) {
-                Button("Unsplit") {
-                    editorManager.unsplit(editor)
-                }
+                Button("Unsplit", action: actions.unsplit)
                 if editorManager.flattenedEditors.count > 2 {
-                    Button("Unsplit All") {
-                        editorManager.unsplitAll()
-                    }
+                    Button("Unsplit All", action: actions.unsplitAll)
                 }
-                Button("Change Splitter Orientation") {
-                    editorManager.changeSplitterOrientation(of: editor)
-                }
+                Button("Change Splitter Orientation", action: actions.changeSplitterOrientation)
             }
             Divider()
-            Button("Close All") {
-                closeAll()
-            }
+            Button("Close All", action: actions.closeAll)
             .disabled(editor.tabs.isEmpty)
-            Button("Close Others") {
-                closeOthers()
-            }
+            Button("Close Others", action: actions.closeOthers)
             .disabled(editor.tabs.count < 2)
         } label: {
             Image("general/moreVertical")
@@ -94,19 +89,49 @@ struct EditorTabBarTrailingAccessories: View {
         .disabled(editorManager.isFocusingActiveEditor)
         .opacity(accessoryOpacity)
         .help("Tab Actions")
-        .onHover { isHovering = $0 }
+        .onHover(perform: setHovering)
     }
 
-    private func closeAll() {
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
+    }
+}
+
+struct EditorTabBarEditorActions {
+    let editor: Editor
+    let editorManager: EditorManager
+    let workspace: WorkspaceDocument
+
+    func splitRight() {
+        editorManager.split(editor, .trailing, workspace: workspace)
+    }
+
+    func splitDown() {
+        editorManager.split(editor, .bottom, workspace: workspace)
+    }
+
+    func unsplit() {
+        editorManager.unsplit(editor)
+    }
+
+    func unsplitAll() {
+        editorManager.unsplitAll()
+    }
+
+    func changeSplitterOrientation() {
+        editorManager.changeSplitterOrientation(of: editor)
+    }
+
+    func closeAll() {
         withAnimation {
-            editor.tabs.map(\.file).forEach { editor.closeTab(file: $0) }
+            editor.closeUnpinnedTabs()
         }
     }
 
-    private func closeOthers() {
+    func closeOthers() {
         guard let selected = editor.selectedTab?.file else { return }
         withAnimation {
-            editor.tabs.map(\.file).filter { $0 != selected }.forEach { editor.closeTab(file: $0) }
+            editor.closeUnpinnedTabs { $0 != selected }
         }
     }
 }

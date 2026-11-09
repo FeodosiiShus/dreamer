@@ -13,13 +13,15 @@ import AppKit
 extension ProjectNavigatorViewController: OutlineTableViewCellDelegate {
     func moveFile(file: CEWorkspaceFile, to destination: URL) {
         do {
-            guard let newFile = try workspace?.workspaceFileManager?.move(file: file, to: destination),
+            guard let manager = workspace?.workspaceFileManager else { return }
+            let sourceURL = file.url
+            let moved = try manager.move(file: file, to: destination)
+            outlineView.reloadItem(file.parent, reloadChildren: true)
+            retargetTabs(from: sourceURL, to: destination)
+            let destinationPath = destination.path(percentEncoded: false)
+            guard let newFile = moved ?? manager.getFile(destinationPath, createIfNotFound: true),
                   !newFile.isFolder else {
                 return
-            }
-            outlineView.reloadItem(file.parent, reloadChildren: true)
-            if !file.isFolder {
-                workspace?.editorManager?.editorLayout.closeAllTabs(of: file)
             }
             workspace?.listenerModel.highlightedFileItem = newFile
             workspace?.editorManager?.openTab(item: newFile)

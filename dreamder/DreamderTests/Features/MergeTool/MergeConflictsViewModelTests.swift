@@ -3,7 +3,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct MergeConflictsViewModelTests {
     private func workspace(_ root: URL) -> WorkspaceDocument {
         let document = WorkspaceDocument()
@@ -26,7 +26,7 @@ struct MergeConflictsViewModelTests {
     @Test
     func loadsConflictsWithMergeHeadersAndSelectsTheFirstFile() async throws {
         try await withTempDir { dir in
-            _ = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            _ = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try await loadedModel(dir)
 
             #expect(model.entries.map(\.path) == ["app/config.txt", "docs/notes.txt"])
@@ -47,7 +47,7 @@ struct MergeConflictsViewModelTests {
     @Test
     func clickShiftClickAndCommandClickSelectLikeATable() async throws {
         try await withTempDir { dir in
-            _ = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            _ = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try await loadedModel(dir)
             let first = "app/config.txt"
             let second = "docs/notes.txt"
@@ -83,7 +83,7 @@ struct MergeConflictsViewModelTests {
     @Test
     func acceptTheirsResolvesEverySelectedFile() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            let fixture = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try await loadedModel(dir)
             model.select("app/config.txt")
             model.select("docs/notes.txt", extending: true)
@@ -91,9 +91,9 @@ struct MergeConflictsViewModelTests {
             await model.accept(.theirs)
             try await eventually { model.entries.isEmpty }
 
-            #expect(try fixture.unmergedPaths().isEmpty)
+            #expect(try await fixture.unmergedPaths().isEmpty)
             #expect(try fixture.read("docs/notes.txt") == "one\nnotes-feature\nthree\n")
-            #expect(try fixture.isFullyStaged("app/config.txt"))
+            #expect(try await fixture.isFullyStaged("app/config.txt"))
             #expect(model.summary == "All conflicts have been resolved")
             #expect(model.isBusy == false)
             #expect(model.errorMessage == nil)
@@ -105,14 +105,14 @@ struct MergeConflictsViewModelTests {
     @Test
     func acceptYoursOnOneFileKeepsTheOtherSelectedAfterReload() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            let fixture = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try await loadedModel(dir)
             model.select("app/config.txt")
 
             await model.accept(.yours)
             try await eventually { model.entries.count == 1 }
 
-            #expect(try fixture.unmergedPaths() == ["docs/notes.txt"])
+            #expect(try await fixture.unmergedPaths() == ["docs/notes.txt"])
             #expect(model.primaryEntry?.path == "docs/notes.txt")
             #expect(model.selectedPaths == ["docs/notes.txt"])
         }

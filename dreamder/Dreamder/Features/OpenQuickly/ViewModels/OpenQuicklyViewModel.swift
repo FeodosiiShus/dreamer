@@ -14,11 +14,19 @@ final class OpenQuicklyViewModel {
     var searchResults: [SearchResult] = []
 
     let fileURL: URL
+    @ObservationIgnored let scope: WorkspaceFileScope
     @ObservationIgnored var runningTask: Task<Void, Never>?
     @ObservationIgnored private var searchGeneration = 0
 
-    init(fileURL: URL) {
+    init(fileURL: URL, scope: WorkspaceFileScope? = nil) {
         self.fileURL = fileURL
+        if let scope {
+            self.scope = scope
+        } else {
+            let ownedScope = WorkspaceFileScope(rootURL: fileURL)
+            ownedScope.startWatching()
+            self.scope = ownedScope
+        }
     }
 
     /// This is used to populate the ``OpenQuicklyListItemView`` view which shows the search results to the user.
@@ -49,25 +57,20 @@ final class OpenQuicklyViewModel {
             return
         }
 
-        let root = fileURL
-        runningTask = Task.detached(priority: .userInitiated) {
-            let enumerator = FileManager.default.enumerator(
-                at: root,
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsPackageDescendants]
-            )
-            guard let filePaths = enumerator?.allObjects as? [URL], !Task.isCancelled else { return }
-            let filteredFiles = filePaths.filter { url in
-                (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile ?? false
-            }
-            let fuzzySearchResults = await filteredFiles.fuzzySearch(query: trimmedQuery).concurrentMap {
-                SearchResult(fileURL: $0.item, matchedCharacters: $0.result.matchedParts)
-            }
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                guard generation == self.searchGeneration else { return }
-                self.searchResults = fuzzySearchResults
-            }
+        let scope = scope
+        runningTask = Task(priority: .userInitiated) { [self] in
+            let results = await Self.search(scope: scope, query: trimmedQuery)
+            guard !Task.isCancelled, generation == searchGeneration else { return }
+            searchResults = results
+        }
+    }
+
+    @concurrent
+    private nonisolated static func search(scope: WorkspaceFileScope, query: String) async -> [SearchResult] {
+        let files = await scope.enumerateFiles(limit: nil)
+        guard !Task.isCancelled else { return [] }
+        return await files.fuzzySearch(query: query).concurrentMap {
+            SearchResult(fileURL: $0.item, matchedCharacters: $0.result.matchedParts)
         }
     }
 }

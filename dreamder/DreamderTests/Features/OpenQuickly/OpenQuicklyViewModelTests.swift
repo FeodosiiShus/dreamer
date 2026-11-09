@@ -3,7 +3,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct OpenQuicklyViewModelTests {
     private func touch(_ root: URL, _ relativePath: String) throws {
         let file = root.appending(path: relativePath)
@@ -278,10 +278,65 @@ struct OpenQuicklyViewModelTests {
             #expect(names == ["beta.txt"])
         }
     }
+
+    @Test
+    func excludedDirectoriesAndGitignoredFilesAreNeverListed() async throws {
+        try await withTempDir { root in
+            try Data("zz-ignored.txt\n".utf8).write(to: root.appending(path: ".gitignore"))
+            try touch(root, "zz-real.txt")
+            try touch(root, "zz-ignored.txt")
+            try touch(root, "node_modules/pkg/zz-dep.js")
+            try touch(root, ".git/zz-object")
+            try touch(root, "build/zz-artifact")
+            let model = OpenQuicklyViewModel(fileURL: root)
+
+            let names = await search(model, "zz")
+
+            #expect(names == ["zz-real.txt"])
+        }
+    }
+
+    @Test
+    func aFileCreatedAfterTheFirstSearchIsFoundOnceTheScopeSeesIt() async throws {
+        try await withTempDir { root in
+            try touch(root, "first.txt")
+            let model = OpenQuicklyViewModel(fileURL: root)
+            _ = await search(model, "first")
+            try await Task.sleep(for: .milliseconds(300))
+
+            try touch(root, "late-arrival.txt")
+
+            try await eventually {
+                await search(model, "late-arrival") == ["late-arrival.txt"]
+            }
+        }
+    }
+
+    @Test
+    func theWorkspaceScopeIsSharedAndItsCachedListIsReused() async throws {
+        try await withTempDir { root in
+            try touch(root, "a/one.txt")
+            try touch(root, "b/two.txt")
+            let fileSystem = RecordingFileSystem()
+            let scope = WorkspaceFileScope(rootURL: root, fileSystem: fileSystem)
+            let model = OpenQuicklyViewModel(fileURL: root, scope: scope)
+            #expect(model.scope === scope)
+
+            let first = await search(model, "one")
+            let listingsAfterFirst = fileSystem.listings
+            let second = await search(model, "two")
+
+            #expect(first == ["one.txt"])
+            #expect(second == ["two.txt"])
+            #expect(listingsAfterFirst == 3)
+            #expect(fileSystem.listings == listingsAfterFirst)
+            #expect(fileSystem.mainThreadListings == 0)
+        }
+    }
 }
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct OpenQuicklySearchResultTests {
     private let file = URL(filePath: "/project/src/main.swift")
 

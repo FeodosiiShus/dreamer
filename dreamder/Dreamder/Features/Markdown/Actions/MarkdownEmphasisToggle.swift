@@ -195,7 +195,7 @@ fileprivate nonisolated struct MarkdownEmphasisContext: Sendable {
         }
         let tableSelections = carets.map { tableSelection($0) }
         if tableSelections.allSatisfy({ $0 != nil }) {
-            let ranges = tableSelections.flatMap { $0 ?? [] }
+            let ranges = tableSelections.compactMap { $0 }.flatMap { $0 }
             let selected = !ranges.isEmpty && ranges.allSatisfy { formattingParent($0) != nil }
             return MarkdownEmphasisEvaluation(isEnabled: true, isSelected: selected)
         }

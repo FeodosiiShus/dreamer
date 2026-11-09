@@ -63,22 +63,16 @@ struct CETaskFormView: View {
                     }
                 }
                 .actionBar {
-                    Button {
-                          self.task.environmentVariables.append(CETask.EnvironmentVariable())
-                    } label: {
+                    Button(action: addEnvironmentVariable) {
                         Image(systemName: "plus")
                     }
                     Divider()
-                    Button {
-                        removeSelectedEnv()
-                    } label: {
+                    Button(action: removeSelectedEnv) {
                         Image(systemName: "minus")
                     }
                     .disabled(selectedEnvID == nil)
                 }
-                .onDeleteCommand {
-                    removeSelectedEnv()
-                }
+                .onDeleteCommand(perform: removeSelectedEnv)
             } header: {
                 Text("Environment Variables")
             }
@@ -86,8 +80,16 @@ struct CETaskFormView: View {
         .formStyle(.grouped)
     }
 
+    func addEnvironmentVariable() {
+        task.environmentVariables.append(CETask.EnvironmentVariable())
+    }
+
     func removeSelectedEnv() {
-        if let selectedItemId = selectedEnvID {
+        deleteSelected(selectedEnvID)
+    }
+
+    func deleteSelected(_ id: UUID?) {
+        if let selectedItemId = id {
             removeEnv(id: selectedItemId)
         }
     }

@@ -13,7 +13,7 @@ XCODEBUILD := xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration $(
 	CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
 	ENABLE_HARDENED_RUNTIME=NO
 
-.PHONY: build release run headless test coverage coverage-baseline check ui-test screenshot action open toolwindow contextmenu annotate menuitem merge smoke clean
+.PHONY: build release run headless test test-sharded coverage coverage-sharded coverage-baseline check ui-test screenshot action open toolwindow contextmenu annotate menuitem merge smoke clean
 
 check:
 	@python3 Scripts/crash-guard.py
@@ -45,14 +45,26 @@ headless: build
 
 test:
 	@mkdir -p $(LOGS)
+	@sh Scripts/stub-swiftlint.sh $(DERIVED)/SourcePackages/artifacts
 	@set -o pipefail; TEST_RUNNER_DREAMDER_HEADLESS=1 $(XCODEBUILD) test $(if $(FILTER),-only-testing:DreamderTests/$(FILTER),-only-testing:DreamderTests) 2>&1 | tee $(LOGS)/test.log | grep -E "error:|failed|Executed|passed after|TEST (SUCCEEDED|FAILED)" | sort -u
 
 coverage:
 	@mkdir -p $(LOGS)
+	@sh Scripts/stub-swiftlint.sh $(DERIVED)/SourcePackages/artifacts
 	@rm -rf .build/coverage.xcresult
 	@set -o pipefail; TEST_RUNNER_DREAMDER_HEADLESS=1 $(XCODEBUILD) test -only-testing:DreamderTests -enableCodeCoverage YES -resultBundlePath .build/coverage.xcresult 2>&1 | tee $(LOGS)/coverage.log | grep -E "error:|Test run with|Executed [0-9]+ tests|TEST (SUCCEEDED|FAILED)" | sort -u
 	@set -o pipefail; python3 Scripts/coverage-report.py .build/coverage.xcresult --json .build/coverage.json | tee $(LOGS)/coverage.txt | tail -$(if $(TOP),$(TOP),40)
 	@$(if $(filter 1,$(COVERAGE_CHECK)),python3 Scripts/coverage-report.py .build/coverage.xcresult --check $(if $(GITHUB_STEP_SUMMARY),--summary),:)
+
+test-sharded:
+	@sh Scripts/stub-swiftlint.sh $(DERIVED)/SourcePackages/artifacts
+	@python3 Scripts/sharded-tests.py --shards $(if $(SHARDS),$(SHARDS),3)
+
+coverage-sharded:
+	@sh Scripts/stub-swiftlint.sh $(DERIVED)/SourcePackages/artifacts
+	@python3 Scripts/sharded-tests.py --shards $(if $(SHARDS),$(SHARDS),3) --coverage --result .build/coverage.xcresult; status=$$?; \
+		python3 Scripts/coverage-report.py .build/coverage.xcresult --json .build/coverage.json | tee $(LOGS)/coverage.txt | tail -$(if $(TOP),$(TOP),40); \
+		exit $$status
 
 coverage-baseline:
 	@python3 Scripts/coverage-report.py .build/coverage.xcresult --write-baseline

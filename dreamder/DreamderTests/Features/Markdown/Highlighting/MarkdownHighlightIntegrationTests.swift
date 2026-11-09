@@ -78,7 +78,7 @@ private final class MarkdownHostedSession {
 }
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct MarkdownHighlightIntegrationTests {
     private func activeTheme() throws -> Theme {
         try #require(ThemeModel.shared.selectedTheme ?? ThemeModel.shared.themes.first)

@@ -33,7 +33,7 @@ struct LanguageServerDiscoveryTests {
         #expect(LanguageServerDiscovery.candidates(for: .json).first?.arguments == ["--stdio"])
         #expect(LanguageServerDiscovery.candidates(for: .css).first?.executable == "vscode-css-language-server")
         #expect(LanguageServerDiscovery.candidates(for: .html).first?.executable == "vscode-html-language-server")
-        #expect(LanguageServerDiscovery.candidates(for: .ruby).isEmpty)
+        #expect(LanguageServerDiscovery.candidates(for: LSPLanguage(.ruby)).isEmpty)
     }
 
     @Test func argumentsComeFromCandidateTable() {
@@ -73,7 +73,7 @@ struct LanguageServerDiscoveryTests {
             searchPaths: ["/usr/bin"],
             environment: nil,
             isExecutable: executableChecker([]),
-            xcrunFind: { tool in tool == "sourcekit-lsp" ? "/toolchain/bin/sourcekit-lsp" : nil }
+            sourceKitFallback: "/toolchain/bin/sourcekit-lsp"
         )
         #expect(binary?.execPath == "/toolchain/bin/sourcekit-lsp")
         #expect(binary?.args == [])
@@ -89,6 +89,40 @@ struct LanguageServerDiscoveryTests {
         #expect(binary == nil)
     }
 
+    @Test func sourceKitIsNotFoundWithoutAnXcrunFallbackWhenNothingIsExecutable() {
+        let binary = LanguageServerDiscovery.binary(
+            for: .swift,
+            searchPaths: ["/usr/bin"],
+            environment: nil,
+            isExecutable: executableChecker([])
+        )
+        #expect(binary == nil)
+    }
+
+    @Test func aTsserverLauncherWithoutAnyTypeScriptPackageIsNotUsed() {
+        let server = LanguageServerDiscovery.installedTypeScriptServer(
+            searchPaths: ["/mise/bin", "/other/bin"],
+            fileExists: { $0 == "/mise/bin/tsserver" },
+            resolveSymlinks: { $0 }
+        )
+        #expect(server == nil)
+    }
+
+    @Test func theDefaultSymlinkResolutionKeepsAnUnlinkedLauncherPathAndFindsItsPackage() {
+        let files: Set<String> = ["/dreamder-tests/mise/bin/tsserver", "/dreamder-tests/mise/lib/tsserver.js"]
+        let options = LanguageServerDiscovery.initializationOptions(
+            for: .typescript,
+            workspacePath: "/dreamder-tests/project",
+            searchPaths: ["/dreamder-tests/mise/bin"],
+            inlayHints: InlayHintSettings(),
+            fileExists: { files.contains($0) }
+        )
+        #expect(options == .hash([
+            "preferences": InlayHintServerPreferences.preferences(for: InlayHintSettings()),
+            "tsserver": .hash(["path": .string("/dreamder-tests/mise/lib/tsserver.js")])
+        ]))
+    }
+
     @Test func searchPathsIncludeCommonInstallLocations() {
         let paths = LSPProcessEnvironment.composedSearchPaths(
             loginPath: "/custom/bin:/opt/homebrew/bin::",
@@ -96,7 +130,7 @@ struct LanguageServerDiscoveryTests {
             npmGlobalBin: "/usr/local/npm/bin",
             extraDirectories: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"]
         )
-        #expect(paths.first == "/custom/bin")
+        #expect(paths.prefix(3) == ["/Users/tester/.local/share/mise/shims", "/Users/tester/.asdf/shims", "/custom/bin"])
         #expect(paths.contains("/opt/homebrew/bin"))
         #expect(paths.contains("/usr/local/bin"))
         #expect(paths.contains("/Users/tester/.local/bin"))
@@ -120,11 +154,12 @@ struct LanguageServerDiscoveryTests {
             for: .typescript,
             workspacePath: "/project",
             searchPaths: ["/empty", "/mise/bin"],
+            inlayHints: InlayHintSettings(),
             fileExists: { files.contains($0) },
             resolveSymlinks: resolve
         )
         #expect(options == .hash([
-            "preferences": .hash(["includeInlayParameterNameHints": .string("literals")]),
+            "preferences": InlayHintServerPreferences.preferences(for: InlayHintSettings()),
             "tsserver": .hash(["path": .string("/mise/node_modules/typescript/lib/tsserver.js")])
         ]))
 
@@ -132,17 +167,49 @@ struct LanguageServerDiscoveryTests {
             for: .javascript,
             workspacePath: "/project",
             searchPaths: ["/mise/bin"],
+            inlayHints: InlayHintSettings(),
             fileExists: { files.union(["/project/node_modules/typescript/lib/tsserver.js"]).contains($0) },
             resolveSymlinks: resolve
         )
         #expect(withLocalTypeScript == .hash([
-            "preferences": .hash(["includeInlayParameterNameHints": .string("literals")])
+            "preferences": InlayHintServerPreferences.preferences(for: InlayHintSettings())
         ]))
         #expect(LanguageServerDiscovery.initializationOptions(
             for: .swift,
             workspacePath: "/project",
-            searchPaths: ["/mise/bin"]
+            searchPaths: ["/mise/bin"],
+            inlayHints: InlayHintSettings()
         ) == nil)
+    }
+
+    @Test func typeScriptPreferencesReflectTheInlayHintSettings() {
+        var settings = InlayHintSettings()
+        settings.parameterNames = .all
+        settings.types = false
+        let options = LanguageServerDiscovery.initializationOptions(
+            for: .typescriptreact,
+            workspacePath: "/project",
+            searchPaths: [],
+            inlayHints: settings,
+            fileExists: { _ in true }
+        )
+        #expect(options == .hash(["preferences": InlayHintServerPreferences.preferences(for: settings)]))
+        guard case .hash(let top)? = options, case .hash(let preferences)? = top["preferences"] else {
+            Issue.record("missing preferences")
+            return
+        }
+        #expect(preferences["includeInlayParameterNameHints"] == .string("all"))
+        #expect(preferences["includeInlayVariableTypeHints"] == .bool(false))
+
+        settings.enabled = false
+        let disabled = LanguageServerDiscovery.initializationOptions(
+            for: .javascript,
+            workspacePath: "/project",
+            searchPaths: [],
+            inlayHints: settings,
+            fileExists: { _ in true }
+        )
+        #expect(disabled == .hash(["preferences": InlayHintServerPreferences.preferences(for: settings)]))
     }
 
     @Test func tsserverWrapperInNodeModulesBinFindsTheSiblingPackage() {

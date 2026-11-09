@@ -313,7 +313,7 @@ nonisolated struct MarkdownHTMLScanner {
         while index < end, MarkdownChar.isASCIIAlphanumeric(units[index]) || units[index] == MarkdownChar.dash {
             index += 1
         }
-        while true {
+        while index < end {
             let afterName = index
             index = skipWhitespace(units, from: index, to: end)
             guard index < end else { return nil }
@@ -355,6 +355,7 @@ nonisolated struct MarkdownHTMLScanner {
                 index = beforeEquals
             }
         }
+        return nil
     }
 
     private static func skipWhitespace(_ units: [UInt16], from start: Int, to end: Int) -> Int {

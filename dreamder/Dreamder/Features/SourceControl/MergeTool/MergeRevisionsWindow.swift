@@ -42,23 +42,9 @@ final class MergeRevisionsWindowController: NSWindowController, NSWindowDelegate
         guard let window else { return }
         window.setContentSize(preferredContentSize)
         let size = window.frame.size
-        var origin = NSPoint.zero
-        if let parent {
-            origin = NSPoint(
-                x: parent.frame.midX - size.width / 2,
-                y: parent.frame.midY - size.height / 2
-            )
-        } else if let screen = NSScreen.main {
-            origin = NSPoint(
-                x: screen.visibleFrame.midX - size.width / 2,
-                y: screen.visibleFrame.midY - size.height / 2
-            )
-        }
-        if let screen = parent?.screen ?? NSScreen.main {
-            let visible = screen.visibleFrame
-            origin.x = min(max(origin.x, visible.minX + 12), visible.maxX - size.width - 12)
-            origin.y = min(max(origin.y, visible.minY + 12), visible.maxY - size.height - 12)
-        }
+        let anchor = parent?.frame ?? NSScreen.main?.visibleFrame
+        let visible = (parent?.screen ?? NSScreen.main)?.visibleFrame
+        let origin = MergeConflictsWindowController.origin(size: size, anchor: anchor, visible: visible)
         window.setFrame(NSRect(origin: origin, size: size), display: false)
     }
 

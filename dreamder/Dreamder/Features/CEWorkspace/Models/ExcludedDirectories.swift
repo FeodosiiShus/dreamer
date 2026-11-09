@@ -3,7 +3,10 @@ import Observation
 import Synchronization
 
 nonisolated struct ExclusionRules: Sendable, Equatable {
-    static let defaultExcludedNames: Set<String> = ["node_modules"]
+    static let defaultExcludedNames: Set<String> = [
+        ".git", "node_modules", ".build", "build", "dist", "out", "target", "DerivedData", ".gradle", ".idea",
+        ".venv", "venv", "__pycache__", "Pods", "vendor", "coverage", ".next", ".turbo", ".cache"
+    ]
 
     let rootPath: String
     var excluded: Set<String> = []
@@ -23,10 +26,14 @@ nonisolated struct ExclusionRules: Sendable, Equatable {
 
     func isExclusionRoot(_ url: URL) -> Bool {
         guard let relative = relativePath(of: url) else { return false }
-        if excluded.contains(relative) {
+        return isExclusionRoot(relativePath: relative, name: url.lastPathComponent)
+    }
+
+    func isExclusionRoot(relativePath: String, name: String) -> Bool {
+        if excluded.contains(relativePath) {
             return true
         }
-        return Self.defaultExcludedNames.contains(url.lastPathComponent) && !cancelledDefaults.contains(relative)
+        return Self.defaultExcludedNames.contains(name) && !cancelledDefaults.contains(relativePath)
     }
 
     func isExcluded(_ url: URL) -> Bool {

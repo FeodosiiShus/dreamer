@@ -832,3 +832,38 @@ struct MinusculeMatcherLayoutTests {
         #expect(MinusculeMatcher(pattern: "foo").pattern == "foo")
     }
 }
+
+@Suite("MinusculeMatcher non-ASCII and boundary branches")
+struct MinusculeMatcherBoundaryTests {
+    @Test func nonAsciiPatternCharactersAreMatchedIgnoringCase() {
+        #expect(makeMatcher("bé").match("BaseÉtat") == [0..<1, 4..<5])
+        #expect(makeMatcher("*é").match("caféé") == [3..<4])
+        #expect(makeMatcher("αβ").match("ΑλφαΒήτα") == [0..<1, 4..<5])
+        #expect(makeMatcher("*ñ").match("Español") == [4..<5])
+    }
+
+    @Test func nonAsciiPatternCharacterMissingFromNameDoesNotMatch() {
+        expectNoMatch("bé", "BaseEtat")
+        expectNoMatch("*ñ", "Espanol")
+    }
+
+    @Test func starPatternBeyondCamelHumpLimitWithoutOccurrenceDoesNotMatch() {
+        let hundredAs = String(repeating: "a", count: 100)
+        #expect(makeMatcher("*" + hundredAs).match(String(repeating: "b", count: 150)) == nil)
+        #expect(makeMatcher("*" + hundredAs).match(String(repeating: "a", count: 99)) == nil)
+    }
+
+    @Test func hardSeparatorAbsentFromTheNameLeavesTheDegreeUntouched() {
+        let separated = makeMatcher("fb", hardSeparators: " ")
+        let plain = makeMatcher("fb")
+        #expect(separated.match("fooBar") == [0..<1, 3..<4])
+        #expect(separated.matchingDegree("fooBar") == plain.matchingDegree("fooBar"))
+    }
+
+    @Test func externalFragmentCharactersOutsideThePatternAddNoCaseScore() {
+        let matcher = makeMatcher("foo")
+        let wholeName = matcher.matchingDegree("fxo", valueStartCaseMatch: false, fragments: [0..<3])
+        let firstLetterOnly = matcher.matchingDegree("fxo", valueStartCaseMatch: false, fragments: [0..<1])
+        #expect(wholeName == firstLetterOnly + 1)
+    }
+}

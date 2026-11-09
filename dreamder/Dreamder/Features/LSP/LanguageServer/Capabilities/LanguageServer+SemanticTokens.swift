@@ -9,7 +9,17 @@ import Foundation
 import LanguageServerProtocol
 
 extension LanguageServer {
-    func requestSemanticTokens(for documentURI: String) async throws -> SemanticTokensResponse {
+    var supportsSemanticTokens: Bool {
+        serverCapabilities.semanticTokensProvider != nil
+    }
+
+    func requestSemanticTokens(
+        for documentURI: String,
+        flushingPendingEdits: Bool = true
+    ) async throws -> SemanticTokensResponse {
+        if flushingPendingEdits {
+            await flushPendingEdits(for: documentURI)
+        }
         do {
             let params = SemanticTokensParams(textDocument: TextDocumentIdentifier(uri: documentURI))
             return try await lspInstance.semanticTokensFull(params)
@@ -21,8 +31,12 @@ extension LanguageServer {
 
     func requestSemanticTokens(
         for documentURI: String,
-        previousResultId: String
+        previousResultId: String,
+        flushingPendingEdits: Bool = true
     ) async throws -> SemanticTokensDeltaResponse {
+        if flushingPendingEdits {
+            await flushPendingEdits(for: documentURI)
+        }
         do {
             let params = SemanticTokensDeltaParams(
                 textDocument: TextDocumentIdentifier(uri: documentURI),

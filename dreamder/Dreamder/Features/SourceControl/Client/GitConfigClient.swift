@@ -17,7 +17,7 @@ nonisolated final class GitConfigClient: Sendable {
 
     private let projectURL: URL?
     private let commandRunner: GitCommandRunner
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "GitConfigClient")
+    private let logger = Logger(subsystem: "dev.dreamder.Dreamder", category: "GitConfigClient")
 
     init(projectURL: URL? = nil, commandRunner: GitCommandRunner) {
         self.projectURL = projectURL

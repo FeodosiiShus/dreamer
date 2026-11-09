@@ -3,7 +3,7 @@ import Foundation
 
 @MainActor
 enum DiffViewerPresenter {
-    private static var windows: [String: DiffViewerWindowController] = [:]
+    private(set) static var windows: [String: DiffViewerWindowController] = [:]
 
     static func showFileDiff(workspace: WorkspaceDocument, fileURL: URL, against ref: String = "HEAD") {
         guard let repository = DiffRepository(workspace: workspace) else { return }
@@ -115,7 +115,7 @@ enum DiffViewerPresenter {
         alert.runModal()
     }
 
-    private static func describe(_ error: Error) -> String {
+    static func describe(_ error: Error) -> String {
         if let gitError = error as? GitClient.GitClientError {
             return gitError.description
         }

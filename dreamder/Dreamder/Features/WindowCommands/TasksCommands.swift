@@ -14,13 +14,59 @@ struct TasksCommands: Commands {
         windowController?.workspace?.taskManager
     }
 
-    private var activeTaskStatus: CETaskStatus {
-        guard let taskManager else { return .notRunning }
-        return taskManager.activeTasks[taskManager.selectedTaskID ?? UUID()]?.status ?? .notRunning
-    }
-
     var body: some Commands {
         CommandMenu("Tasks") {
+            MenuContent(
+                taskManager: taskManager,
+                toolWindowManager: windowController?.workspace?.toolWindowManager,
+                hasWindowController: windowController != nil,
+                settingsTarget: windowController
+            )
+        }
+    }
+
+    static func openSettings(target: Any?) {
+        NSApp.sendAction(
+            #selector(DreamderWindowController.openWorkspaceSettings(_:)),
+            to: target,
+            from: nil
+        )
+    }
+}
+
+extension TasksCommands {
+    struct MenuContent: View {
+        let taskManager: TaskManager?
+        let toolWindowManager: ToolWindowManager?
+        let hasWindowController: Bool
+        var settingsTarget: Any?
+
+        var body: some View {
+            RunButtons(taskManager: taskManager, toolWindowManager: toolWindowManager)
+
+            Divider()
+
+            Menu {
+                ChooseTaskButtons(taskManager: taskManager, settingsTarget: settingsTarget)
+            } label: {
+                Text("Choose Task...")
+            }
+            .disabled(taskManager?.availableTasks.isEmpty == true)
+
+            ManageTasksButton(isEnabled: hasWindowController, target: settingsTarget)
+        }
+    }
+
+    struct RunButtons: View {
+        let taskManager: TaskManager?
+        let toolWindowManager: ToolWindowManager?
+
+        private var activeTaskStatus: CETaskStatus {
+            guard let taskManager else { return .notRunning }
+            return taskManager.activeTasks[taskManager.selectedTaskID ?? UUID()]?.status ?? .notRunning
+        }
+
+        var body: some View {
             let selectedTaskName: String = if let selectedTask = taskManager?.selectedTask {
                 "\"" + selectedTask.name + "\""
             } else {
@@ -31,66 +77,63 @@ struct TasksCommands: Commands {
                 taskManager?.executeActiveTask()
                 showOutput()
             }
-            .keyboardShortcut("R")
+            .keymapShortcut(.runTask)
             .disabled(taskManager?.selectedTaskID == nil)
 
             Button("Stop \(selectedTaskName)", systemImage: "stop.fill") {
                 taskManager?.terminateActiveTask()
             }
-            .keyboardShortcut(".")
+            .keymapShortcut(.stopTask)
             .disabled(activeTaskStatus != .running)
 
             Button("Show \(selectedTaskName) Output") {
                 showOutput()
             }
+            .keymapShortcut(.showTaskOutput)
             // Disable when there's no output yet
             .disabled(taskManager?.activeTasks[taskManager?.selectedTaskID ?? UUID()] == nil)
+        }
 
-            Divider()
-
-            Menu {
-                if let taskManager {
-                    ForEach(taskManager.availableTasks) { task in
-                        Button(task.name) {
-                            taskManager.selectedTaskID = task.id
-                        }
-                    }
-                }
-
-                if taskManager?.availableTasks.isEmpty ?? true {
-                    Button("Create Tasks") {
-                        openSettings()
-                    }
-                }
-            } label: {
-                Text("Choose Task...")
+        private func showOutput() {
+            guard let toolWindowManager else {
+                return
             }
-            .disabled(taskManager?.availableTasks.isEmpty == true)
+            toolWindowManager.show(.run)
+            taskManager?.taskShowingOutput = taskManager?.selectedTaskID
+        }
+    }
 
+    struct ChooseTaskButtons: View {
+        let taskManager: TaskManager?
+        var settingsTarget: Any?
+
+        var body: some View {
+            if let taskManager {
+                ForEach(taskManager.availableTasks) { task in
+                    Button(task.name) {
+                        taskManager.selectedTaskID = task.id
+                    }
+                }
+            }
+
+            if taskManager?.availableTasks.isEmpty ?? true {
+                Button("Create Tasks") {
+                    TasksCommands.openSettings(target: settingsTarget)
+                }
+            }
+        }
+    }
+
+    struct ManageTasksButton: View {
+        let isEnabled: Bool
+        var target: Any?
+
+        var body: some View {
             Button("Manage Tasks...") {
-                openSettings()
+                TasksCommands.openSettings(target: target)
             }
-            .disabled(windowController == nil)
+            .keymapShortcut(.manageTasks)
+            .disabled(!isEnabled)
         }
-    }
-
-    private func showOutput() {
-        guard let utilityAreaModel = windowController?.workspace?.utilityAreaModel else {
-            return
-        }
-        if utilityAreaModel.isCollapsed {
-            // Open the utility area
-            utilityAreaModel.isCollapsed.toggle()
-        }
-        utilityAreaModel.selectedTab = .debugConsole // Switch to the correct tab
-        taskManager?.taskShowingOutput = taskManager?.selectedTaskID // Switch to the selected task
-    }
-
-    private func openSettings() {
-        NSApp.sendAction(
-            #selector(DreamderWindowController.openWorkspaceSettings(_:)),
-            to: windowController,
-            from: nil
-        )
     }
 }

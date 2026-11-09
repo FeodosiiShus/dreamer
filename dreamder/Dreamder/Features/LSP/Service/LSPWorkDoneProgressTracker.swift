@@ -7,7 +7,6 @@ nonisolated struct LSPWorkDoneProgress: Sendable, Equatable {
     var title: String?
     var message: String?
     var percentage: Int?
-    var isCancellable: Bool
     var hasBegun: Bool
 }
 
@@ -38,7 +37,6 @@ nonisolated final class LSPWorkDoneProgressTracker: Sendable {
                     title: nil,
                     message: nil,
                     percentage: nil,
-                    isCancellable: false,
                     hasBegun: false
                 )
             }
@@ -60,7 +58,6 @@ nonisolated final class LSPWorkDoneProgressTracker: Sendable {
                     title: title,
                     message: Self.string(value["message"]),
                     percentage: Self.percentage(value["percentage"]),
-                    isCancellable: Self.bool(value["cancellable"]) ?? false,
                     hasBegun: true
                 )
                 return .began
@@ -71,9 +68,6 @@ nonisolated final class LSPWorkDoneProgressTracker: Sendable {
                 }
                 if let percentage = Self.percentage(value["percentage"]) {
                     progress.percentage = percentage
-                }
-                if let cancellable = Self.bool(value["cancellable"]) {
-                    progress.isCancellable = cancellable
                 }
                 state.progresses[params.token] = progress
                 return .reported
@@ -101,16 +95,6 @@ nonisolated final class LSPWorkDoneProgressTracker: Sendable {
         state.withLock { $0.isShutDown }
     }
 
-    func takeCancellation(for token: ProgressToken) -> Bool {
-        state.withLock { state in
-            guard !state.isShutDown, let progress = state.progresses[token], progress.isCancellable else {
-                return false
-            }
-            state.progresses.removeValue(forKey: token)
-            return true
-        }
-    }
-
     func shutDown() {
         state.withLock { state in
             state.isShutDown = true
@@ -121,11 +105,6 @@ nonisolated final class LSPWorkDoneProgressTracker: Sendable {
     private static func string(_ value: LSPAny?) -> String? {
         guard case .string(let string)? = value else { return nil }
         return string
-    }
-
-    private static func bool(_ value: LSPAny?) -> Bool? {
-        guard case .bool(let bool)? = value else { return nil }
-        return bool
     }
 
     private static func percentage(_ value: LSPAny?) -> Int? {

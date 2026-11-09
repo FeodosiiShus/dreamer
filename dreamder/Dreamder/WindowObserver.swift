@@ -17,20 +17,23 @@ struct WindowObserver<Content: View>: View {
     /// This will be passed into all child views as an environment variable.
     @State private var isFullscreen = false
 
-    @State var modifierFlags: NSEvent.ModifierFlags = []
+    @State private var modifierKeys = ModifierKeysModel()
 
     var body: some View {
         content
-            .environment(\.modifierKeys, modifierFlags.intersection(.deviceIndependentFlagsMask))
-            .onReceive(NSEvent.publisher(scope: .local, matching: .flagsChanged)) { output in
-                modifierFlags = output.modifierFlags
-            }
+            .environment(\.modifierKeys, modifierKeys.flags.intersection(.deviceIndependentFlagsMask))
+            .onAppear(perform: modifierKeys.start)
+            .onDisappear(perform: modifierKeys.stop)
             .environment(\.window, window)
             .environment(\.isFullscreen, isFullscreen)
-            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
+            .onReceive(
+                NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification, object: window.value)
+            ) { _ in
                 self.isFullscreen = true
             }
-            .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { _ in
+            .onReceive(
+                NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification, object: window.value)
+            ) { _ in
                 self.isFullscreen = false
             }
     }

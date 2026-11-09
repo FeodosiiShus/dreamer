@@ -31,7 +31,7 @@ nonisolated enum GitBlameParser {
         var currentLine = 0
         var lines: [GitBlameLine] = []
 
-        for rawLine in output.split(separator: "\n", omittingEmptySubsequences: false) {
+        for rawLine in output.unicodeScalars.split(separator: "\n", omittingEmptySubsequences: false) {
             var text = String(rawLine)
             if text.hasSuffix("\r") {
                 text.removeLast()
@@ -39,8 +39,7 @@ nonisolated enum GitBlameParser {
             guard !text.isEmpty else { continue }
 
             if text.hasPrefix("\t") {
-                guard let hash = currentHash else { continue }
-                let info = metadata[hash] ?? Metadata()
+                guard let hash = currentHash, let info = metadata[hash] else { continue }
                 lines.append(
                     GitBlameLine(
                         line: currentLine,
@@ -72,7 +71,7 @@ nonisolated enum GitBlameParser {
                     metadata[hash]?.date = Date(timeIntervalSince1970: seconds)
                 }
             case "summary":
-                metadata[hash]?.summary = field.value
+                metadata[hash]?.summary = field.value == "(\(hash))" ? "" : field.value
             default:
                 continue
             }
@@ -118,15 +117,15 @@ nonisolated enum GitBlameRelativeDate {
             return unit(minutes / 60, "hour") + " ago"
         }
 
-        let days = calendar.dateComponents(
+        let dayComponents = calendar.dateComponents(
             [.day],
             from: calendar.startOfDay(for: date),
             to: calendar.startOfDay(for: now)
-        ).day ?? 0
-        if days <= 1 {
+        )
+        if let days = dayComponents.day, days <= 1 {
             return "yesterday"
         }
-        if days < 7 {
+        if let days = dayComponents.day, days < 7 {
             return "\(days) days ago"
         }
         return absoluteString(for: date, now: now, calendar: calendar, locale: locale)

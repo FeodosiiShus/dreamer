@@ -10,27 +10,18 @@ import SwiftUI
 struct ErrorDescriptionLabel: View {
     let error: Error
 
+    nonisolated static func lines(for error: Error) -> [String] {
+        guard let error = error as? LocalizedError else {
+            return [error.localizedDescription]
+        }
+        return [error.errorDescription, error.failureReason, error.recoverySuggestion].compactMap { $0 }
+    }
+
     var body: some View {
         VStack(alignment: .leading) {
-            if let error = error as? LocalizedError {
-                if let description = error.errorDescription {
-                    Text(description)
-                }
-
-                if let reason = error.failureReason {
-                    Text(reason)
-                }
-
-                if let recoverySuggestion = error.recoverySuggestion {
-                    Text(recoverySuggestion)
-                }
-            } else {
-                Text(error.localizedDescription)
+            ForEach(Array(Self.lines(for: error).enumerated()), id: \.offset) { _, line in
+                Text(line)
             }
         }
     }
-}
-
-#Preview {
-    ErrorDescriptionLabel(error: CancellationError())
 }

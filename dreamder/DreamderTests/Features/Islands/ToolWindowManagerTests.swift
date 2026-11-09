@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Dreamder
 
-@MainActor @Suite
+@MainActor @Suite(.uiGate)
 struct ToolWindowManagerTests {
     @Test
     func toggleHidesVisibleWindowAndShowsItAgain() {

@@ -6,10 +6,21 @@
 //
 
 import AppKit
-import WelcomeWindow
 
 @MainActor
 final class RecentProjectsMenu: NSObject, NSMenuDelegate {
+
+    private let manager: RecentProjectsManager
+    private let open: @MainActor (URL) -> Void
+
+    init(
+        manager: RecentProjectsManager = .shared,
+        open: @escaping @MainActor (URL) -> Void = { NSDocumentController.shared.openDocument(at: $0) }
+    ) {
+        self.manager = manager
+        self.open = open
+        super.init()
+    }
 
     // MARK: - Menu construction
 
@@ -24,15 +35,26 @@ final class RecentProjectsMenu: NSObject, NSMenuDelegate {
         return menu
     }()
 
+    private weak var submenuOwner: NSMenuItem?
+
     /// Entry point used by the caller (e.g. the main menu bar template).
     func makeMenu() -> NSMenu {
         rebuildMenu()
         return menu
     }
 
+    func attachMenu(to item: NSMenuItem) {
+        let recentMenu = makeMenu()
+        guard submenuOwner !== item else { return }
+        submenuOwner?.submenu = nil
+        item.submenu = recentMenu
+        submenuOwner = item
+    }
+
     /// Called automatically right before the menu gets displayed.
     func menuNeedsUpdate(_ menu: NSMenu) {
         rebuildMenu()
+        Task { await manager.validate() }
     }
 
     // Rebuilds the whole “Open Recent” menu.
@@ -41,12 +63,12 @@ final class RecentProjectsMenu: NSObject, NSMenuDelegate {
 
         addFileURLs(
             to: menu,
-            fileURLs: RecentsStore.recentDirectoryURLs().prefix(10)
+            fileURLs: manager.recentDirectoryURLs().prefix(10)
         )
         menu.addItem(.separator())
         addFileURLs(
             to: menu,
-            fileURLs: RecentsStore.recentFileURLs().prefix(10)
+            fileURLs: manager.recentFileURLs().prefix(10)
         )
         menu.addItem(.separator())
 
@@ -108,7 +130,7 @@ final class RecentProjectsMenu: NSObject, NSMenuDelegate {
     private func alternateTitle(for projectPath: URL) -> NSAttributedString {
         let parentPath = projectPath
             .deletingLastPathComponent()
-            .path(percentEncoded: false)
+            .path
             .abbreviatingWithTildeInPath()
         let alternateTitle = NSMutableAttributedString(
             string: projectPath.lastPathComponent + " ",
@@ -126,16 +148,12 @@ final class RecentProjectsMenu: NSObject, NSMenuDelegate {
     @objc
     private func recentProjectItemClicked(_ sender: NSMenuItem) {
         guard let projectURL = sender.representedObject as? URL else { return }
-        DreamderDocumentController.shared.openDocument(
-            withContentsOf: projectURL,
-            display: true,
-            completionHandler: { _, _, _ in }
-        )
+        open(projectURL)
     }
 
     @objc
     private func clearMenuItemClicked(_ sender: NSMenuItem) {
-        RecentsStore.clearList()
+        manager.clear()
         rebuildMenu()
     }
 }

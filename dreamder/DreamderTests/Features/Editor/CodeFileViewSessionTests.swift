@@ -3,7 +3,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct CodeFileViewSessionTests {
     private func makeEditor(_ name: String = "file.swift") -> EditorInstance {
         EditorInstance(workspace: nil, file: CEWorkspaceFile(url: URL(filePath: "/fake/dir/\(name)")))
@@ -67,15 +67,21 @@ struct CodeFileViewSessionTests {
     func sessionOwnsOneOfEachTextViewCoordinator() {
         let session = CodeFileViewSession(editorInstance: makeEditor(), codeFile: CodeFileDocument())
 
-        #expect(session.coordinators.count == 8)
+        #expect(session.coordinators.count == 13)
         #expect(session.coordinators.filter { $0 is GitBlameCoordinator }.count == 1)
         #expect(session.coordinators.filter { $0 is EditorContextMenuCoordinator }.count == 1)
         #expect(session.coordinators.filter { $0 is GitGutterCoordinator }.count == 1)
         #expect(session.coordinators.filter { $0 is DiagnosticHighlightCoordinator }.count == 1)
         #expect(session.coordinators.filter { $0 is InlayHintCoordinator }.count == 1)
+        #expect(session.coordinators.filter { $0 is OnTypeFormattingCoordinator }.count == 1)
+        #expect(session.coordinators.filter { $0 is SelectionRangeCoordinator }.count == 1)
+        #expect(session.coordinators.filter { $0 is FoldingCoordinator }.count == 1)
+        #expect(session.coordinators.filter { $0 is SignatureHelpCoordinator }.count == 1)
+        #expect(session.coordinators.filter { $0 is RecentLocationsCoordinator }.count == 1)
         #expect(session.coordinators.filter { $0 is IndentGuideCoordinator }.count == 1)
         #expect(session.coordinators.filter { $0 is EditorBackgroundCoordinator }.count == 1)
         #expect(session.coordinators.filter { $0 is CodeFileViewControllerReference }.count == 1)
+        #expect(session.coordinators.contains { $0 is MarkdownTypingCoordinator } == false)
     }
 
     @Test

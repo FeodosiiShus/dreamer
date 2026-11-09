@@ -14,6 +14,7 @@ nonisolated struct AsyncFileIterator: AsyncSequence, AsyncIteratorProtocol {
     typealias Element = (TextFile, Int)
 
     let fileURLs: [URL]
+    let isIndexable: @Sendable (URL) -> Bool
     var currentIdx = 0
 
     mutating func next() async -> Element? {
@@ -27,7 +28,7 @@ nonisolated struct AsyncFileIterator: AsyncSequence, AsyncIteratorProtocol {
 
         while currentIdx < fileURLs.count {
             let fileURL = fileURLs[currentIdx]
-            if let content = try? String(contentsOf: fileURL, encoding: .utf8) {
+            if isIndexable(fileURL), let content = try? String(contentsOf: fileURL, encoding: .utf8) {
                 return (TextFile(url: fileURL.standardizedFileURL, text: content), currentIdx)
             }
             currentIdx += 1

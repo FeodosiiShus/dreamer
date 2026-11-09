@@ -4,7 +4,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct WorkspaceWindowLayoutStabilityTests {
     @MainActor
     private final class Harness {

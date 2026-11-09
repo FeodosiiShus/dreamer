@@ -7,6 +7,36 @@
 
 import SwiftUI
 
+final class FindOutlineView: NSOutlineView {
+    static let returnKeyCodes: Set<UInt16> = [36, 76]
+
+    var onReturn: (NSEvent.ModifierFlags) -> Void = { _ in }
+
+    override func keyDown(with event: NSEvent) {
+        guard Self.returnKeyCodes.contains(event.keyCode) else {
+            super.keyDown(with: event)
+            return
+        }
+        onReturn(event.modifierFlags.intersection(.deviceIndependentFlagsMask))
+    }
+
+    override func moveDown(_ sender: Any?) {
+        moveSelection(by: 1)
+    }
+
+    override func moveUp(_ sender: Any?) {
+        moveSelection(by: -1)
+    }
+
+    private func moveSelection(by delta: Int) {
+        guard numberOfRows > 0 else { return }
+        let origin = selectedRow >= 0 ? selectedRow : (delta > 0 ? -1 : numberOfRows)
+        let target = min(max(origin + delta, 0), numberOfRows - 1)
+        selectRowIndexes(IndexSet([target]), byExtendingSelection: false)
+        scrollRowToVisible(target)
+    }
+}
+
 final class FindNavigatorListViewController: NSViewController {
 
     public var workspace: WorkspaceDocument
@@ -14,8 +44,8 @@ final class FindNavigatorListViewController: NSViewController {
 
     private var searchItems: [SearchResultModel] = []
     private let scrollView = NSScrollView()
-    private let outlineView = NSOutlineView()
-    private var collapsedRows: Set<Int> = []
+    private let outlineView = FindOutlineView()
+    private var isRestoringSelection = false
 
     var rowHeight: Double = Double(Islands.listRowHeight) {
         didSet {
@@ -31,6 +61,9 @@ final class FindNavigatorListViewController: NSViewController {
 
         self.outlineView.dataSource = self
         self.outlineView.delegate = self
+        self.outlineView.onReturn = { [weak self] modifiers in
+            self?.handleReturn(modifiers)
+        }
         self.outlineView.headerView = nil
         self.outlineView.lineBreakMode = .byTruncatingTail
         self.outlineView.style = .plain
@@ -64,6 +97,10 @@ final class FindNavigatorListViewController: NSViewController {
 
     override var acceptsFirstResponder: Bool { true }
 
+    private var state: WorkspaceDocument.SearchState? {
+        workspace.searchState
+    }
+
     /// Sets the search items for the view without loading anything.
     /// - Parameter searchItems: The search items to set.
     public func setSearchResults(_ searchItems: [SearchResultModel]) {
@@ -74,6 +111,8 @@ final class FindNavigatorListViewController: NSViewController {
     /// - Parameter searchItems: The search items to set.
     public func updateNewSearchResults(_ searchItems: [SearchResultModel]) {
         self.searchItems = searchItems
+        isRestoringSelection = true
+        defer { isRestoringSelection = false }
         outlineView.reloadData()
         outlineView.expandItem(nil, expandChildren: true)
 
@@ -82,9 +121,58 @@ final class FindNavigatorListViewController: NSViewController {
         }
     }
 
+    func focusResults() {
+        guard outlineView.numberOfRows > 0 else { return }
+        view.window?.makeFirstResponder(outlineView)
+        if outlineView.selectedRow < 0 {
+            outlineView.selectRowIndexes(IndexSet([0]), byExtendingSelection: false)
+        }
+    }
+
+    func openSelection(focusEditor: Bool) {
+        guard let item = outlineView.item(atRow: outlineView.selectedRow) else { return }
+        open(item)
+        if focusEditor {
+            let workspace = workspace
+            Task { await FindNavigatorOpener.focusEditor(in: workspace) }
+        }
+    }
+
+    func handleReturn(_ modifiers: NSEvent.ModifierFlags) {
+        if modifiers.contains([.option, .shift]) {
+            replaceAll()
+        } else if modifiers.contains(.command), state?.selectedMode.isReplaceMode == true {
+            replaceSelected()
+        } else {
+            openSelection(focusEditor: true)
+        }
+    }
+
+    private func replaceAll() {
+        guard let state else { return }
+        Task { await state.replaceAll() }
+    }
+
+    private func replaceSelected() {
+        guard let state else { return }
+        Task { await state.replaceSelected() }
+    }
+
+    private func open(_ item: Any) {
+        if let match = item as? SearchResultMatchModel {
+            FindNavigatorOpener.open(match, in: workspace)
+        } else if let result = item as? SearchResultModel {
+            FindNavigatorOpener.open(result.file, in: workspace)
+        }
+    }
+
     override func keyUp(with event: NSEvent) {
         if event.charactersIgnoringModifiers == String(NSEvent.SpecialKey.delete.unicodeScalar) {
-            deleteSelectedItem()
+            if let state, state.selectedMode.isReplaceMode {
+                state.toggleSkipSelected()
+            } else {
+                deleteSelectedItem()
+            }
         }
         super.keyUp(with: event)
     }
@@ -110,7 +198,7 @@ final class FindNavigatorListViewController: NSViewController {
                 searchItems.remove(at: parentIndex)
                 outlineView.removeItems(at: IndexSet([parentIndex]), inParent: nil)
             } else {
-                outlineView.removeItems(at: IndexSet([childIndex]), inParent: parent)
+                outlineView.reloadItem(parent, reloadChildren: true)
             }
         } else {
             let index = outlineView.childIndex(forItem: selectedItem)
@@ -180,42 +268,29 @@ extension FindNavigatorListViewController: NSOutlineViewDelegate {
         if let item = item as? SearchResultMatchModel {
             let frameRect = NSRect(x: 0, y: 0, width: tableColumn.width, height: outlineView.rowHeight)
             return FindNavigatorListMatchCell(frame: frameRect, matchItem: item)
-        } else {
-            let frameRect = NSRect(
-                x: 0,
-                y: 0,
-                width: tableColumn.width,
-                height: Islands.listRowHeight
-            )
-            let view = ProjectNavigatorTableViewCell(
-                frame: frameRect,
-                item: (item as? SearchResultModel)?.file,
-                isEditable: false
-            )
-            view.showsDisclosureGutter = false
-            return view
         }
+        let frameRect = NSRect(x: 0, y: 0, width: tableColumn.width, height: Islands.listRowHeight)
+        guard let result = item as? SearchResultModel else { return nil }
+        return FindNavigatorListFileCell(frame: frameRect, result: result, projectRoot: workspace.fileURL)
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
-        guard let outlineView = notification.object as? NSOutlineView else {
+        guard !isRestoringSelection, let outlineView = notification.object as? NSOutlineView else {
             return
         }
 
-        let selectedIndex = outlineView.selectedRow
-
-        if let item = outlineView.item(atRow: selectedIndex) as? SearchResultMatchModel {
-            let selectedMatch = self.selectedItem as? SearchResultMatchModel
-            if selectedItem == nil || selectedMatch != item {
-                self.selectedItem = item
-                workspace.editorManager?.openTab(item: item.file)
-            }
-        } else if let item = outlineView.item(atRow: selectedIndex) as? SearchResultModel {
-            let selectedFile = self.selectedItem as? SearchResultModel
-            if selectedItem == nil || selectedFile != item {
-                self.selectedItem = item
-                workspace.editorManager?.openTab(item: item.file)
-            }
+        let item = outlineView.item(atRow: outlineView.selectedRow)
+        let isNewSelection = (selectedItem as? AnyObject) !== (item as? AnyObject)
+        if let match = item as? SearchResultMatchModel {
+            state?.resultSelection = .match(match)
+            if isNewSelection { open(match) }
+            selectedItem = match
+        } else if let result = item as? SearchResultModel {
+            state?.resultSelection = .file(result)
+            if isNewSelection { open(result) }
+            selectedItem = result
+        } else {
+            state?.resultSelection = nil
         }
     }
 
@@ -250,7 +325,7 @@ extension FindNavigatorListViewController: NSOutlineViewDelegate {
             tempView.cell?.wraps = true
             tempView.cell?.usesSingleLineMode = false
             tempView.lineBreakMode = .byWordWrapping
-            tempView.maximumNumberOfLines = Settings.shared.preferences.general.findNavigatorDetail.rawValue
+            tempView.maximumNumberOfLines = FindNavigatorListMatchCell.maximumLines(for: matchItem)
             tempView.preferredMaxLayoutWidth = availableWidth
 
             var calculatedHeight = tempView.sizeThatFits(

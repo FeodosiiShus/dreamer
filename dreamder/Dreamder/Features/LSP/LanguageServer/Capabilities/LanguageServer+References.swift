@@ -9,19 +9,31 @@ import Foundation
 import LanguageServerProtocol
 
 extension LanguageServer {
-    /// Resolve project-wide references for the symbol denoted by the given text document position
     func requestFindReferences(
         for documentURI: String,
         _ position: Position,
         _ includeDeclaration: Bool = false
     ) async throws -> ReferenceResponse {
+        await flushPendingEdits(for: documentURI)
         do {
+            let cacheKey = CacheKey(
+                uri: documentURI,
+                requestType: "references",
+                position: position,
+                documentVersion: openFiles.documentVersion(for: documentURI),
+                extraData: includeDeclaration
+            )
+            if let cachedResponse: ReferenceResponse = lspCache.get(key: cacheKey, as: ReferenceResponse.self) {
+                return cachedResponse
+            }
             let params = ReferenceParams(
                 textDocument: TextDocumentIdentifier(uri: documentURI),
                 position: position,
                 includeDeclaration: includeDeclaration
             )
-            return try await lspInstance.references(params)
+            let response = try await lspInstance.references(params)
+            lspCache.set(key: cacheKey, value: response)
+            return response
         } catch {
             logger.warning("requestFindReferences: Error \(error)")
             throw error

@@ -3,7 +3,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct IntelliJIconTests {
     @Test(arguments: [
         ("main.swift", "fileTypes/swiftLang"),

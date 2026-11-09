@@ -1,4 +1,3 @@
-import Combine
 import Darwin
 import SwiftUI
 
@@ -85,32 +84,118 @@ struct LanguageServerRowModel: Identifiable, Equatable {
     }
 }
 
+@MainActor
+@Observable
+final class LanguageServicesModel {
+    @ObservationIgnored private let lspService: LSPService
+    private(set) var expandedLogs: Set<String> = []
+    private(set) var expandedMessages: Set<String> = []
+    private(set) var memory: [pid_t: UInt64] = [:]
+
+    init(lspService: LSPService) {
+        self.lspService = lspService
+    }
+
+    func rows(workspacePath: String?) -> [LanguageServerRowModel] {
+        LanguageServerRowModel.rows(
+            states: lspService.serverStates,
+            clients: lspService.languageClients,
+            workspacePath: workspacePath
+        )
+    }
+
+    func logMessages(for key: LSPService.ClientKey) -> [String]? {
+        lspService.languageClients[key].map { $0.logContainer.logs.suffix(200).map(\.message) }
+    }
+
+    func refreshMemory(workspacePath: String?) {
+        let megabyte: UInt64 = 1_048_576
+        var updated: [pid_t: UInt64] = [:]
+        for row in rows(workspacePath: workspacePath) where row.status == .running {
+            guard let pid = row.pid, let bytes = LanguageServerRowModel.memoryFootprint(pid: pid) else { continue }
+            updated[pid] = (bytes + megabyte / 2) / megabyte * megabyte
+        }
+        if updated != memory {
+            memory = updated
+        }
+    }
+
+    func trackMemory(workspacePath: String?, every interval: Duration) async {
+        while !Task.isCancelled {
+            refreshMemory(workspacePath: workspacePath)
+            try? await Task.sleep(for: interval)
+        }
+    }
+
+    func restart(_ keys: [LSPService.ClientKey]) async {
+        for key in keys {
+            try? await lspService.restartServer(key)
+        }
+    }
+
+    func stop(_ key: LSPService.ClientKey) async {
+        try? await lspService.stopServer(forLanguage: key.languageId, workspacePath: key.workspacePath)
+    }
+
+    func hideAction(_ manager: ToolWindowManager) -> () -> Void {
+        { manager.hide(.languageServices) }
+    }
+
+    func restartAllAction(workspacePath: String?) -> () -> Void {
+        {
+            let keys = self.rows(workspacePath: workspacePath).map(\.key)
+            Task { await self.restart(keys) }
+        }
+    }
+
+    func stopAllAction() -> () -> Void {
+        { Task { await self.lspService.stopAllServers() } }
+    }
+
+    func toggleMessageAction(_ id: String) -> () -> Void {
+        { self.expandedMessages.formSymmetricDifference([id]) }
+    }
+
+    func toggleLogsAction(_ id: String) -> () -> Void {
+        { self.expandedLogs.formSymmetricDifference([id]) }
+    }
+
+    func restartAction(_ key: LSPService.ClientKey) -> () -> Void {
+        { Task { await self.restart([key]) } }
+    }
+
+    func stopAction(_ key: LSPService.ClientKey) -> () -> Void {
+        { Task { await self.stop(key) } }
+    }
+}
+
 struct LanguageServicesToolWindow: View {
     @Environment(WorkspaceDocument.self) private var workspace
     @Environment(ToolWindowManager.self) private var toolWindowManager
 
-    @Service private var lspService: LSPService
+    @State private var model: LanguageServicesModel
 
-    @State private var expandedLogs: Set<String> = []
-    @State private var expandedMessages: Set<String> = []
-    @State private var memory: [pid_t: UInt64] = [:]
+    private let memoryInterval: Duration
 
-    private let memoryTimer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
-
-    init() {}
+    init(
+        model: LanguageServicesModel = LanguageServicesModel(lspService: .shared),
+        memoryInterval: Duration = .seconds(2)
+    ) {
+        _model = State(initialValue: model)
+        self.memoryInterval = memoryInterval
+    }
 
     private var workspacePath: String? {
         workspace.fileURL?.absolutePath
     }
 
     var body: some View {
+        let rows = model.rows(workspacePath: workspacePath)
         VStack(spacing: 0) {
             ToolWindowHeader(title: "Language Services") {
                 EmptyView()
             } actions: {
-                ToolWindowActionButton(icon: "general/hide", help: "Hide") {
-                    toolWindowManager.hide(.languageServices)
-                }
+                ToolWindowActionButton(icon: "general/hide", help: "Hide", action: model.hideAction(toolWindowManager))
             }
             if rows.isEmpty {
                 Text("No language servers")
@@ -119,20 +204,20 @@ struct LanguageServicesToolWindow: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HStack(spacing: 8) {
-                    LanguageServicesButton(icon: "run/restart", title: "Restart All Servers") {
-                        restartAll()
-                    }
-                    LanguageServicesButton(icon: "run/stop", title: "Stop All Servers") {
-                        Task { await lspService.stopAllServers() }
-                    }
-                    .disabled(!rows.contains { $0.canStop })
+                    LanguageServicesButton(
+                        icon: "run/restart",
+                        title: "Restart All Servers",
+                        action: model.restartAllAction(workspacePath: workspacePath)
+                    )
+                    LanguageServicesButton(icon: "run/stop", title: "Stop All Servers", action: model.stopAllAction())
+                        .disabled(!rows.contains { $0.canStop })
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        Text(workspace.fileURL?.lastPathComponent ?? "Project")
+                        Text(Self.projectTitle(of: workspace.fileURL))
                             .font(Islands.smallFont.weight(.semibold))
                             .foregroundStyle(Islands.secondaryForeground)
                             .padding(.horizontal, 12)
@@ -145,32 +230,11 @@ struct LanguageServicesToolWindow: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            refreshMemory()
-        }
-        .onReceive(memoryTimer) { _ in
-            refreshMemory()
-        }
+        .task { await model.trackMemory(workspacePath: workspacePath, every: memoryInterval) }
     }
 
-    private func refreshMemory() {
-        let megabyte: UInt64 = 1_048_576
-        var updated: [pid_t: UInt64] = [:]
-        for row in rows where row.status == .running {
-            guard let pid = row.pid, let bytes = LanguageServerRowModel.memoryFootprint(pid: pid) else { continue }
-            updated[pid] = (bytes + megabyte / 2) / megabyte * megabyte
-        }
-        if updated != memory {
-            memory = updated
-        }
-    }
-
-    private var rows: [LanguageServerRowModel] {
-        LanguageServerRowModel.rows(
-            states: lspService.serverStates,
-            clients: lspService.languageClients,
-            workspacePath: workspacePath
-        )
+    static func projectTitle(of fileURL: URL?) -> String {
+        fileURL?.lastPathComponent ?? "Project"
     }
 
     private func serverRow(_ row: LanguageServerRowModel) -> some View {
@@ -190,70 +254,48 @@ struct LanguageServicesToolWindow: View {
                         .font(Islands.smallFont)
                         .foregroundStyle(Islands.secondaryForeground)
                 }
-                if let pid = row.pid, row.status == .running, let bytes = memory[pid] {
+                if let pid = row.pid, row.status == .running, let bytes = model.memory[pid] {
                     Text(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .memory))
                         .font(Islands.smallFont)
                         .foregroundStyle(Islands.secondaryForeground)
                 }
                 Spacer(minLength: 8)
                 if row.message != nil {
-                    LanguageServicesButton(icon: "status/error", title: "Message") {
-                        toggle(row.id, in: &expandedMessages)
-                    }
-                    .help("Show Server Message")
+                    LanguageServicesButton(
+                        icon: "status/error",
+                        title: "Message",
+                        action: model.toggleMessageAction(row.id)
+                    )
+                        .help("Show Server Message")
                 }
                 if row.hasLogs {
-                    LanguageServicesButton(icon: "general/listFiles", title: "Logs") {
-                        toggle(row.id, in: &expandedLogs)
-                    }
-                    .help("Show Server Logs")
+                    LanguageServicesButton(
+                        icon: "general/listFiles",
+                        title: "Logs",
+                        action: model.toggleLogsAction(row.id)
+                    )
+                        .help("Show Server Logs")
                 }
-                LanguageServicesButton(icon: "run/restart", title: "Restart") {
-                    Task { try? await lspService.restartServer(row.key) }
-                }
-                .help("Restart \(row.name)")
+                LanguageServicesButton(icon: "run/restart", title: "Restart", action: model.restartAction(row.key))
+                    .help("Restart \(row.name)")
                 if row.canStop {
-                    LanguageServicesButton(icon: "run/stop", title: "Stop") {
-                        Task {
-                            try? await lspService.stopServer(
-                                forLanguage: row.key.languageId,
-                                workspacePath: row.key.workspacePath
-                            )
-                        }
-                    }
-                    .help("Stop \(row.name)")
+                    LanguageServicesButton(icon: "run/stop", title: "Stop", action: model.stopAction(row.key))
+                        .help("Stop \(row.name)")
                 }
             }
-            if let message = row.message, expandedMessages.contains(row.id) {
+            if let message = row.message, model.expandedMessages.contains(row.id) {
                 Text(message)
                     .font(Islands.smallFont)
                     .foregroundStyle(Color(hex: 0xE55765))
                     .textSelection(.enabled)
             }
-            if expandedLogs.contains(row.id), let client = lspService.languageClients[row.key] {
-                LanguageServerLogPreview(messages: client.logContainer.logs.suffix(200).map(\.message))
+            if model.expandedLogs.contains(row.id), let messages = model.logMessages(for: row.key) {
+                LanguageServerLogPreview(messages: messages)
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .accessibilityIdentifier("LanguageServerRow-\(row.key.languageId.rawValue)")
-    }
-
-    private func toggle(_ id: String, in set: inout Set<String>) {
-        if set.contains(id) {
-            set.remove(id)
-        } else {
-            set.insert(id)
-        }
-    }
-
-    private func restartAll() {
-        let keys = rows.map(\.key)
-        Task {
-            for key in keys {
-                try? await lspService.restartServer(key)
-            }
-        }
     }
 }
 
@@ -308,6 +350,10 @@ struct LanguageServicesButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
+        .onHover(perform: setHovering)
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
     }
 }

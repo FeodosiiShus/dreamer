@@ -371,4 +371,64 @@ struct SplitLayoutMathTests {
         #expect(abs(weights[1] - 0.25) < Self.tolerance)
         #expect(abs(weights[2] - 0.5625) < Self.tolerance)
     }
+
+    @Test
+    func paneBoundsIgnoreNonFiniteLimits() {
+        #expect(SplitLayoutPane(minLength: .infinity).lowerBound == 0)
+        #expect(SplitLayoutPane(minLength: .nan).lowerBound == 0)
+        #expect(SplitLayoutPane(minLength: -5).lowerBound == 0)
+        #expect(SplitLayoutPane(minLength: 30, maxLength: .nan).upperBound == .infinity)
+        #expect(SplitLayoutPane(minLength: 30, maxLength: 10).upperBound == 30)
+    }
+
+    @Test
+    func lengthsOfAnotherCountKeepTheCurrentWeights() {
+        let math = twoPanes(first: 0.25)
+
+        #expect(math.weights(forLengths: [100]) == [0.25, 0.75])
+        #expect(math.weights(forLengths: [0, 0]) == [0.25, 0.75])
+    }
+
+    @Test
+    func weightsOfCollapsedNeighboursFallBackToTheVisibleShare() {
+        let math = SplitLayoutMath(panes: [
+            SplitLayoutPane(weight: 0),
+            SplitLayoutPane(weight: 1, isCollapsed: true)
+        ])
+
+        let weights = math.weights(forLengths: [100, 0])
+
+        #expect(weights.count == 2)
+        #expect(abs(weights.reduce(0, +) - 1) < Self.tolerance)
+    }
+
+    @Test
+    func resizeKeepsWeightsForUnusableInput() {
+        let math = twoPanes(first: 0.25, minimum: 0)
+
+        #expect(math.resize(lengths: [100], newLength: 200, dividerThickness: 1) == [0.25, 0.75])
+        #expect(math.resize(lengths: [100, 100], newLength: .infinity, dividerThickness: 1) == [0.25, 0.75])
+        #expect(math.resize(lengths: [100, 100], newLength: 1, dividerThickness: 1) == [0.25, 0.75])
+        let single = SplitLayoutMath(panes: [SplitLayoutPane()])
+        #expect(single.resize(lengths: [100], newLength: 200, dividerThickness: 1) == [1])
+    }
+
+    @Test
+    func resizeSharesGrowthEquallyWhenEveryPaneIsEmpty() {
+        let math = twoPanes(first: 0.5, minimum: 0)
+
+        let weights = math.resize(lengths: [0, 0], newLength: 101, dividerThickness: 1)
+
+        #expect(abs(weights[0] - 0.5) < Self.tolerance)
+        #expect(abs(weights[1] - 0.5) < Self.tolerance)
+    }
+
+    @Test
+    func nonFiniteDividerThicknessCountsAsZero() {
+        let math = twoPanes(first: 0.5, minimum: 0)
+
+        #expect(math.distribute(length: 100, dividerThickness: .infinity) == [50, 50])
+        #expect(math.distribute(length: 100, dividerThickness: .nan) == [50, 50])
+        #expect(math.distribute(length: 100, dividerThickness: -4) == [50, 50])
+    }
 }

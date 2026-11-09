@@ -9,12 +9,11 @@ import Foundation
 
 final class NPMPackageManager: PackageManagerProtocol {
     private let installationDirectory: URL
+    private let locale: Locale
 
-    let shellClient: ShellClient
-
-    init(installationDirectory: URL) {
+    init(installationDirectory: URL, locale: Locale = .current) {
         self.installationDirectory = installationDirectory
-        self.shellClient = .live()
+        self.locale = locale
     }
 
     // MARK: - PackageManagerProtocol
@@ -97,18 +96,14 @@ final class NPMPackageManager: PackageManagerProtocol {
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? []
 
-        var packageList = ([qualifiedSourceName] + otherPackages)
-
-        // FIXME: This will break with localization. Use real Foundation APIs for pluralizing lists.
+        let packageList = [qualifiedSourceName] + otherPackages
         let plural = packageList.count > 1
-        if plural, var last = packageList.last {
-            // Oxford comma
-            last = "and " + last
-            packageList[packageList.count - 1] = last
-        }
-        let packagesDescription = packageList.joined(separator: ", ")
 
-        let sSuffix = packageList.count > 1 ? "s" : ""
+        let listFormatter = ListFormatter()
+        listFormatter.locale = locale
+        let packagesDescription = listFormatter.string(from: packageList) ?? packageList.joined(separator: ", ")
+
+        let sSuffix = plural ? "s" : ""
         let suffix = plural ? "these packages" : "this package"
 
         return PackageManagerInstallStep(

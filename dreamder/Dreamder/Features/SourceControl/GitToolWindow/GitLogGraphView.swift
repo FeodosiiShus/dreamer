@@ -15,10 +15,10 @@ struct GitLogGraphRowView: View {
     let laneWidth: CGFloat
     let rowHeight: CGFloat
 
-    private let lineWidth: CGFloat = 1.5
-    private let circleRadius: CGFloat = 3.5
-    private let arrowLength: CGFloat = 0.3
-    private let arrowCosSquared: CGFloat = 0.7
+    private var lineWidth: CGFloat { 1.5 }
+    private var circleRadius: CGFloat { 3.5 }
+    private var arrowLength: CGFloat { 0.3 }
+    private var arrowCosSquared: CGFloat { 0.7 }
 
     var body: some View {
         Canvas { context, size in

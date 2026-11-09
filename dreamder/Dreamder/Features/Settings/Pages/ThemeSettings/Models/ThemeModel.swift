@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import os
 
 /// The Theme View Model. Accessible via the singleton "``ThemeModel/shared``".
 @Observable
@@ -20,13 +21,25 @@ final class ThemeModel {
     /// Default instance of the `FileManager`
     let filemanager = FileManager.default
 
-    /// The base folder url `~/Library/Application Support/Dreamder/`
-    private var baseURL: URL {
-        filemanager.homeDirectoryForCurrentUser.appending(path: "Library/Application Support/Dreamder")
+    static let logger = Logger(subsystem: "dev.dreamder.Dreamder", category: "ThemeModel")
+
+    static var themeFileTypes: [UTType] {
+        [UTType(filenameExtension: "cetheme")].compactMap(\.self)
     }
 
-    var bundledThemesURL: URL? {
-        Bundle.main.resourceURL?.appending(path: "DefaultThemes", directoryHint: .isDirectory) ?? nil
+    private let baseURL: URL
+
+    let bundledThemesURL: URL?
+
+    @ObservationIgnored
+    let preferencesStore: Settings
+
+    static var defaultBaseURL: URL {
+        Settings.defaultBaseURL()
+    }
+
+    static var defaultBundledThemesURL: URL? {
+        Bundle.main.resourceURL?.appending(path: "DefaultThemes", directoryHint: .isDirectory)
     }
 
     /// The URL of the `Themes` folder
@@ -51,9 +64,8 @@ final class ThemeModel {
     /// Used for auto-switching theme to match macOS system appearance
     var selectedLightTheme: Theme? {
         didSet {
-            DispatchQueue.main.async {
-                Settings.shared
-                    .preferences.theme.selectedLightTheme = self.selectedLightTheme?.name ?? "Broken"
+            Task {
+                preferencesStore.preferences.theme.selectedLightTheme = selectedLightTheme?.name ?? "Broken"
             }
         }
     }
@@ -62,9 +74,8 @@ final class ThemeModel {
     /// Used for auto-switching theme to match macOS system appearance
     var selectedDarkTheme: Theme? {
         didSet {
-            DispatchQueue.main.async {
-                Settings.shared
-                    .preferences.theme.selectedDarkTheme = self.selectedDarkTheme?.name ?? "Broken"
+            Task {
+                preferencesStore.preferences.theme.selectedDarkTheme = selectedDarkTheme?.name ?? "Broken"
             }
         }
     }
@@ -81,8 +92,8 @@ final class ThemeModel {
     /// The currently selected ``Theme``.
     var selectedTheme: Theme? {
         didSet {
-            DispatchQueue.main.async {
-                Settings[\.theme].selectedTheme = self.selectedTheme?.name
+            Task {
+                preferencesStore.preferences.theme.selectedTheme = selectedTheme?.name
             }
         }
     }
@@ -99,11 +110,23 @@ final class ThemeModel {
         themes.filter { $0.appearance == .light }
     }
 
-    private init() {
+    @ObservationIgnored
+    let filePanels: any FilePanelPresenting
+
+    init(
+        baseURL: URL = ThemeModel.defaultBaseURL,
+        bundledThemesURL: URL? = ThemeModel.defaultBundledThemesURL,
+        preferencesStore: Settings = .shared,
+        filePanels: any FilePanelPresenting = SystemFilePanels()
+    ) {
+        self.baseURL = baseURL
+        self.bundledThemesURL = bundledThemesURL
+        self.preferencesStore = preferencesStore
+        self.filePanels = filePanels
         do {
             try loadThemes()
         } catch {
-            print(error)
+            Self.logger.error("Failed to load themes: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -122,16 +145,6 @@ final class ThemeModel {
             self.themes[index] = detailsTheme
             self.save(self.themes[index])
         }
-    }
-
-    /// Initialize to the app's current appearance.
-    var selectedAppearance: ThemeSettingsAppearances {
-        NSApp.effectiveAppearance.name == .darkAqua ? .dark : .light
-    }
-
-    enum ThemeSettingsAppearances: String, CaseIterable {
-        case light = "Light Appearance"
-        case dark = "Dark Appearance"
     }
 
     func getThemeActive(_ theme: Theme) -> Bool {
@@ -153,52 +166,115 @@ final class ThemeModel {
 
     func exportTheme(_ theme: Theme) {
         guard let themeFileURL = theme.fileURL else {
-            print("Theme file URL not found.")
+            Self.logger.error("Theme file URL not found.")
             return
         }
 
-        let savePanel = NSSavePanel()
-        savePanel.allowedContentTypes = [UTType(filenameExtension: "cetheme") ?? .data]
-        savePanel.nameFieldStringValue = theme.displayName
-        savePanel.prompt = "Export"
-        savePanel.canCreateDirectories = true
-
-        savePanel.begin { response in
-            if response == .OK, let destinationURL = savePanel.url {
-                do {
-                    try FileManager.default.copyItem(at: themeFileURL, to: destinationURL)
-                    print("Theme exported successfully to \(destinationURL.path)")
-                } catch {
-                    print("Failed to export theme: \(error.localizedDescription)")
-                }
-            }
+        let request = SavePanelRequest(
+            prompt: "Export",
+            nameFieldStringValue: theme.displayName,
+            allowedContentTypes: Self.themeFileTypes,
+            canCreateDirectories: true
+        )
+        guard let destinationURL = filePanels.chooseSaveLocation(request) else { return }
+        do {
+            try FileManager.default.copyItem(at: themeFileURL, to: destinationURL)
+            Self.logger.info("Theme exported successfully to \(destinationURL.path, privacy: .public)")
+        } catch {
+            Self.logger.error("Failed to export theme: \(error.localizedDescription, privacy: .public)")
         }
     }
 
     func exportAllCustomThemes() {
-            let openPanel = NSOpenPanel()
-            openPanel.prompt = "Export"
-            openPanel.canChooseFiles = false
-            openPanel.canChooseDirectories = true
-            openPanel.allowsMultipleSelection = false
+        let request = OpenPanelRequest(
+            prompt: "Export",
+            canChooseFiles: false,
+            canChooseDirectories: true
+        )
+        guard let exportDirectory = filePanels.chooseFiles(request).first else { return }
+        let customThemes = themes.filter { !$0.isBundled }
 
-            openPanel.begin { result in
-                if result == .OK, let exportDirectory = openPanel.url {
-                    let customThemes = self.themes.filter { !$0.isBundled }
+        for theme in customThemes {
+            guard let sourceURL = theme.fileURL else { continue }
 
-                    for theme in customThemes {
-                        guard let sourceURL = theme.fileURL else { continue }
+            let destinationURL = exportDirectory.appending(path: "\(theme.displayName).cetheme")
 
-                        let destinationURL = exportDirectory.appending(path: "\(theme.displayName).cetheme")
-
-                        do {
-                            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
-                            print("Exported \(theme.displayName) to \(destinationURL.path)")
-                        } catch {
-                            print("Failed to export \(theme.displayName): \(error.localizedDescription)")
-                        }
-                    }
-                }
+            do {
+                try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+                Self.logger.info("Exported \(theme.displayName, privacy: .public) to \(destinationURL.path, privacy: .public)")
+            } catch {
+                Self.logger.error("Failed to export \(theme.displayName, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
+    }
+
+    func duplicateSelectedTheme() {
+        if let selectedTheme, let fileURL = selectedTheme.fileURL {
+            duplicate(fileURL)
+        }
+    }
+
+    func matchAppearanceChanged(to matchAppearance: Bool, colorScheme: ColorScheme) {
+        if matchAppearance {
+            selectedTheme = colorScheme == .dark ? selectedDarkTheme : selectedLightTheme
+        } else {
+            selectedTheme = themes.first { $0.name == preferencesStore.preferences.theme.selectedTheme }
+        }
+    }
+
+    func showDetails(of theme: Theme) {
+        detailsTheme = theme
+        detailsIsPresented = true
+    }
+
+    func commitDetails(_ newValue: Theme, at index: Int, editing theme: Theme) {
+        guard detailsIsPresented else { return }
+        themes[index] = newValue
+        save(newValue)
+        if preferencesStore.preferences.theme.selectedTheme == theme.name {
+            activateTheme(newValue)
+        }
+    }
+
+    func scheduleAddingReset(after delay: TimeInterval = 1.0) {
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            self?.isAdding = false
+        }
+    }
+
+    func beginDuplicating(_ theme: Theme) -> Theme? {
+        guard let fileURL = theme.fileURL else { return nil }
+        duplicate(fileURL)
+        return theme
+    }
+
+    func finishDetails(_ theme: Theme) {
+        if !theme.isBundled {
+            rename(to: theme.displayName, theme: theme)
+        }
+    }
+
+    func cancelDetailsEditing(_ theme: Theme, duplicatingTheme: Theme?, deleteDelay: TimeInterval = 1.0) -> Bool {
+        if isAdding {
+            if let previousTheme {
+                activateTheme(previousTheme)
+            }
+            if let duplicatingTheme {
+                detailsTheme = duplicatingTheme
+                delete(theme)
+            } else {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(deleteDelay))
+                    self?.delete(theme)
+                }
+            }
+        } else {
+            cancelDetails(theme)
+        }
+
+        guard duplicatingTheme != nil else { return true }
+        isAdding = false
+        return false
+    }
 }

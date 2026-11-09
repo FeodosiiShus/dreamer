@@ -55,26 +55,23 @@ struct MergeRevisionsView: View {
 
             ToolWindowActionButton(
                 icon: "diff/applyNotConflictsLeft",
-                help: "Apply non-conflicting changes from the left"
-            ) {
-                model.applyNonConflicting(.left)
-            }
+                help: "Apply non-conflicting changes from the left",
+                action: applyLeft
+            )
             .disabled(!model.canApplyNonConflicting(.left))
             .opacity(model.canApplyNonConflicting(.left) ? enabledOpacity : disabledOpacity)
             ToolWindowActionButton(
                 icon: "diff/applyNotConflicts",
-                help: "Apply all non-conflicting changes"
-            ) {
-                model.applyNonConflicting(.all)
-            }
+                help: "Apply all non-conflicting changes",
+                action: applyAll
+            )
             .disabled(!model.canApplyNonConflicting(.all))
             .opacity(model.canApplyNonConflicting(.all) ? enabledOpacity : disabledOpacity)
             ToolWindowActionButton(
                 icon: "diff/applyNotConflictsRight",
-                help: "Apply non-conflicting changes from the right"
-            ) {
-                model.applyNonConflicting(.right)
-            }
+                help: "Apply non-conflicting changes from the right",
+                action: applyRight
+            )
             .disabled(!model.canApplyNonConflicting(.right))
             .opacity(model.canApplyNonConflicting(.right) ? enabledOpacity : disabledOpacity)
 
@@ -155,9 +152,7 @@ struct MergeRevisionsView: View {
                 scrollSync: scrollSync,
                 paneID: paneID,
                 onChip: handle,
-                onTextChange: { text in
-                    model.userEditedResult(text)
-                }
+                onTextChange: model.userEditedResult
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -170,45 +165,21 @@ struct MergeRevisionsView: View {
                     .controlSize(.small)
             }
             Spacer(minLength: 8)
-            Button("Accept Left") {
-                Task {
-                    if await model.requestAcceptSide(.yours, window: NSApp.keyWindow) {
-                        onClose()
-                    }
-                }
-            }
-            .disabled(!model.canAcceptSide)
-            Button("Accept Right") {
-                Task {
-                    if await model.requestAcceptSide(.theirs, window: NSApp.keyWindow) {
-                        onClose()
-                    }
-                }
-            }
-            .disabled(!model.canAcceptSide)
-            Button("Cancel") {
-                Task {
-                    if await model.requestCancel(window: NSApp.keyWindow) {
-                        onClose()
-                    }
-                }
-            }
-            .keyboardShortcut(.cancelAction)
-            Button("Apply") {
-                Task {
-                    if await model.requestApply(window: NSApp.keyWindow) {
-                        onClose()
-                    }
-                }
-            }
-            .disabled(!model.canApply)
-            .keyboardShortcut(.defaultAction)
+            Button("Accept Left", action: acceptLeft)
+                .disabled(!model.canAcceptSide)
+            Button("Accept Right", action: acceptRight)
+                .disabled(!model.canAcceptSide)
+            Button("Cancel", action: cancel)
+                .keyboardShortcut(.cancelAction)
+            Button("Apply", action: apply)
+                .disabled(!model.canApply)
+                .keyboardShortcut(.defaultAction)
         }
         .padding(.horizontal, 16)
         .frame(height: 52)
     }
 
-    private func handle(_ chip: MergePaneChip) {
+    func handle(_ chip: MergePaneChip) {
         switch chip.kind {
         case .acceptLeft:
             model.resolve(chip.blockID, with: .left)
@@ -216,6 +187,43 @@ struct MergeRevisionsView: View {
             model.resolve(chip.blockID, with: .right)
         case .ignore:
             model.resolve(chip.blockID, with: .ignored)
+        }
+    }
+
+    func applyLeft() {
+        model.applyNonConflicting(.left)
+    }
+
+    func applyAll() {
+        model.applyNonConflicting(.all)
+    }
+
+    func applyRight() {
+        model.applyNonConflicting(.right)
+    }
+
+    func acceptLeft() {
+        finish { await model.requestAcceptSide(.yours, window: NSApp.keyWindow) }
+    }
+
+    func acceptRight() {
+        finish { await model.requestAcceptSide(.theirs, window: NSApp.keyWindow) }
+    }
+
+    func cancel() {
+        finish { await model.requestCancel(window: NSApp.keyWindow) }
+    }
+
+    func apply() {
+        finish { await model.requestApply(window: NSApp.keyWindow) }
+    }
+
+    private func finish(_ request: @escaping @MainActor () async -> Bool) {
+        let onClose = onClose
+        Task {
+            if await request() {
+                onClose()
+            }
         }
     }
 }

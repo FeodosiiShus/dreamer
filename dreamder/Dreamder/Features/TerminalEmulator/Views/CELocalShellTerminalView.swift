@@ -49,7 +49,34 @@ protocol CELocalShellTerminalViewDelegate: AnyObject {
 // MARK: - CELocalShellTerminalView
 
 class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProcessDelegate {
-    lazy var process: LocalProcess = LocalProcess(delegate: self)
+    lazy var processPump = LocalProcessPump(
+        windowSize: { [weak self] in
+            guard let view = self else { return winsize() }
+            return MainActor.assumeIsolated { view.getWindowSize() }
+        },
+        wake: { [weak self] in
+            guard let view = self else { return }
+            Task { @MainActor in view.drainProcessEvents() }
+        }
+    )
+
+    lazy var process: LocalProcess = LocalProcess(delegate: processPump, dispatchQueue: processPump.queue)
+
+    func drainProcessEvents() {
+        for event in processPump.takeEvents() {
+            switch event {
+            case .data(let bytes):
+                dataReceived(slice: bytes[...])
+            case .terminated(let exitCode):
+                processTerminated(process, exitCode: exitCode)
+            }
+        }
+    }
+
+    var systemShell: () -> String = { Shell.autoDetectDefaultShell() }
+    var shellIntegrationBundle: Bundle = .main
+    var settings: Settings = SettingsScope.current ?? .shared
+    private var startedShellPid: pid_t = 0
 
     override public init(frame: CGRect) {
         super.init(frame: frame)
@@ -59,6 +86,16 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
     public required init?(coder: NSCoder) {
         super.init(coder: coder)
         setup()
+    }
+
+    isolated deinit {
+        if startedShellPid > 0, process.running {
+            kill(startedShellPid, SIGHUP)
+        }
+    }
+
+    func adoptPseudoTerminal() {
+        startedShellPid = process.shellPid
     }
 
     /// The `processDelegate` is used to deliver messages and information relevant to the execution of the terminal.
@@ -79,7 +116,7 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
         environment: [String] = [],
         interactive: Bool = true
     ) {
-        let terminalSettings = Settings.shared.preferences.terminal
+        let terminalSettings = settings.preferences.terminal
 
         var terminalEnvironment: [String] = Terminal.getEnvironmentVariables()
         terminalEnvironment.append("TERM_PROGRAM=DreamderApp_Terminal")
@@ -97,7 +134,8 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
                     for: shell,
                     environment: &terminalEnvironment,
                     useLogin: terminalSettings.useLoginShell,
-                    interactive: interactive
+                    interactive: interactive,
+                    bundle: shellIntegrationBundle
                 )
             } else {
                 shellArgs = []
@@ -112,6 +150,7 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
                 execName: shell.rawValue,
                 currentDirectory: url?.absolutePath
             )
+            adoptPseudoTerminal()
         } catch {
             terminal.feed(text: "Failed to start a terminal session: \(error.localizedDescription)")
         }
@@ -124,7 +163,7 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
         }
         switch userSetting {
         case .system:
-            let defaultShell = Shell.autoDetectDefaultShell()
+            let defaultShell = systemShell()
             guard let type = Shell(rawValue: NSString(string: defaultShell).lastPathComponent) else { return nil }
             return (type, defaultShell)
         case .bash:
@@ -149,9 +188,7 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
 
     public func clipboardCopy(source: TerminalView, content: Data) {
         if let str = String(bytes: content, encoding: .utf8) {
-            let pasteBoard = NSPasteboard.general
-            pasteBoard.clearContents()
-            pasteBoard.writeObjects([str as NSString])
+            pasteboard.write(str)
         }
     }
 

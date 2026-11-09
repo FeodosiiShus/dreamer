@@ -3,11 +3,19 @@ import Observation
 import SwiftUI
 
 nonisolated struct GitConsoleEntry: Identifiable, Equatable, Sendable {
-    let id = UUID()
+    let id: UUID
     let date: Date
     let directory: String
     let command: String
     let errorLines: [String]
+
+    init(date: Date, directory: String, command: String, errorLines: [String]) {
+        id = UUID()
+        self.date = date
+        self.directory = directory
+        self.command = command
+        self.errorLines = errorLines
+    }
 
     @MainActor
     var header: String {
@@ -163,18 +171,22 @@ struct GitConsoleTab: View {
     let log: GitConsoleLog
     @Binding var isSelected: Bool
 
+    func dismiss() {
+        log.isDismissed = true
+        isSelected = false
+    }
+
+    func select() {
+        isSelected = true
+    }
+
     var body: some View {
         if !log.entries.isEmpty, !log.isDismissed {
             ToolWindowTab(
                 title: "Console",
                 isSelected: isSelected,
-                onClose: {
-                    log.isDismissed = true
-                    isSelected = false
-                },
-                action: {
-                    isSelected = true
-                }
+                onClose: dismiss,
+                action: select
             )
         }
     }

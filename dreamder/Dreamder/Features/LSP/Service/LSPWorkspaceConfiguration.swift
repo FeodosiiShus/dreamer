@@ -17,7 +17,6 @@ nonisolated struct LSPWorkspaceConfiguration: Sendable, Equatable {
     }
 
     private static func lookup(_ path: ArraySlice<String>, in settings: [String: LSPAny]) -> LSPAny? {
-        guard !path.isEmpty else { return nil }
         for length in stride(from: path.count, through: 1, by: -1) {
             let key = path.prefix(length).joined(separator: ".")
             guard let value = settings[key] else { continue }
@@ -33,7 +32,14 @@ nonisolated struct LSPWorkspaceConfiguration: Sendable, Equatable {
 }
 
 nonisolated enum LSPWorkspaceFolders {
+    static func uri(forWorkspacePath path: String) -> String {
+        URL(fileURLWithPath: path, isDirectory: false).absoluteString
+    }
+
     static func folder(forWorkspacePath path: String) -> WorkspaceFolder {
-        WorkspaceFolder(uri: "file://" + path, name: URL(fileURLWithPath: path).lastPathComponent)
+        WorkspaceFolder(
+            uri: uri(forWorkspacePath: path),
+            name: URL(fileURLWithPath: path).lastPathComponent
+        )
     }
 }

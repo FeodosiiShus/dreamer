@@ -10,11 +10,8 @@ import Foundation
 final class CargoPackageManager: PackageManagerProtocol {
     private let installationDirectory: URL
 
-    let shellClient: ShellClient
-
     init(installationDirectory: URL) {
         self.installationDirectory = installationDirectory
-        self.shellClient = .live()
     }
 
     func install(method installationMethod: InstallationMethod) throws -> [PackageManagerInstallStep] {

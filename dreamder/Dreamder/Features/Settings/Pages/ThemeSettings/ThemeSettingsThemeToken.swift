@@ -55,11 +55,15 @@ struct ThemeSettingsThemeToken: View {
                 .foregroundStyle(color)
         }
         .padding(10)
-        .onHover { hovering in
-            isHovering = hovering
-        }
-        .onChange(of: selectedColor) { _, newValue in
-            color = newValue
-        }
+        .onHover(perform: setHovering)
+        .onChange(of: selectedColor, applySelectedColor)
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
+    }
+
+    func applySelectedColor(_ oldValue: Color, _ newValue: Color) {
+        color = newValue
     }
 }

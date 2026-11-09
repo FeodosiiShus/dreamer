@@ -43,41 +43,6 @@
                BlueprintName = "DreamderTests"
                ReferencedContainer = "container:Dreamder.xcodeproj">
             </BuildableReference>
-            <SkippedTests>
-               <Test
-                  Identifier = "DreamderUIUnitTests">
-               </Test>
-               <Test
-                  Identifier = "DreamderUIUnitTests/testBranchPickerDark()">
-               </Test>
-               <Test
-                  Identifier = "DreamderUIUnitTests/testBranchPickerLight()">
-               </Test>
-               <Test
-                  Identifier = "DreamderUIUnitTests/testEffectViewDark()">
-               </Test>
-               <Test
-                  Identifier = "DreamderUIUnitTests/testEffectViewLight()">
-               </Test>
-               <Test
-                  Identifier = "DreamderUIUnitTests/testHelpButtonDark()">
-               </Test>
-               <Test
-                  Identifier = "DreamderUIUnitTests/testHelpButtonLight()">
-               </Test>
-               <Test
-                  Identifier = "DreamderUIUnitTests/testSegmentedControlDark()">
-               </Test>
-               <Test
-                  Identifier = "DreamderUIUnitTests/testSegmentedControlLight()">
-               </Test>
-               <Test
-                  Identifier = "DreamderUIUnitTests/testSegmentedControlProminentDark()">
-               </Test>
-               <Test
-                  Identifier = "DreamderUIUnitTests/testSegmentedControlProminentLight()">
-               </Test>
-            </SkippedTests>
          </TestableReference>
          <TestableReference
             skipped = "NO">

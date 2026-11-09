@@ -121,4 +121,30 @@ struct RegexReplacementTests {
         let pattern = "(?<first>a)\\(?<no>x\\)[(?<in>)](?<=b)(?<!c)\\Q(?<q>\\E(?<second>d)"
         #expect(RegexReplacement.captureGroupNames(in: pattern) == ["first", "second"])
     }
+
+    @Test
+    func caseResetWithoutAnOpenConversionIsIgnored() throws {
+        #expect(try replace(pattern: "x", in: "x", with: "a\\Eb") == "ab")
+    }
+
+    @Test
+    func incompleteOrInvalidHexadecimalEscapesAreHandled() throws {
+        #expect(try replace(pattern: "x", in: "x", with: "\\x00") == "00")
+        #expect(try replace(pattern: "x", in: "x", with: "\\xD800") == "\u{FFFD}")
+    }
+
+    @Test
+    func repeatedRegionOfTheSameCaseExtendsTheOpenRegion() throws {
+        #expect(try replace(pattern: "x", in: "x", with: "\\Ua\\Ub") == "AB")
+    }
+
+    @Test
+    func regionOfTheOppositeCaseAtTheSameOffsetReplacesTheOpenOne() throws {
+        #expect(try replace(pattern: "(\\w+)", in: "JOHN", with: "\\U\\L$1") == "john")
+    }
+
+    @Test
+    func unterminatedQuotedSectionHidesGroupNamesUntilTheEnd() {
+        #expect(RegexReplacement.captureGroupNames(in: "\\Q(?<a>x)").isEmpty)
+    }
 }

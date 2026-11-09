@@ -19,13 +19,19 @@ nonisolated extension GitClient {
             remote != nil ? "-r" : "-a"
         ])
 
+        let remotePrefix = remote.map { "\($0)/" }
+
         return output
             .components(separatedBy: "\n")
-            .filter { $0 != "" && !$0.contains("HEAD") && (remote == nil || $0.starts(with: "\(remote ?? "")/")) }
-            .compactMap { line in
-                guard let branchPart = line.components(separatedBy: " ").first else { return nil }
+            .filter { line in
+                guard line != "", !line.contains("HEAD") else { return false }
+                guard let remotePrefix else { return true }
+                return line.starts(with: remotePrefix)
+            }
+            .map { line in
+                let branchPart = String(line.prefix { $0 != " " })
                 let branchComponents = branchPart.components(separatedBy: "|")
-                guard let name = branchComponents.first else { return nil }
+                let name = String(branchPart.prefix { $0 != "|" })
                 let upstream = Self.field(at: 2, in: branchComponents)
 
                 let trackInfoString = line
@@ -34,7 +40,7 @@ nonisolated extension GitClient {
                 let trackInfo = Self.parseBranchTrackInfo(from: trackInfoString)
 
                 return GitBranch(
-                    name: remote != nil ? extractBranchName(from: name, with: remote ?? "") : name,
+                    name: remote.map { extractBranchName(from: name, with: $0) } ?? name,
                     longName: Self.field(at: 1, in: branchComponents) ?? name,
                     upstream: upstream?.isEmpty == true ? nil : upstream,
                     ahead: trackInfo.ahead,
@@ -54,9 +60,9 @@ nonisolated extension GitClient {
         ])
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard let branchPart = output.components(separatedBy: " ").first else { return nil }
+        let branchPart = String(output.prefix { $0 != " " })
         let branchComponents = branchPart.components(separatedBy: "|")
-        guard let longName = branchComponents.first else { return nil }
+        let longName = String(branchPart.prefix { $0 != "|" })
         let upstream = Self.field(at: 1, in: branchComponents)
 
         let trackInfoString = output
@@ -73,34 +79,20 @@ nonisolated extension GitClient {
         )
     }
 
-    /// Delete branch
-    func deleteBranch(_ branch: GitBranch) async throws {
-        if !branch.isLocal {
-            return
-        }
-
-        _ = try await run(arguments: ["branch", "-d", branch.name])
-    }
-
-    /// Rename branch
-    /// - Parameter from: Name of the branch to rename
-    /// - Parameter to: New name for branch
-    func renameBranch(oldName: String, newName: String) async throws {
-        _ = try await run(arguments: ["branch", "-m", oldName, newName])
-    }
-
     /// Checkout branch
     /// - Parameter branch: Branch to checkout
     func checkoutBranch(_ branch: GitBranch, forceLocal: Bool = false, newName: String? = nil) async throws {
         var arguments = ["checkout"]
 
-        let targetName = newName ?? branch.name
+        let remoteReference = branch.longName.replacingOccurrences(of: "refs/remotes/", with: "")
+        let remoteBranchName = remoteReference.split(separator: "/", maxSplits: 1).dropFirst().first.map(String.init)
+            ?? remoteReference
+        let targetName = newName ?? (branch.isRemote ? remoteBranchName : branch.name)
 
-        if (branch.isRemote && !forceLocal) || newName != nil {
-            let sourceBranch = branch.isRemote
-                ? branch.longName.replacingOccurrences(of: "refs/remotes/", with: "")
-                : branch.name
-            arguments += ["-b", targetName, sourceBranch]
+        if branch.isRemote, !forceLocal {
+            arguments += ["-b", targetName, "--track", remoteReference]
+        } else if newName != nil {
+            arguments += ["-b", targetName, branch.name]
         } else {
             arguments.append(targetName)
         }
@@ -139,15 +131,8 @@ nonisolated extension GitClient {
     }
 
     private func extractBranchName(from fullBranchName: String, with remoteName: String) -> String {
-        // Ensure the fullBranchName starts with the remoteName followed by a slash
         let prefix = "\(remoteName)/"
-        if fullBranchName.hasPrefix(prefix) {
-            // Remove the remoteName and the slash to get the branch name
-            return String(fullBranchName.dropFirst(prefix.count))
-        } else {
-            // If the fullBranchName does not start with the expected remoteName, return it unchanged
-            return fullBranchName
-        }
+        return fullBranchName.hasPrefix(prefix) ? String(fullBranchName.dropFirst(prefix.count)) : fullBranchName
     }
 
 }

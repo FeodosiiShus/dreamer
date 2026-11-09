@@ -69,10 +69,10 @@ nonisolated struct ThreeWayMerge: Equatable, Sendable {
         let rightRange: Range<Int>
         let rightLines: [String]
         var resolution: Resolution
-        var autoResolvedLines: [String]? = nil
+        var autoResolvedLines: [String]
+        let canBeResolved: Bool
 
         var inserted: Bool { baseRange.isEmpty }
-        var canBeResolved: Bool { autoResolvedLines != nil }
     }
 
     let baseText: String
@@ -182,7 +182,7 @@ nonisolated struct ThreeWayMerge: Equatable, Sendable {
         case .right:
             return block.rightLines
         case .merged:
-            return block.autoResolvedLines ?? block.baseLines
+            return block.autoResolvedLines
         case .unresolved, .ignored:
             return block.baseLines
         }
@@ -243,12 +243,8 @@ nonisolated struct ThreeWayMerge: Equatable, Sendable {
                     content.lines.append(line)
                     content.styles.append(side == .left ? leftStyle(for: block) : rightStyle(for: block))
                 }
-                var chips = pending + chips(for: block, side: side)
+                content.chips[start] = pending + chips(for: block, side: side)
                 pending = []
-                if let existing = content.chips[start] {
-                    chips = existing + chips
-                }
-                content.chips[start] = chips
             }
             cursor = max(cursor, range.upperBound)
         }
@@ -383,9 +379,6 @@ nonisolated struct ThreeWayMerge: Equatable, Sendable {
             let baseRange = range.range(.base)
             let leftRange = range.range(.left)
             let rightRange = range.range(.right)
-            guard baseRange.upperBound <= baseLines.count,
-                  leftRange.upperBound <= leftLines.count,
-                  rightRange.upperBound <= rightLines.count else { continue }
 
             let type = mergeBlock.type
             let kind: BlockKind
@@ -419,7 +412,8 @@ nonisolated struct ThreeWayMerge: Equatable, Sendable {
                 rightRange: rightRange,
                 rightLines: Array(rightLines[rightRange]),
                 resolution: resolution,
-                autoResolvedLines: mergeBlock.resolvedLines
+                autoResolvedLines: mergeBlock.resolvedLines ?? [],
+                canBeResolved: mergeBlock.resolvedLines != nil
             ))
         }
         return blocks

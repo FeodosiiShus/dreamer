@@ -214,14 +214,10 @@ nonisolated enum MarkdownHeaderLevel {
         case .down: level = clamped(old + 1)
         }
         guard level != old else { return nil }
-        switch block.kind {
-        case .atxHeading:
-            return atxPlan(line: block.lines.lowerBound, level: level, document: document)
-        case .setextHeading:
+        if case .setextHeading = block.kind {
             return setextPlan(block: block, oldLevel: old, level: level, mode: mode, document: document)
-        default:
-            return nil
         }
+        return atxPlan(line: block.lines.lowerBound, level: level, document: document)
     }
 
     private static func atxPlan(line: Int, level: Int, document: MarkdownDocument) -> Plan? {

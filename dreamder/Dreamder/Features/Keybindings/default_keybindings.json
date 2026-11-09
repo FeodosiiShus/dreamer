@@ -1,9 +1,989 @@
 [
-    {
-        "id": "copy", "name": "copy", "description": "Copy command", "context": "Global", "modifier": "command", "keybinding": "c"
-    },
-    {
-        "id": "paste", "name": "paste", "description": "Copy command", "context": "Global", "modifier": "command", "keybinding": "c"
-    }
-
+  {
+    "id": "app.about",
+    "title": "About Dreamder",
+    "group": "Main Menu ▸ Dreamder",
+    "shortcuts": []
+  },
+  {
+    "id": "app.settings",
+    "title": "Settings...",
+    "group": "Main Menu ▸ Dreamder",
+    "shortcuts": [
+      "command ,"
+    ]
+  },
+  {
+    "id": "file.new",
+    "title": "New",
+    "group": "Main Menu ▸ File",
+    "shortcuts": [
+      "command n"
+    ]
+  },
+  {
+    "id": "file.open",
+    "title": "Open...",
+    "group": "Main Menu ▸ File",
+    "shortcuts": [
+      "command o"
+    ]
+  },
+  {
+    "id": "file.closeTab",
+    "title": "Close Tab",
+    "group": "Main Menu ▸ File",
+    "shortcuts": [
+      "command w"
+    ]
+  },
+  {
+    "id": "file.closeEditor",
+    "title": "Close Editor",
+    "group": "Main Menu ▸ File",
+    "shortcuts": [
+      "control shift command w"
+    ]
+  },
+  {
+    "id": "file.closeWindow",
+    "title": "Close Window",
+    "group": "Main Menu ▸ File",
+    "shortcuts": [
+      "shift command w"
+    ]
+  },
+  {
+    "id": "file.closeWorkspace",
+    "title": "Close Workspace",
+    "group": "Main Menu ▸ File",
+    "shortcuts": [
+      "control option command w"
+    ]
+  },
+  {
+    "id": "file.closeTerminal",
+    "title": "Close Terminal",
+    "group": "Main Menu ▸ File",
+    "shortcuts": [
+      "option command backspace"
+    ]
+  },
+  {
+    "id": "file.workspaceSettings",
+    "title": "Workspace Settings",
+    "group": "Main Menu ▸ File",
+    "shortcuts": []
+  },
+  {
+    "id": "file.save",
+    "title": "Save",
+    "group": "Main Menu ▸ File",
+    "shortcuts": [
+      "command s"
+    ]
+  },
+  {
+    "id": "toolWindow.project",
+    "title": "Project",
+    "group": "Tool Windows",
+    "shortcuts": [
+      "command 1"
+    ]
+  },
+  {
+    "id": "toolWindow.commit",
+    "title": "Commit",
+    "group": "Tool Windows",
+    "shortcuts": [
+      "command 0"
+    ]
+  },
+  {
+    "id": "toolWindow.structure",
+    "title": "Structure",
+    "group": "Tool Windows",
+    "shortcuts": [
+      "command 7"
+    ]
+  },
+  {
+    "id": "toolWindow.find",
+    "title": "Find",
+    "group": "Tool Windows",
+    "shortcuts": [
+      "command 3"
+    ]
+  },
+  {
+    "id": "toolWindow.run",
+    "title": "Run",
+    "group": "Tool Windows",
+    "shortcuts": [
+      "command 4"
+    ]
+  },
+  {
+    "id": "toolWindow.problems",
+    "title": "Problems",
+    "group": "Tool Windows",
+    "shortcuts": [
+      "command 6"
+    ]
+  },
+  {
+    "id": "toolWindow.git",
+    "title": "Git",
+    "group": "Tool Windows",
+    "shortcuts": [
+      "command 9"
+    ]
+  },
+  {
+    "id": "toolWindow.languageServices",
+    "title": "Language Services",
+    "group": "Tool Windows",
+    "shortcuts": [
+      "control command l"
+    ]
+  },
+  {
+    "id": "toolWindow.terminal",
+    "title": "Terminal",
+    "group": "Tool Windows",
+    "shortcuts": [
+      "option f12"
+    ]
+  },
+  {
+    "id": "toolWindow.hideAll",
+    "title": "Hide All Tool Windows",
+    "group": "Tool Windows",
+    "shortcuts": [
+      "shift command f12"
+    ]
+  },
+  {
+    "id": "toolWindow.maximizeBottom",
+    "title": "Maximize Bottom Tool Window",
+    "group": "Tool Windows",
+    "shortcuts": [
+      "shift command '"
+    ]
+  },
+  {
+    "id": "view.splitRight",
+    "title": "Split Right",
+    "group": "Main Menu ▸ View",
+    "shortcuts": []
+  },
+  {
+    "id": "view.splitDown",
+    "title": "Split Down",
+    "group": "Main Menu ▸ View",
+    "shortcuts": []
+  },
+  {
+    "id": "view.unsplit",
+    "title": "Unsplit",
+    "group": "Main Menu ▸ View",
+    "shortcuts": []
+  },
+  {
+    "id": "view.unsplitAll",
+    "title": "Unsplit All",
+    "group": "Main Menu ▸ View",
+    "shortcuts": []
+  },
+  {
+    "id": "view.changeSplitterOrientation",
+    "title": "Change Splitter Orientation",
+    "group": "Main Menu ▸ View",
+    "shortcuts": []
+  },
+  {
+    "id": "view.gotoNextSplitter",
+    "title": "Go to Next Splitter",
+    "group": "Main Menu ▸ View",
+    "shortcuts": [
+      "option tab"
+    ]
+  },
+  {
+    "id": "view.gotoPreviousSplitter",
+    "title": "Go to Previous Splitter",
+    "group": "Main Menu ▸ View",
+    "shortcuts": [
+      "option shift tab"
+    ]
+  },
+  {
+    "id": "view.commandPalette",
+    "title": "Show Command Palette",
+    "group": "Main Menu ▸ View",
+    "shortcuts": [
+      "shift command p"
+    ]
+  },
+  {
+    "id": "view.increaseFontSize",
+    "title": "Increase Font Size",
+    "group": "Main Menu ▸ View",
+    "shortcuts": []
+  },
+  {
+    "id": "view.decreaseFontSize",
+    "title": "Decrease Font Size",
+    "group": "Main Menu ▸ View",
+    "shortcuts": []
+  },
+  {
+    "id": "view.resetFontSize",
+    "title": "Reset Font Size",
+    "group": "Main Menu ▸ View",
+    "shortcuts": [
+      "control command 0"
+    ]
+  },
+  {
+    "id": "view.toggleToolbar",
+    "title": "Toggle Toolbar",
+    "group": "Main Menu ▸ View",
+    "shortcuts": [
+      "option command t"
+    ]
+  },
+  {
+    "id": "view.toggleInterface",
+    "title": "Toggle Interface",
+    "group": "Main Menu ▸ View",
+    "shortcuts": [
+      "shift command h"
+    ]
+  },
+  {
+    "id": "view.dimEditorsWithoutFocus",
+    "title": "Dim Editors Without Focus",
+    "group": "Main Menu ▸ View",
+    "shortcuts": []
+  },
+  {
+    "id": "view.chooseBackgroundImage",
+    "title": "Choose Background Image...",
+    "group": "Main Menu ▸ View",
+    "shortcuts": []
+  },
+  {
+    "id": "view.clearBackgroundImage",
+    "title": "Clear Background Image",
+    "group": "Main Menu ▸ View",
+    "shortcuts": []
+  },
+  {
+    "id": "view.toggleInlayHints",
+    "title": "Toggle Inlay Hints",
+    "group": "Main Menu ▸ View",
+    "shortcuts": [
+      "control option shift h"
+    ]
+  },
+  {
+    "id": "find.find",
+    "title": "Find...",
+    "group": "Main Menu ▸ Find",
+    "shortcuts": [
+      "command f"
+    ]
+  },
+  {
+    "id": "find.findAndReplace",
+    "title": "Find and Replace...",
+    "group": "Main Menu ▸ Find",
+    "shortcuts": [
+      "command r"
+    ]
+  },
+  {
+    "id": "find.findNext",
+    "title": "Find Next",
+    "group": "Main Menu ▸ Find",
+    "shortcuts": [
+      "command g"
+    ]
+  },
+  {
+    "id": "find.findPrevious",
+    "title": "Find Previous",
+    "group": "Main Menu ▸ Find",
+    "shortcuts": [
+      "shift command g"
+    ]
+  },
+  {
+    "id": "find.useSelectionForFind",
+    "title": "Use Selection for Find",
+    "group": "Main Menu ▸ Find",
+    "shortcuts": [
+      "option command e"
+    ]
+  },
+  {
+    "id": "find.jumpToSelection",
+    "title": "Jump to Selection",
+    "group": "Main Menu ▸ Find",
+    "shortcuts": [
+      "command j"
+    ]
+  },
+  {
+    "id": "find.findInFiles",
+    "title": "Find in Files...",
+    "group": "Main Menu ▸ Find",
+    "shortcuts": [
+      "shift command f"
+    ]
+  },
+  {
+    "id": "find.replaceInFiles",
+    "title": "Replace in Files...",
+    "group": "Main Menu ▸ Find",
+    "shortcuts": [
+      "shift command r"
+    ]
+  },
+  {
+    "id": "navigate.searchEverywhere",
+    "title": "Search Everywhere",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "double shift"
+    ]
+  },
+  {
+    "id": "navigate.goToClass",
+    "title": "Go to Class...",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": []
+  },
+  {
+    "id": "navigate.goToFile",
+    "title": "Go to File...",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "shift command o"
+    ]
+  },
+  {
+    "id": "navigate.goToSymbol",
+    "title": "Go to Symbol...",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "option command o"
+    ]
+  },
+  {
+    "id": "navigate.goToLine",
+    "title": "Go to Line/Column...",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "command l"
+    ]
+  },
+  {
+    "id": "navigate.findAction",
+    "title": "Find Action...",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "shift command a"
+    ]
+  },
+  {
+    "id": "navigate.recentFiles",
+    "title": "Recent Files",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "command e"
+    ]
+  },
+  {
+    "id": "navigate.goToDeclaration",
+    "title": "Go to Declaration or Usages",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "command b"
+    ]
+  },
+  {
+    "id": "navigate.goToTypeDeclaration",
+    "title": "Go to Type Declaration",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "shift command b"
+    ]
+  },
+  {
+    "id": "navigate.showUsages",
+    "title": "Show Usages",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "option command f7"
+    ]
+  },
+  {
+    "id": "navigate.findUsages",
+    "title": "Find Usages",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "option f7"
+    ]
+  },
+  {
+    "id": "navigate.revealInProjectNavigator",
+    "title": "Reveal in Project Navigator",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "shift command j"
+    ]
+  },
+  {
+    "id": "navigate.previousTab",
+    "title": "Show Previous Tab",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "shift command ["
+    ]
+  },
+  {
+    "id": "navigate.nextTab",
+    "title": "Show Next Tab",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "shift command ]"
+    ]
+  },
+  {
+    "id": "navigate.back",
+    "title": "Go Back",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "command ["
+    ]
+  },
+  {
+    "id": "navigate.forward",
+    "title": "Go Forward",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "command ]"
+    ]
+  },
+  {
+    "id": "navigate.goToImplementation",
+    "title": "Go to Implementation",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "option command b"
+    ]
+  },
+  {
+    "id": "navigate.recentLocations",
+    "title": "Recent Locations",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "shift command e"
+    ]
+  },
+  {
+    "id": "navigate.fileStructure",
+    "title": "File Structure",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "command f12"
+    ]
+  },
+  {
+    "id": "problems.nextProblem",
+    "title": "Next Problem",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "option command down"
+    ]
+  },
+  {
+    "id": "problems.previousProblem",
+    "title": "Previous Problem",
+    "group": "Main Menu ▸ Navigate",
+    "shortcuts": [
+      "option command up"
+    ]
+  },
+  {
+    "id": "editor.moveLineUp",
+    "title": "Move Line Up",
+    "group": "Main Menu ▸ Editor",
+    "shortcuts": [
+      "option shift up"
+    ]
+  },
+  {
+    "id": "editor.moveLineDown",
+    "title": "Move Line Down",
+    "group": "Main Menu ▸ Editor",
+    "shortcuts": [
+      "option shift down"
+    ]
+  },
+  {
+    "id": "editor.quickDocumentation",
+    "title": "Quick Documentation",
+    "group": "Main Menu ▸ Editor",
+    "shortcuts": [
+      "control j",
+      "f1"
+    ]
+  },
+  {
+    "id": "editorActions.extendSelection",
+    "title": "Extend Selection",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "option up"
+    ]
+  },
+  {
+    "id": "editorActions.shrinkSelection",
+    "title": "Shrink Selection",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "option down"
+    ]
+  },
+  {
+    "id": "editorActions.selectNextOccurrence",
+    "title": "Add Selection for Next Occurrence",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "control g"
+    ]
+  },
+  {
+    "id": "editorActions.unselectOccurrence",
+    "title": "Unselect Occurrence",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "control shift g"
+    ]
+  },
+  {
+    "id": "editorActions.selectAllOccurrences",
+    "title": "Select All Occurrences",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "control command g"
+    ]
+  },
+  {
+    "id": "editorActions.cloneCaretAbove",
+    "title": "Clone Caret Above",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "control shift up"
+    ]
+  },
+  {
+    "id": "editorActions.cloneCaretBelow",
+    "title": "Clone Caret Below",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "control shift down"
+    ]
+  },
+  {
+    "id": "editorActions.joinLines",
+    "title": "Join Lines",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "control shift j"
+    ]
+  },
+  {
+    "id": "editorActions.indentSelection",
+    "title": "Indent Selection",
+    "group": "Editor Actions",
+    "shortcuts": []
+  },
+  {
+    "id": "editorActions.unindentSelection",
+    "title": "Unindent Selection",
+    "group": "Editor Actions",
+    "shortcuts": []
+  },
+  {
+    "id": "editorActions.duplicateLine",
+    "title": "Duplicate Line or Selection",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "command d"
+    ]
+  },
+  {
+    "id": "editorActions.deleteLine",
+    "title": "Delete Line",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "command backspace"
+    ]
+  },
+  {
+    "id": "editorActions.commentLine",
+    "title": "Comment with Line Comment",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "command /"
+    ]
+  },
+  {
+    "id": "editorActions.commentBlock",
+    "title": "Comment with Block Comment",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "option command /"
+    ]
+  },
+  {
+    "id": "editorActions.reformatCode",
+    "title": "Reformat Code",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "option command l"
+    ]
+  },
+  {
+    "id": "editorActions.renameSymbol",
+    "title": "Rename...",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "shift f6"
+    ]
+  },
+  {
+    "id": "editorActions.toggleSoftWraps",
+    "title": "Toggle Soft Wraps",
+    "group": "Editor Actions",
+    "shortcuts": []
+  },
+  {
+    "id": "editorActions.showContextActions",
+    "title": "Show Context Actions",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "option return"
+    ]
+  },
+  {
+    "id": "editorActions.optimizeImports",
+    "title": "Optimize Imports",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "control option o"
+    ]
+  },
+  {
+    "id": "editorActions.parameterInfo",
+    "title": "Parameter Info",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "command p"
+    ]
+  },
+  {
+    "id": "editorActions.collapseCodeBlock",
+    "title": "Collapse",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "command -"
+    ]
+  },
+  {
+    "id": "editorActions.expandCodeBlock",
+    "title": "Expand",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "command ="
+    ]
+  },
+  {
+    "id": "editorActions.collapseAll",
+    "title": "Collapse All",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "shift command -"
+    ]
+  },
+  {
+    "id": "editorActions.expandAll",
+    "title": "Expand All",
+    "group": "Editor Actions",
+    "shortcuts": [
+      "shift command ="
+    ]
+  },
+  {
+    "id": "editorActions.collapseComments",
+    "title": "Collapse Comments",
+    "group": "Editor Actions",
+    "shortcuts": []
+  },
+  {
+    "id": "markdown.bold",
+    "title": "Bold",
+    "group": "Main Menu ▸ Markdown",
+    "shortcuts": [
+      "control b"
+    ]
+  },
+  {
+    "id": "markdown.italic",
+    "title": "Italic",
+    "group": "Main Menu ▸ Markdown",
+    "shortcuts": [
+      "control i"
+    ]
+  },
+  {
+    "id": "markdown.strikethrough",
+    "title": "Strikethrough",
+    "group": "Main Menu ▸ Markdown",
+    "shortcuts": [
+      "control shift s"
+    ]
+  },
+  {
+    "id": "markdown.codeSpan",
+    "title": "Code Span",
+    "group": "Main Menu ▸ Markdown",
+    "shortcuts": [
+      "control shift c"
+    ]
+  },
+  {
+    "id": "markdown.createLink",
+    "title": "Create Link",
+    "group": "Main Menu ▸ Markdown",
+    "shortcuts": [
+      "control shift u"
+    ]
+  },
+  {
+    "id": "markdown.headerNormal",
+    "title": "Normal",
+    "group": "Main Menu ▸ Markdown",
+    "shortcuts": []
+  },
+  {
+    "id": "markdown.headerTitle",
+    "title": "Title",
+    "group": "Main Menu ▸ Markdown",
+    "shortcuts": []
+  },
+  {
+    "id": "markdown.headerSubtitle",
+    "title": "Subtitle",
+    "group": "Main Menu ▸ Markdown",
+    "shortcuts": []
+  },
+  {
+    "id": "markdown.heading3",
+    "title": "Heading 3",
+    "group": "Main Menu ▸ Markdown",
+    "shortcuts": []
+  },
+  {
+    "id": "markdown.heading4",
+    "title": "Heading 4",
+    "group": "Main Menu ▸ Markdown",
+    "shortcuts": []
+  },
+  {
+    "id": "markdown.heading5",
+    "title": "Heading 5",
+    "group": "Main Menu ▸ Markdown",
+    "shortcuts": []
+  },
+  {
+    "id": "markdown.heading6",
+    "title": "Heading 6",
+    "group": "Main Menu ▸ Markdown",
+    "shortcuts": []
+  },
+  {
+    "id": "markdown.headerUp",
+    "title": "Header Up",
+    "group": "Main Menu ▸ Markdown",
+    "shortcuts": []
+  },
+  {
+    "id": "markdown.headerDown",
+    "title": "Header Down",
+    "group": "Main Menu ▸ Markdown",
+    "shortcuts": []
+  },
+  {
+    "id": "markdown.insertTable",
+    "title": "Insert Table…",
+    "group": "Main Menu ▸ Markdown",
+    "shortcuts": []
+  },
+  {
+    "id": "markdown.formatTable",
+    "title": "Format Table",
+    "group": "Main Menu ▸ Markdown",
+    "shortcuts": []
+  },
+  {
+    "id": "markdown.generateTableOfContents",
+    "title": "Generate Table of Contents",
+    "group": "Main Menu ▸ Markdown",
+    "shortcuts": []
+  },
+  {
+    "id": "tasks.run",
+    "title": "Run Selected Task",
+    "group": "Main Menu ▸ Tasks",
+    "shortcuts": [
+      "control r"
+    ]
+  },
+  {
+    "id": "tasks.stop",
+    "title": "Stop Selected Task",
+    "group": "Main Menu ▸ Tasks",
+    "shortcuts": [
+      "command f2"
+    ]
+  },
+  {
+    "id": "tasks.showOutput",
+    "title": "Show Selected Task Output",
+    "group": "Main Menu ▸ Tasks",
+    "shortcuts": []
+  },
+  {
+    "id": "tasks.manage",
+    "title": "Manage Tasks...",
+    "group": "Main Menu ▸ Tasks",
+    "shortcuts": []
+  },
+  {
+    "id": "git.branches",
+    "title": "Branches…",
+    "group": "Main Menu ▸ Git",
+    "shortcuts": [
+      "control shift `"
+    ]
+  },
+  {
+    "id": "git.resolveConflicts",
+    "title": "Resolve Conflicts…",
+    "group": "Main Menu ▸ Git",
+    "shortcuts": []
+  },
+  {
+    "id": "git.commit",
+    "title": "Commit…",
+    "group": "Main Menu ▸ Git",
+    "shortcuts": [
+      "command k"
+    ]
+  },
+  {
+    "id": "git.push",
+    "title": "Push…",
+    "group": "Main Menu ▸ Git",
+    "shortcuts": [
+      "shift command k"
+    ]
+  },
+  {
+    "id": "git.updateProject",
+    "title": "Update Project…",
+    "group": "Main Menu ▸ Git",
+    "shortcuts": [
+      "command t"
+    ]
+  },
+  {
+    "id": "git.fetch",
+    "title": "Fetch",
+    "group": "Main Menu ▸ Git",
+    "shortcuts": []
+  },
+  {
+    "id": "git.newBranch",
+    "title": "New Branch…",
+    "group": "Main Menu ▸ Git",
+    "shortcuts": [
+      "option command n"
+    ]
+  },
+  {
+    "id": "git.pull",
+    "title": "Pull…",
+    "group": "Main Menu ▸ Git",
+    "shortcuts": [
+      "option command x"
+    ]
+  },
+  {
+    "id": "git.fetchChanges",
+    "title": "Fetch Changes…",
+    "group": "Main Menu ▸ Git",
+    "shortcuts": []
+  },
+  {
+    "id": "git.stageAll",
+    "title": "Stage All Changes",
+    "group": "Main Menu ▸ Git",
+    "shortcuts": []
+  },
+  {
+    "id": "git.unstageAll",
+    "title": "Unstage All Changes",
+    "group": "Main Menu ▸ Git",
+    "shortcuts": []
+  },
+  {
+    "id": "git.stash",
+    "title": "Stash Changes…",
+    "group": "Main Menu ▸ Git",
+    "shortcuts": []
+  },
+  {
+    "id": "git.discardAll",
+    "title": "Discard All Changes…",
+    "group": "Main Menu ▸ Git",
+    "shortcuts": []
+  },
+  {
+    "id": "git.addRemote",
+    "title": "Add Existing Remote…",
+    "group": "Main Menu ▸ Git",
+    "shortcuts": []
+  },
+  {
+    "id": "window.welcome",
+    "title": "Welcome to Dreamder",
+    "group": "Main Menu ▸ Window",
+    "shortcuts": [
+      "shift command 1"
+    ]
+  },
+  {
+    "id": "window.about",
+    "title": "About Dreamder",
+    "group": "Main Menu ▸ Window",
+    "shortcuts": [
+      "shift command 2"
+    ]
+  }
 ]

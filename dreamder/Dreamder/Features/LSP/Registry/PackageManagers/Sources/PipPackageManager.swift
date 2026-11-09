@@ -10,11 +10,8 @@ import Foundation
 final class PipPackageManager: PackageManagerProtocol {
     private let installationDirectory: URL
 
-    let shellClient: ShellClient
-
     init(installationDirectory: URL) {
         self.installationDirectory = installationDirectory
-        self.shellClient = .live()
     }
 
     // MARK: - PackageManagerProtocol
@@ -94,22 +91,15 @@ final class PipPackageManager: PackageManagerProtocol {
                 + "\nAllow Dreamder to install this package?"
             )
         ) { model in
-            var installArgs = [pipCommand, "install"]
-
+            var requirement = source.pkgName
+            if let extras = source.options["extra"] {
+                requirement += "[\(extras)]"
+            }
             if source.version.lowercased() != "latest" {
-                installArgs.append("\(source.pkgName)==\(source.version)")
-            } else {
-                installArgs.append(source.pkgName)
+                requirement += "==\(source.version)"
             }
 
-            let extras = source.options["extra"]
-            if let extras {
-                if let lastIndex = installArgs.indices.last {
-                    installArgs[lastIndex] += "[\(extras)]"
-                }
-            }
-
-            try await model.executeInDirectory(in: packagePath.path, installArgs)
+            try await model.executeInDirectory(in: packagePath.path, [pipCommand, "install", requirement])
         }
     }
 

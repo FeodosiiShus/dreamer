@@ -33,9 +33,7 @@ struct IslandSearchField: View {
             .font(Islands.uiFont)
             .foregroundStyle(Islands.foreground)
             .lineLimit(1)
-            .onSubmit {
-                onSubmit?()
-            }
+            .onSubmit(submit)
     }
 
     @ViewBuilder private var field: some View {
@@ -54,10 +52,7 @@ struct IslandSearchField: View {
                 .opacity(0.7)
             field
             if !text.isEmpty {
-                Button {
-                    text = ""
-                    onClear?()
-                } label: {
+                Button(action: clear) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 11))
                         .foregroundStyle(Islands.secondaryForeground)
@@ -80,7 +75,16 @@ struct IslandSearchField: View {
         .onTapGesture(perform: requestFocus)
     }
 
-    private func requestFocus() {
+    func submit() {
+        onSubmit?()
+    }
+
+    func clear() {
+        text = ""
+        onClear?()
+    }
+
+    func requestFocus() {
         if let focus {
             focus.wrappedValue = true
         } else {

@@ -24,11 +24,9 @@ class GitCheckoutBranchViewModel {
         let branches = ((try? await gitClient.getBranches()) ?? [])
             .filter({ $0.isRemote })
 
-        await MainActor.run {
-            self.branches = branches
-            if selectedBranch == nil {
-                selectedBranch = branches.first
-            }
+        self.branches = branches
+        if selectedBranch == nil {
+            selectedBranch = branches.first
         }
     }
 

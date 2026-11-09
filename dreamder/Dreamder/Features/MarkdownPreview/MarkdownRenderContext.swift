@@ -85,20 +85,19 @@ nonisolated enum MarkdownLinkReferences {
 
     static func strippingContainers(_ line: String) -> String {
         var current = Substring(line)
-        while true {
-            let trimmed = current.drop(while: { $0 == " " })
-            if trimmed.first == ">" {
-                current = trimmed.dropFirst()
-                continue
-            }
-            if let marker = MarkdownBlockRenderer.listMarker(String(trimmed)) {
-                let content = String(trimmed.dropFirst(marker.markerLength + marker.spacing))
-                if content.isEmpty { return "" }
-                current = Substring(content)
-                continue
-            }
-            return String(trimmed)
+        while let inner = strippingOneContainer(current) {
+            current = inner
         }
+        return String(current.drop(while: { $0 == " " }))
+    }
+
+    private static func strippingOneContainer(_ line: Substring) -> Substring? {
+        let trimmed = line.drop(while: { $0 == " " })
+        if trimmed.first == ">" {
+            return trimmed.dropFirst()
+        }
+        guard let marker = MarkdownBlockRenderer.listMarker(String(trimmed)) else { return nil }
+        return trimmed.dropFirst(marker.markerLength + marker.spacing)
     }
 
     static func parseDefinition(_ line: String) -> (label: String, reference: MarkdownLinkReference)? {

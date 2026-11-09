@@ -7,6 +7,7 @@
 
 import Foundation
 import Observation
+import os
 
 /// A model to manage Git ignore patterns for a file, including loading, saving, and monitoring changes.
 @Observable
@@ -30,7 +31,19 @@ final class IgnorePatternModel {
     var selection: Set<UUID> = []
 
     /// A client for interacting with the Git configuration.
-    private let gitConfig = GitConfigClient(shellClient: currentWorld.shellClient)
+    private let gitConfig: GitConfigClient
+
+    private let homeDirectory: URL
+
+    init(
+        gitConfig: GitConfigClient = GitConfigClient(shellClient: currentWorld.shellClient),
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) {
+        self.gitConfig = gitConfig
+        self.homeDirectory = homeDirectory
+    }
+
+    private static let logger = Logger(subsystem: "dev.dreamder.Dreamder", category: "IgnorePatternModel")
 
     /// A file system monitor for detecting changes to the Git ignore file.
     @ObservationIgnored private var fileMonitor: DispatchSourceFileSystemObject?
@@ -54,15 +67,15 @@ final class IgnorePatternModel {
         if !excludesFile.isEmpty {
             if excludesFile.starts(with: "~/") {
                 let relativePath = String(excludesFile.dropFirst(2)) // Remove "~/"
-                return FileManager.default.homeDirectoryForCurrentUser.appending(path: relativePath)
+                return homeDirectory.appending(path: relativePath)
             } else if excludesFile.starts(with: "/") {
                 return URL(fileURLWithPath: excludesFile) // Absolute path
             } else {
-                return FileManager.default.homeDirectoryForCurrentUser.appending(path: excludesFile)
+                return homeDirectory.appending(path: excludesFile)
             }
         } else {
             let defaultPath = ".gitignore_global"
-            let fileURL = FileManager.default.homeDirectoryForCurrentUser.appending(path: defaultPath)
+            let fileURL = homeDirectory.appending(path: defaultPath)
             await gitConfig.set(key: "core.excludesfile", value: "~/\(defaultPath)", global: true)
             return fileURL
         }
@@ -122,7 +135,7 @@ final class IgnorePatternModel {
                 loadingPatterns = false
             }
         } catch {
-            print("Error loading patterns: \(error)")
+            Self.logger.error("Error loading patterns: \(error.localizedDescription, privacy: .public)")
             patterns = []
             loadingPatterns = false
         }
@@ -169,7 +182,7 @@ final class IgnorePatternModel {
                 let updatedContent = reorderedLines.joined(separator: "\n")
                 try updatedContent.write(to: fileURL, atomically: true, encoding: .utf8)
             } catch {
-                print("Error saving patterns: \(error)")
+                Self.logger.error("Error saving patterns: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -209,14 +222,12 @@ final class IgnorePatternModel {
     ) -> [String] {
         var reorderedLines: [String] = globalCommentLines
         var usedNonPatternLines = Set<Int>()
-        var usedPatterns = Set<String>()
 
         for pattern in patterns {
             let value = pattern.value
 
             // Insert the pattern
             reorderedLines.append(value)
-            usedPatterns.insert(value)
 
             // Preserve associated non-pattern lines
             if let currentIndex = patternToLineIndex[value] {
@@ -240,11 +251,6 @@ final class IgnorePatternModel {
             }
         }
 
-        // Add new patterns that were not in the original file
-        for pattern in patterns where !usedPatterns.contains(pattern.value) {
-            reorderedLines.append(pattern.value)
-        }
-
         return reorderedLines
     }
 
@@ -259,7 +265,7 @@ final class IgnorePatternModel {
             let content = patterns.map(\.value).joined(separator: "\n")
             try content.write(to: fileURL, atomically: true, encoding: .utf8)
         } catch {
-            print("Failed to write all patterns: \(error)")
+            Self.logger.error("Failed to write all patterns: \(error.localizedDescription, privacy: .public)")
         }
     }
 

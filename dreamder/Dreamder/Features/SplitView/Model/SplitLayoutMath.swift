@@ -234,9 +234,6 @@ nonisolated struct SplitLayoutMath: Equatable, Sendable {
             } else if !aboveUpper.isEmpty {
                 pinned = aboveUpper
                 bounds = upper
-            } else if !belowLower.isEmpty {
-                pinned = belowLower
-                bounds = lower
             } else {
                 for (offset, index) in free.enumerated() {
                     result[index] = shares[offset]

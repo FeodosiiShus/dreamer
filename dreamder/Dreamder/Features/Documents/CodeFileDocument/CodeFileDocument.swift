@@ -12,7 +12,6 @@ import UniformTypeIdentifiers
 import CodeEditSourceEditor
 import CodeEditTextView
 import CodeEditLanguages
-import Combine
 import OSLog
 import TextStory
 
@@ -20,6 +19,7 @@ enum CodeFileError: Error {
     case failedToDecode
     case failedToEncode
     case fileTypeError
+    case readOnly
 }
 
 @objc(CodeFileDocument)
@@ -29,7 +29,7 @@ final class CodeFileDocument: NSDocument {
         let cursorPositions: [CursorPosition]
     }
 
-    nonisolated static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "CodeFileDocument")
+    nonisolated static let logger = Logger(subsystem: "dev.dreamder.Dreamder", category: "CodeFileDocument")
 
     /// Sent when the document is opened. The document will be sent in the notification's object.
     nonisolated static let didOpenNotification = Notification.Name(rawValue: "CodeFileDocument.didOpen")
@@ -64,6 +64,52 @@ final class CodeFileDocument: NSDocument {
     /// Document-specific overridden line wrap preference.
     var wrapLines: Bool?
 
+    private(set) var contentState = CodeFileContentState()
+
+    private(set) var editorConfig: EditorConfigProperties = .empty
+
+    private(set) var detectedIndent: DetectedIndent?
+
+    @ObservationIgnored weak var attachedController: TextViewController?
+
+    var attachedTextView: TextView? {
+        attachedController?.textView
+    }
+
+    @ObservationIgnored private(set) lazy var textViewBinder = CodeFileTextViewBinder(document: self)
+
+    @ObservationIgnored private var modifiedLineTracker = ModifiedLineTracker()
+
+    @ObservationIgnored private var retainedModifiedLines = IndexSet()
+
+    @ObservationIgnored private var pendingRemovedLineBreaks = 0
+
+    @ObservationIgnored private var isApplyingSaveActions = false
+
+    var modifiedLines: IndexSet {
+        modifiedLineTracker.lines
+    }
+
+    var isReadOnly: Bool {
+        contentState.isReadOnly
+    }
+
+    var isBinary: Bool {
+        contentState.isBinary
+    }
+
+    var isTooLargeForIntelligence: Bool {
+        contentState.isTooLargeForIntelligence
+    }
+
+    var readError: CodeFileReadError? {
+        contentState.readError
+    }
+
+    var notice: CodeFileNotice? {
+        contentState.notice
+    }
+
     /// Set up by ``LanguageServer``, conforms this type to ``LanguageServerDocument``.
     var languageServerObjects: LanguageServerDocumentObjects<CodeFileDocument> = .init()
 
@@ -74,7 +120,7 @@ final class CodeFileDocument: NSDocument {
     /// - Note: The UTType doesn't necessarily mean the file extension, it can be the MIME
     /// type or any other form of data representation.
     var utType: UTType? {
-        if content != nil {
+        if content != nil || contentState.readError != nil {
             return .text
         }
 
@@ -89,15 +135,14 @@ final class CodeFileDocument: NSDocument {
     /// Nulled by ``CodeFileView`` on first load.
     @ObservationIgnored var openOptions: OpenOptions?
 
-    private let isDocumentEditedSubject = PassthroughSubject<Bool, Never>()
-
-    /// Publisher for isDocumentEdited property
-    var isDocumentEditedPublisher: AnyPublisher<Bool, Never> {
-        isDocumentEditedSubject.eraseToAnyPublisher()
-    }
+    private(set) var isEdited = false
 
     @ObservationIgnored private var autosaveTask: Task<Void, Never>?
     private nonisolated static let autosaveDelay: Duration = .seconds(2)
+
+    @ObservationIgnored var autosavingInPlace: @MainActor () -> Bool = { CodeFileDocument.autosavesInPlace }
+
+    @ObservationIgnored var closeConfirmation: (@MainActor (CodeFileDocument) -> Bool)?
 
     deinit {
         autosaveTask?.cancel()
@@ -106,24 +151,11 @@ final class CodeFileDocument: NSDocument {
     // MARK: - NSDocument
 
     nonisolated override static var autosavesInPlace: Bool {
-        onMain { Settings.shared.preferences.general.isAutoSaveOn }
+        AutosavePreference.isEnabled.withLock { $0 }
     }
 
     nonisolated override var autosavingFileType: String? {
-        Self.onMain {
-            Settings.shared.preferences.general.isAutoSaveOn
-                ? fileType
-                : nil
-        }
-    }
-
-    private nonisolated static func onMain<T: Sendable>(_ body: @MainActor () -> T) -> T {
-        if Thread.isMainThread {
-            return MainActor.assumeIsolated(body)
-        }
-        return DispatchQueue.main.sync {
-            MainActor.assumeIsolated(body)
-        }
+        Self.autosavesInPlace ? fileType : nil
     }
 
     override func makeWindowControllers() {
@@ -133,6 +165,7 @@ final class CodeFileDocument: NSDocument {
             backing: .buffered, defer: false
         )
         let windowController = NSWindowController(window: window)
+        let needsCentering = fileURL.map { !Self.hasSavedWindowFrame(for: $0) } ?? false
         if let fileURL {
             windowController.shouldCascadeWindows = false
             windowController.windowFrameAutosaveName = fileURL.path
@@ -145,14 +178,21 @@ final class CodeFileDocument: NSDocument {
 
         window.makeKeyAndOrderFront(nil)
 
-        if let fileURL, UserDefaults.standard.object(forKey: "NSWindow Frame \(fileURL.path)") == nil {
+        if needsCentering {
             window.center()
         }
+    }
+
+    static func hasSavedWindowFrame(for url: URL, defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: "NSWindow Frame \(url.path)") != nil
     }
 
     // MARK: - Data
 
     override func data(ofType _: String) throws -> Data {
+        guard !contentState.isReadOnly else {
+            throw CodeFileError.readOnly
+        }
         guard let sourceEncoding, let data = (content?.string as NSString?)?.data(using: sourceEncoding.nsValue) else {
             Self.logger.error("Failed to encode contents to \(self.sourceEncoding.debugDescription)")
             throw CodeFileError.failedToEncode
@@ -164,32 +204,33 @@ final class CodeFileDocument: NSDocument {
 
     /// This function is used for decoding files.
     /// It should not throw error as unsupported files can still be opened by QLPreviewView.
-    nonisolated override func read(from data: Data, ofType _: String) throws {
-        var nsString: NSString?
-        let rawEncoding = NSString.stringEncoding(
-            for: data,
-            encodingOptions: [
-                .allowLossyKey: false, // Fail if using lossy encoding.
-                .suggestedEncodingsKey: FileEncoding.allCases.map { $0.nsValue },
-                .useOnlySuggestedEncodingsKey: true
-            ],
-            convertedString: &nsString,
-            usedLossyConversion: nil
-        )
-        guard let validEncoding = FileEncoding(rawEncoding), let nsString else {
-            Self.logger.error("Failed to read file from data using encoding: \(rawEncoding)")
-            return
+    nonisolated override func read(from data: Data, ofType typeName: String) throws {
+        let load = CodeFileContentLoad.classify(data: data, fileTypeName: typeName)
+        let detectedIndent = load.state.isReadOnly ? nil : load.text.flatMap { IndentDetector.detect(in: $0) }
+        MainActor.assumeIsolated {
+            apply(load, detectedIndent: detectedIndent)
         }
-        Self.onMain {
-            self.sourceEncoding = validEncoding
+    }
+
+    private func apply(_ load: CodeFileContentLoad, detectedIndent: DetectedIndent?) {
+        sourceEncoding = load.encoding
+        contentState = load.state
+        self.detectedIndent = detectedIndent
+        modifiedLineTracker.reset()
+        retainedModifiedLines = IndexSet()
+        editorConfig = fileURL.map { EditorConfigResolver().properties(for: $0) } ?? .empty
+        if let text = load.text {
             if let content {
-                registerContentChangeUndo(fileURL: fileURL, nsString: nsString, content: content)
-                content.mutableString.setString(nsString as String)
+                registerContentChangeUndo(fileURL: fileURL, nsString: text as NSString, content: content)
+                content.mutableString.setString(text)
             } else {
-                self.content = CodeTextStorage(string: nsString as String)
+                content = CodeTextStorage(string: text)
             }
-            NotificationCenter.default.post(name: Self.didOpenNotification, object: self)
+        } else {
+            content = nil
         }
+        guard load.text != nil, !load.state.isReadOnly else { return }
+        NotificationCenter.default.post(name: Self.didOpenNotification, object: self)
     }
 
     /// If this file is already open and being tracked by an undo manager, we register an undo mutation
@@ -217,22 +258,24 @@ final class CodeFileDocument: NSDocument {
     override func updateChangeCount(_ change: NSDocument.ChangeType) {
         super.updateChangeCount(change)
 
-        if CodeFileDocument.autosavesInPlace {
+        if autosavingInPlace() {
             return
         }
 
-        self.isDocumentEditedSubject.send(self.isDocumentEdited)
+        isEdited = isDocumentEdited
     }
 
     /// Triggered when changes saved
     override func updateChangeCount(withToken changeCountToken: Any, for saveOperation: NSDocument.SaveOperationType) {
         super.updateChangeCount(withToken: changeCountToken, for: saveOperation)
+        modifiedLineTracker.reset(keeping: retainedModifiedLines)
+        retainedModifiedLines = IndexSet()
 
-        if CodeFileDocument.autosavesInPlace {
+        if autosavingInPlace() {
             return
         }
 
-        self.isDocumentEditedSubject.send(self.isDocumentEdited)
+        isEdited = isDocumentEdited
     }
 
     /// If ``hasUnautosavedChanges`` is `true` and an autosave has not already been scheduled, schedules a new autosave.
@@ -241,7 +284,7 @@ final class CodeFileDocument: NSDocument {
     /// All operations are done with the ``autosaveTimerLock`` acquired (including the scheduled autosave) to ensure
     /// correct timing when scheduling or cancelling timers.
     override func scheduleAutosaving() {
-        guard hasUnautosavedChanges else {
+        guard autosavingInPlace(), hasUnautosavedChanges else {
             autosaveTask?.cancel()
             autosaveTask = nil
             return
@@ -251,6 +294,7 @@ final class CodeFileDocument: NSDocument {
             try? await Task.sleep(for: CodeFileDocument.autosaveDelay)
             guard !Task.isCancelled, let self else { return }
             autosaveTask = nil
+            applySaveActions()
             autosave(withDelegate: nil, didAutosave: nil, contextInfo: nil)
         }
     }
@@ -265,8 +309,17 @@ final class CodeFileDocument: NSDocument {
     /// To determine if we can reload the file, we check if the document has outstanding edits. If not, we reload the
     /// file.
     nonisolated override func presentedItemDidChange() {
-        let reloaded = Self.onMain { self.reloadFromDiskIfUnedited() }
-        guard !reloaded else { return }
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { handlePresentedItemChange() }
+        } else {
+            Task { @MainActor in
+                self.handlePresentedItemChange()
+            }
+        }
+    }
+
+    private func handlePresentedItemChange() {
+        guard !reloadFromDiskIfUnedited() else { return }
         super.presentedItemDidChange()
     }
 
@@ -298,20 +351,106 @@ final class CodeFileDocument: NSDocument {
     }
 
     override func save(_ sender: Any?) {
-        guard let fileURL else {
-            super.save(sender)
-            return
-        }
+        applySaveActions()
 
         do {
-            // Get parent directory for cases when entire folders were deleted – and recreate them as needed
-            let directory = fileURL.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: nil)
+            if let directory = fileURL?.deletingLastPathComponent() {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            }
 
             super.save(sender)
         } catch {
             presentError(error)
         }
+    }
+
+    override func save(
+        withDelegate delegate: Any?,
+        didSave didSaveSelector: Selector?,
+        contextInfo: UnsafeMutableRawPointer?
+    ) {
+        applySaveActions()
+        super.save(withDelegate: delegate, didSave: didSaveSelector, contextInfo: contextInfo)
+    }
+
+    override func canClose(
+        withDelegate delegate: Any,
+        shouldClose shouldCloseSelector: Selector?,
+        contextInfo: UnsafeMutableRawPointer?
+    ) {
+        guard isDocumentEdited, let closeConfirmation, let shouldCloseSelector,
+              let receiver = delegate as? NSObject
+        else {
+            super.canClose(withDelegate: delegate, shouldClose: shouldCloseSelector, contextInfo: contextInfo)
+            return
+        }
+        DocumentCloseCallback.invoke(
+            on: receiver,
+            selector: shouldCloseSelector,
+            document: self,
+            shouldClose: closeConfirmation(self),
+            contextInfo: contextInfo
+        )
+    }
+
+    static func currentSaveActionSettings() -> SaveActionSettings {
+        Settings[\.textEditing].saveActionSettings
+    }
+
+    func trackWillReplace(range: NSRange, in textView: TextView) {
+        guard !isApplyingSaveActions else { return }
+        let storage = textView.textStorage
+        let clamped = NSIntersectionRange(range, NSRange(location: 0, length: storage?.length ?? 0))
+        guard let storage, clamped.length > 0 else {
+            pendingRemovedLineBreaks = 0
+            return
+        }
+        pendingRemovedLineBreaks = ModifiedLineTracker.lineBreakCount(
+            in: storage.mutableString.substring(with: clamped)
+        )
+    }
+
+    func trackDidReplace(range: NSRange, with string: String, in textView: TextView) {
+        guard !isApplyingSaveActions else { return }
+        let removed = pendingRemovedLineBreaks
+        pendingRemovedLineBreaks = 0
+        guard range.length > 0 || !string.isEmpty else { return }
+        modifiedLineTracker.replace(
+            startLine: textView.layoutManager.textLineForOffset(range.location)?.index ?? 0,
+            removedLineBreaks: removed,
+            addedLineBreaks: ModifiedLineTracker.lineBreakCount(in: string)
+        )
+    }
+
+    @discardableResult
+    func applySaveActions(settings: SaveActionSettings = CodeFileDocument.currentSaveActionSettings()) -> Bool {
+        guard !contentState.isReadOnly, let content else { return false }
+        let textView = attachedTextView.flatMap { $0.textStorage === content && $0.isEditable ? $0 : nil }
+        let selections = textView?.selectionManager.textSelections.map(\.range) ?? []
+        let plan = SaveActions(editorConfig: editorConfig, settings: settings).plan(
+            for: content.string,
+            modifiedLines: modifiedLines,
+            caretOffsets: selections.map(\.upperBound)
+        )
+        retainedModifiedLines = plan.deferredLines
+        guard !plan.edits.isEmpty else { return false }
+        isApplyingSaveActions = true
+        defer { isApplyingSaveActions = false }
+        if let textView {
+            for edit in plan.edits {
+                textView.replaceCharacters(in: edit.range, with: edit.replacement, skipUpdateSelection: true)
+            }
+            textView.selectionManager.setSelectedRanges(
+                selections.map { SaveActions.map($0, through: plan.edits) }
+            )
+        } else {
+            content.beginEditing()
+            for edit in plan.edits {
+                content.replaceCharacters(in: edit.range, with: edit.replacement)
+            }
+            content.endEditing()
+        }
+        return true
     }
 
     nonisolated override func fileNameExtension(
@@ -337,6 +476,48 @@ final class CodeFileDocument: NSDocument {
             prefixBuffer: content?.string.getFirstLines(5),
             suffixBuffer: content?.string.getLastLines(5)
         )
+    }
+
+    static func currentGlobalIndent() -> GlobalIndent {
+        let editing = Settings[\.textEditing]
+        return GlobalIndent(
+            style: editing.indentOption.indentType == .tab ? .tab : .spaces,
+            spaceCount: editing.indentOption.spaceCount,
+            tabWidth: editing.defaultTabWidth
+        )
+    }
+
+    func resolveIndent(global: GlobalIndent) -> ResolvedIndent {
+        let overrideStyle: IndentStyle? = indentOption.map { $0.indentType == .tab ? .tab : .spaces }
+        return IndentResolver.resolve(
+            documentOverride: IndentLayer(
+                style: overrideStyle,
+                spaceCount: indentOption?.spaceCount,
+                tabWidth: defaultTabWidth
+            ),
+            editorConfig: editorConfig,
+            detected: detectedIndent,
+            languageDefault: LanguageIndentDefaults.layer(for: fileURL),
+            global: global
+        )
+    }
+
+    @ObservationIgnored var globalIndentOverride: GlobalIndent?
+
+    var resolvedIndent: ResolvedIndent {
+        resolveIndent(global: globalIndentOverride ?? Self.currentGlobalIndent())
+    }
+
+    var effectiveIndentOption: SettingsData.TextEditingSettings.IndentOption {
+        let resolved = resolvedIndent
+        return SettingsData.TextEditingSettings.IndentOption(
+            indentType: resolved.style == .tab ? .tab : .spaces,
+            spaceCount: resolved.spaceCount
+        )
+    }
+
+    var effectiveTabWidth: Int {
+        resolvedIndent.tabWidth
     }
 
     func findWorkspace() -> WorkspaceDocument? {

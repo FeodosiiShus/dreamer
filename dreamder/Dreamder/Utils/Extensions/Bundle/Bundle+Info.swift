@@ -8,14 +8,13 @@
 import Foundation
 
 extension Bundle {
-
-    static var appName: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Unknown App"
+    static var displayName: String {
+        main.applicationDisplayName
     }
 
-    static var displayName: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
-        ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
+    var applicationDisplayName: String {
+        object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+        ?? object(forInfoDictionaryKey: "CFBundleName") as? String
         ?? "Unknown App"
     }
 

@@ -2,36 +2,41 @@ import AppKit
 import SwiftUI
 
 struct GitToolWindow: View {
+    static let branchesWidthRange: ClosedRange<CGFloat> = 150...420
+    static let detailsWidthRange: ClosedRange<CGFloat> = 220...620
+
     @Environment(WorkspaceDocument.self) private var workspace
     @Environment(SourceControlManager.self) private var sourceControlManager
 
-    @State private var viewModel = GitLogViewModel()
-    @State private var branchesWidth: CGFloat = 210
-    @State private var detailsWidth: CGFloat = 320
-    @State private var showsConsole = false
+    @State private var model: GitToolWindowModel
+
+    init(model: GitToolWindowModel = GitToolWindowModel()) {
+        _model = State(initialValue: model)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             ToolWindowHeader(
                 title: "Git",
                 tabs: {
-                    ToolWindowTab(title: viewModel.tabTitle, isSelected: !showsConsole) {
-                        showsConsole = false
-                    }
+                    ToolWindowTab(title: model.logModel.tabTitle, isSelected: model.pane == .log, action: model.showLog)
                     GitConsoleTab(
                         log: GitConsoleLog.log(for: sourceControlManager.repositoryURL),
-                        isSelected: $showsConsole
+                        isSelected: model.consoleSelection
                     )
+                    ToolWindowTab(title: "Shelf", isSelected: model.pane == .shelf, action: model.showShelf)
                 },
                 actions: {
-                    ToolWindowActionButton(icon: "general/refresh", help: "Refresh") {
-                        Task {
-                            await refresh()
-                        }
-                    }
-                    ToolWindowActionButton(icon: "general/hide", help: "Hide") {
-                        workspace.toolWindowManager.hide(.git)
-                    }
+                    ToolWindowActionButton(
+                        icon: "general/refresh",
+                        help: "Refresh",
+                        action: { Task { await model.refresh(manager: sourceControlManager) } }
+                    )
+                    ToolWindowActionButton(
+                        icon: "general/hide",
+                        help: "Hide",
+                        action: { workspace.toolWindowManager.hide(.git) }
+                    )
                 }
             )
 
@@ -39,11 +44,15 @@ struct GitToolWindow: View {
                 .fill(Islands.separator)
                 .frame(height: 1)
 
-            if showsConsole {
+            if model.showsConsole {
                 GitConsoleView(log: GitConsoleLog.log(for: sourceControlManager.repositoryURL))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if sourceControlManager.isGitRepository {
-                content
+                if model.pane == .shelf {
+                    ShelfView(model: model.shelfModel)
+                } else {
+                    content
+                }
             } else {
                 Text("Not a git repository")
                     .font(Islands.uiFont)
@@ -54,57 +63,79 @@ struct GitToolWindow: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear)
         .task {
-            await refresh()
+            await model.refresh(manager: sourceControlManager)
         }
         .onChange(of: sourceControlManager.isGitRepository) { _, isRepository in
             guard isRepository else { return }
             Task {
-                await refresh()
+                await model.refresh(manager: sourceControlManager)
             }
         }
         .onChange(of: sourceControlManager.currentBranch) { _, _ in
             guard sourceControlManager.isGitRepository else { return }
             Task {
-                await viewModel.load(manager: sourceControlManager)
+                await model.logModel.load(manager: sourceControlManager)
             }
         }
     }
 
     private var content: some View {
-        HStack(spacing: 0) {
-            GitLogBranchesPane(viewModel: viewModel)
-                .frame(width: branchesWidth)
+        @Bindable var model = model
+        return HStack(spacing: 0) {
+            GitLogBranchesPane(viewModel: model.logModel)
+                .frame(width: model.branchesWidth)
 
-            GitPaneDivider(width: $branchesWidth, range: 150...420)
+            GitPaneDivider(width: $model.branchesWidth, range: Self.branchesWidthRange)
 
             VStack(spacing: 0) {
-                GitLogFilterBar(viewModel: viewModel)
-                GitLogCommitTable(viewModel: viewModel)
+                GitLogFilterBar(viewModel: model.logModel)
+                GitLogCommitTable(viewModel: model.logModel)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            GitPaneDivider(width: $detailsWidth, range: 220...620, inverted: true)
+            GitPaneDivider(width: $model.detailsWidth, range: Self.detailsWidthRange, inverted: true)
 
-            GitLogDetailsPane(viewModel: viewModel)
-                .frame(width: detailsWidth)
+            GitLogDetailsPane(viewModel: model.logModel)
+                .frame(width: model.detailsWidth)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+}
 
-    @MainActor
-    private func refresh() async {
-        await sourceControlManager.refreshBranches()
-        await sourceControlManager.refreshCurrentBranch()
-        await viewModel.load(manager: sourceControlManager)
+nonisolated struct GitPaneDividerDrag: Equatable, Sendable {
+    let range: ClosedRange<CGFloat>
+    let inverted: Bool
+    private(set) var startWidth: CGFloat?
+
+    init(range: ClosedRange<CGFloat>, inverted: Bool = false) {
+        self.range = range
+        self.inverted = inverted
+    }
+
+    mutating func resolvedWidth(_ current: CGFloat, translation: CGFloat) -> CGFloat {
+        let base = startWidth ?? current
+        startWidth = base
+        let delta = inverted ? -translation : translation
+        return min(max(base + delta, range.lowerBound), range.upperBound)
+    }
+
+    mutating func end() {
+        startWidth = nil
     }
 }
 
 struct GitPaneDivider: View {
     @Binding var width: CGFloat
-    let range: ClosedRange<CGFloat>
-    var inverted = false
+    @State private var drag: GitPaneDividerDrag
 
-    @State private var startWidth: CGFloat?
+    init(width: Binding<CGFloat>, range: ClosedRange<CGFloat>, inverted: Bool = false) {
+        _width = width
+        _drag = State(initialValue: GitPaneDividerDrag(range: range, inverted: inverted))
+    }
+
+    static func cursor(isHovering: Bool) -> NSCursor {
+        isHovering ? .resizeLeftRight : .arrow
+    }
 
     var body: some View {
         Rectangle()
@@ -112,26 +143,11 @@ struct GitPaneDivider: View {
             .frame(width: 1)
             .frame(width: 7)
             .contentShape(Rectangle())
-            .onHover { isHovering in
-                if isHovering {
-                    NSCursor.resizeLeftRight.set()
-                } else {
-                    NSCursor.arrow.set()
-                }
-            }
+            .onHover { Self.cursor(isHovering: $0).set() }
             .gesture(
                 DragGesture(minimumDistance: 1)
-                    .onChanged { value in
-                        let base = startWidth ?? width
-                        if startWidth == nil {
-                            startWidth = width
-                        }
-                        let delta = inverted ? -value.translation.width : value.translation.width
-                        width = min(max(base + delta, range.lowerBound), range.upperBound)
-                    }
-                    .onEnded { _ in
-                        startWidth = nil
-                    }
+                    .onChanged { width = drag.resolvedWidth(width, translation: $0.translation.width) }
+                    .onEnded { _ in drag.end() }
             )
     }
 }

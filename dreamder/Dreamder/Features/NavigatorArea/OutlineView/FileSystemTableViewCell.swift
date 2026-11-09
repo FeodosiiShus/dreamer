@@ -13,6 +13,10 @@ class FileSystemTableViewCell: StandardTableViewCell {
 
     private var navigatorFilter: String?
 
+    private(set) var exclusion: ProjectNavigatorExclusion = .included
+
+    static let excludedIconAlpha: CGFloat = 0.55
+
     /// Initializes the `OutlineTableViewCell` with an `icon` and `label`
     /// Both the icon and label will be colored, and sized based on the user's preferences.
     /// - Parameters:
@@ -21,9 +25,16 @@ class FileSystemTableViewCell: StandardTableViewCell {
     ///   - isEditable: Set to true if the user should be able to edit the file name.
     ///   - navigatorFilter: An optional string use to filter the navigator area.
     ///                      (Used for bolding and changing primary/secondary color).
-    init(frame frameRect: NSRect, item: CEWorkspaceFile?, isEditable: Bool = true, navigatorFilter: String? = nil) {
+    init(
+        frame frameRect: NSRect,
+        item: CEWorkspaceFile?,
+        isEditable: Bool = true,
+        navigatorFilter: String? = nil,
+        exclusion: ProjectNavigatorExclusion = .included
+    ) {
         super.init(frame: frameRect, isEditable: isEditable)
         self.navigatorFilter = navigatorFilter
+        self.exclusion = exclusion
 
         if let item = item {
             addIcon(item: item)
@@ -35,22 +46,22 @@ class FileSystemTableViewCell: StandardTableViewCell {
         label.delegate = self
     }
 
-    func addIcon(item: CEWorkspaceFile) {
+    func addIcon(item: CEWorkspaceFile, imageNamed: @MainActor (String) -> NSImage? = { IntelliJIcon.nsImage($0) }) {
         fileItem = item
         let iconName: String
         if item.isFolder {
-            let isExcluded = ExcludedDirectories.rules(covering: item.url).isExclusionRoot(item.url)
-            iconName = isExcluded ? "nodes/excludeRoot" : "nodes/folder"
+            iconName = exclusion == .excludedRoot ? "nodes/excludeRoot" : "nodes/folder"
         } else {
             iconName = IntelliJIcon.fileIcon(for: item.name)
         }
-        if let image = IntelliJIcon.nsImage(iconName) {
+        if let image = imageNamed(iconName) {
             imageView?.image = image
         } else {
             imageView?.image = item.nsIcon
         }
         imageView?.imageScaling = .scaleProportionallyDown
         imageView?.contentTintColor = nil
+        imageView?.alphaValue = exclusion.isExcluded && item.isFolder ? Self.excludedIconAlpha : 1
 
         let fileName = item.labelFileName()
         let fontSize = Islands.uiFontSize
@@ -85,8 +96,7 @@ class FileSystemTableViewCell: StandardTableViewCell {
 
     /// The color of a file's name based on its VCS status, matching IntelliJ's project view.
     func nameColor(for item: CEWorkspaceFile) -> NSColor {
-        guard let gitStatus = item.gitStatus else { return NSColor(Islands.foreground) }
-        switch gitStatus {
+        switch item.gitStatus {
         case .modified, .renamed, .copied, .fileTypeChange:
             return NSColor(Islands.fileModified)
         case .added:
@@ -97,9 +107,14 @@ class FileSystemTableViewCell: StandardTableViewCell {
             return NSColor(Islands.fileDeleted)
         case .unmerged:
             return NSColor(Islands.fileConflict)
-        case .none:
-            return NSColor(Islands.foreground)
+        case nil, .some(.none):
+            return exclusionNameColor(for: item)
         }
+    }
+
+    private func exclusionNameColor(for item: CEWorkspaceFile) -> NSColor {
+        guard exclusion.isExcluded else { return NSColor(Islands.foreground) }
+        return NSColor(item.isFolder ? Islands.secondaryForeground : Islands.fileIgnored)
     }
 
     /// *Not Implemented*
@@ -112,16 +127,6 @@ class FileSystemTableViewCell: StandardTableViewCell {
         nil
     }
 
-    /// Returns the font size for the current row height. Defaults to `13.0`
-    private var fontSize: Double {
-        switch self.frame.height {
-        case 20: return 11
-        case 22: return 13
-        case 24: return 14
-        default: return 13
-        }
-    }
-
     isolated deinit {
         toolTip = nil
     }
@@ -129,19 +134,24 @@ class FileSystemTableViewCell: StandardTableViewCell {
 
 let errorRed = NSColor(red: 1, green: 0, blue: 0, alpha: 0.2)
 extension FileSystemTableViewCell: NSTextFieldDelegate {
+    var enteredName: String {
+        textField?.stringValue ?? ""
+    }
+
     func controlTextDidChange(_ obj: Notification) {
         guard let fileItem else { return }
-        textField?.backgroundColor = fileItem.validateFileName(for: textField?.stringValue ?? "") ? .none : errorRed
+        textField?.backgroundColor = fileItem.validateFileName(for: enteredName) ? .none : errorRed
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
         guard let fileItem else { return }
         do {
-            textField?.backgroundColor = fileItem.validateFileName(for: textField?.stringValue ?? "") ? .none : errorRed
-            if fileItem.validateFileName(for: textField?.stringValue ?? "") {
+            let isValid = fileItem.validateFileName(for: enteredName)
+            textField?.backgroundColor = isValid ? .none : errorRed
+            if isValid {
                 let newURL = fileItem.url
                     .deletingLastPathComponent()
-                    .appending(path: textField?.stringValue ?? "")
+                    .appending(path: enteredName)
                 try workspace?.workspaceFileManager?.move(file: fileItem, to: newURL)
             } else {
                 textField?.stringValue = fileItem.labelFileName()

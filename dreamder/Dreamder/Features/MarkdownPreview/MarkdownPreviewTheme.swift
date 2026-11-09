@@ -3,12 +3,12 @@ import SwiftUI
 
 extension MarkdownPreviewColor {
     init(_ color: Color) {
-        let resolved = NSColor(color).usingColorSpace(.sRGB) ?? NSColor.white
+        let resolved = color.resolve(in: EnvironmentValues())
         self.init(
-            red: Int((resolved.redComponent * 255).rounded()),
-            green: Int((resolved.greenComponent * 255).rounded()),
-            blue: Int((resolved.blueComponent * 255).rounded()),
-            alpha: Double(resolved.alphaComponent)
+            red: Int((Double(resolved.red) * 255).rounded()),
+            green: Int((Double(resolved.green) * 255).rounded()),
+            blue: Int((Double(resolved.blue) * 255).rounded()),
+            alpha: Double(resolved.opacity)
         )
     }
 
@@ -36,10 +36,13 @@ extension MarkdownPreviewAccents {
 
 extension MarkdownPreviewPalette {
     static func current(settings: Settings = .shared, themeModel: ThemeModel = .shared) -> MarkdownPreviewPalette {
+        palette(for: themeModel.selectedTheme ?? themeModel.themes.first, settings: settings)
+    }
+
+    static func palette(for theme: Theme?, settings: Settings) -> MarkdownPreviewPalette {
         let preferences = settings.preferences
         let fontSize = preferences.markdownPreview.resolvedFontSize(editorFontSize: preferences.textEditing.font.size)
-        if let theme = themeModel.selectedTheme ?? themeModel.themes.first,
-           let palette = MarkdownPreviewPalette(theme: theme, fontSize: fontSize, islandsAccents: .islands) {
+        if let theme, let palette = MarkdownPreviewPalette(theme: theme, fontSize: fontSize, islandsAccents: .islands) {
             return palette
         }
         return MarkdownPreviewPalette(

@@ -8,6 +8,43 @@
 import Foundation
 import UserNotifications
 
+protocol SystemNotificationCenter: AnyObject {
+    func attach(delegate: any UNUserNotificationCenterDelegate)
+    func setNotificationCategories(_ categories: Set<UNNotificationCategory>)
+    func requestAuthorization(options: UNAuthorizationOptions) async
+    func add(_ request: UNNotificationRequest)
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String])
+    func removeAllDeliveredNotifications()
+}
+
+final class LiveSystemNotificationCenter: SystemNotificationCenter {
+    private var current: UNUserNotificationCenter { UNUserNotificationCenter.current() }
+
+    func attach(delegate: any UNUserNotificationCenterDelegate) {
+        current.delegate = delegate
+    }
+
+    func setNotificationCategories(_ categories: Set<UNNotificationCategory>) {
+        current.setNotificationCategories(categories)
+    }
+
+    func requestAuthorization(options: UNAuthorizationOptions) async {
+        _ = try? await current.requestAuthorization(options: options)
+    }
+
+    func add(_ request: UNNotificationRequest) {
+        current.add(request)
+    }
+
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {
+        current.removeDeliveredNotifications(withIdentifiers: identifiers)
+    }
+
+    func removeAllDeliveredNotifications() {
+        current.removeAllDeliveredNotifications()
+    }
+}
+
 extension NotificationManager {
     /// Shows a system notification when app is in background
     func showSystemNotification(_ notification: CENotification) {
@@ -25,12 +62,12 @@ extension NotificationManager {
             trigger: nil
         )
 
-        UNUserNotificationCenter.current().add(request)
+        center.add(request)
     }
 
     /// Removes a system notification
     func removeSystemNotification(_ notification: CENotification) {
-        UNUserNotificationCenter.current().removeDeliveredNotifications(
+        center.removeDeliveredNotifications(
             withIdentifiers: [notification.id.uuidString]
         )
     }

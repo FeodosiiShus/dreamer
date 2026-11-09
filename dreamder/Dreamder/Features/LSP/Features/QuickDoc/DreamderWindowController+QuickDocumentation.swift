@@ -2,10 +2,14 @@ import AppKit
 
 @MainActor
 enum QuickDocumentationController {
-    static func present(in controller: DreamderWindowController) {
-        switch LSPEditorContextResolver.resolve(workspace: controller.workspace) {
+    @discardableResult
+    static func present(
+        in controller: DreamderWindowController,
+        lspService: LSPService? = .shared
+    ) -> Task<Void, Never>? {
+        switch LSPEditorContextResolver.resolve(workspace: controller.workspace, lspService: lspService) {
         case .ready(let context):
-            Task { @MainActor in
+            return Task { @MainActor in
                 let response = (try? await context.client.requestHover(
                     for: context.documentURI,
                     context.position
@@ -21,8 +25,9 @@ enum QuickDocumentationController {
                 "Quick Documentation needs a language server for this file",
                 in: controller
             )
+            return nil
         case .unavailable:
-            break
+            return nil
         }
     }
 }

@@ -8,66 +8,140 @@
 import SwiftUI
 
 struct KeyValueItem: Identifiable, Equatable {
-    let id = UUID()
+    let id: UUID
     let key: String
     let value: String
+
+    init(key: String, value: String) {
+        self.id = UUID()
+        self.key = key
+        self.value = value
+    }
 }
 
-private struct NewListTableItemView<HeaderView: View>: View {
-    @Environment(\.dismiss)
-    var dismiss
-
-    @State private var key: String
-    @State private var value: String
-
-    let keyColumnName: String
-    let valueColumnName: String
-    let newItemInstruction: String
+struct KeyValueForm {
+    let key: String
+    let value: String
+    let instruction: String
     let validKeys: [String]
-    let headerView: HeaderView?
-    var completion: (String, String) -> Void
+}
+
+@Observable
+final class KeyValueTableModel {
+    var tableItems: [KeyValueItem] = []
+    var selection: Set<UUID> = []
+    var editingItem: KeyValueItem?
+
+    func reload(from items: [String: String]) {
+        tableItems = items
+            .sorted { $0.key < $1.key }
+            .map { KeyValueItem(key: $0.key, value: $0.value) }
+    }
+
+    func beginAdding() {
+        editingItem = KeyValueItem(key: "", value: "")
+    }
+
+    func beginEditing(ids: Set<UUID>) {
+        guard let id = ids.first, let item = tableItems.first(where: { $0.id == id }) else {
+            return
+        }
+        editingItem = item
+    }
+
+    func remove(ids: Set<UUID>, from items: inout [String: String]) {
+        for item in tableItems where ids.contains(item.id) {
+            items.removeValue(forKey: item.key)
+        }
+    }
+
+    func removeSelection(from items: inout [String: String]) {
+        remove(ids: selection, from: &items)
+        selection.removeAll()
+    }
+
+    func commit(_ draft: KeyValueItemDraft, into items: inout [String: String]) {
+        guard draft.isComplete else {
+            return
+        }
+        items[draft.key] = draft.value
+        editingItem = nil
+    }
+}
+
+@Observable
+final class KeyValueItemDraft {
+    var key: String
+    var value: String
+
+    init(item: KeyValueItem) {
+        key = item.key
+        value = item.value
+    }
+
+    var isComplete: Bool {
+        !key.isEmpty && !value.isEmpty
+    }
+}
+
+struct KeyValueContextMenu: View {
+    let model: KeyValueTableModel
+    @Binding var items: [String: String]
+    let selected: Set<UUID>
+
+    var body: some View {
+        Button("Edit") { model.beginEditing(ids: selected) }
+        Button("Remove") { model.remove(ids: selected, from: &items) }
+    }
+}
+
+struct KeyValueItemSheet<HeaderView: View>: View {
+    @Environment(\.dismiss)
+    private var dismiss
+
+    @State private var draft: KeyValueItemDraft
+
+    let form: KeyValueForm
+    let headerView: HeaderView
+    let model: KeyValueTableModel
+    @Binding var items: [String: String]
 
     init(
-        key: String? = nil,
-        value: String? = nil,
-        _ keyColumnName: String,
-        _ valueColumnName: String,
-        _ newItemInstruction: String,
-        validKeys: [String],
-        headerView: HeaderView? = nil,
-        completion: @escaping (String, String) -> Void
+        _ item: KeyValueItem,
+        form: KeyValueForm,
+        header: HeaderView,
+        model: KeyValueTableModel,
+        items: Binding<[String: String]>
     ) {
-        self.keyColumnName = keyColumnName
-        self.valueColumnName = valueColumnName
-        self.newItemInstruction = newItemInstruction
-        self.validKeys = validKeys
-        self.headerView = headerView
-        self.completion = completion
-        self.key = key ?? ""
-        self.value = value ?? ""
+        self.form = form
+        self.headerView = header
+        self.model = model
+        self._items = items
+        self._draft = State(initialValue: KeyValueItemDraft(item: item))
     }
 
     var body: some View {
+        @Bindable var fields = draft
         VStack(spacing: 0) {
             Form {
                 Section {
-                    if validKeys.isEmpty {
-                        TextField(keyColumnName, text: $key)
+                    if form.validKeys.isEmpty {
+                        TextField(form.key, text: $fields.key)
                             .textFieldStyle(.plain)
                     } else {
-                        Picker(keyColumnName, selection: $key) {
-                            ForEach(validKeys, id: \.self) { key in
+                        Picker(form.key, selection: $fields.key) {
+                            ForEach(form.validKeys, id: \.self) { key in
                                 Text(key).tag(key)
                             }
                             Divider()
                             Text("No Selection").tag("")
                         }
                     }
-                    TextField(valueColumnName, text: $value)
+                    TextField(form.value, text: $fields.value)
                         .textFieldStyle(.plain)
                 } header: {
                     if HeaderView.self == EmptyView.self {
-                        Text(newItemInstruction)
+                        Text(form.instruction)
                     } else {
                         headerView
                     }
@@ -76,24 +150,14 @@ private struct NewListTableItemView<HeaderView: View>: View {
             .formStyle(.grouped)
             .scrollDisabled(true)
             .scrollContentBackground(.hidden)
-            .onSubmit {
-                if !key.isEmpty && !value.isEmpty {
-                    completion(key, value)
-                }
-            }
+            .onSubmit { model.commit(draft, into: &items) }
 
             HStack {
                 Spacer()
-                Button("Cancel") {
-                    dismiss()
-                }
-                Button("Add") {
-                    if !key.isEmpty && !value.isEmpty {
-                        completion(key, value)
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(key.isEmpty || value.isEmpty)
+                Button("Cancel") { dismiss() }
+                Button("Add") { model.commit(draft, into: &items) }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!draft.isComplete)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 20)
@@ -105,16 +169,11 @@ private struct NewListTableItemView<HeaderView: View>: View {
 struct KeyValueTable<Header: View, ActionBarView: View>: View {
     @Binding var items: [String: String]
 
-    let validKeys: [String]
-    let keyColumnName: String
-    let valueColumnName: String
-    let newItemInstruction: String
+    let form: KeyValueForm
     let newItemHeader: () -> Header
     let actionBarTrailing: () -> ActionBarView
 
-    @State private var editingItem: KeyValueItem?
-    @State private var selection: Set<UUID> = []
-    @State private var tableItems: [KeyValueItem] = []
+    @State private var model: KeyValueTableModel
 
     init(
         items: Binding<[String: String]>,
@@ -122,115 +181,55 @@ struct KeyValueTable<Header: View, ActionBarView: View>: View {
         keyColumnName: String,
         valueColumnName: String,
         newItemInstruction: String,
+        model: KeyValueTableModel = KeyValueTableModel(),
         @ViewBuilder newItemHeader: @escaping () -> Header = { EmptyView() },
         @ViewBuilder actionBarTrailing: @escaping () -> ActionBarView = { EmptyView() }
     ) {
         self._items = items
-        self.validKeys = validKeys
-        self.keyColumnName = keyColumnName
-        self.valueColumnName = valueColumnName
-        self.newItemInstruction = newItemInstruction
+        self.form = KeyValueForm(
+            key: keyColumnName,
+            value: valueColumnName,
+            instruction: newItemInstruction,
+            validKeys: validKeys
+        )
         self.newItemHeader = newItemHeader
         self.actionBarTrailing = actionBarTrailing
+        self._model = State(initialValue: model)
     }
 
     var body: some View {
-        Table(tableItems, selection: $selection) {
-            TableColumn(keyColumnName) { item in
+        Table(model.tableItems, selection: $model.selection) {
+            TableColumn(form.key) { item in
                 Text(item.key)
             }
-            TableColumn(valueColumnName) { item in
+            TableColumn(form.value) { item in
                 Text(item.value)
             }
         }
         .contextMenu(
             forSelectionType: UUID.self,
-            menu: { selectedItems in
-                Button("Edit") {
-                    editItem(id: selectedItems.first)
-                }
-                Button("Remove") {
-                    removeItem(selectedItems)
-                }
-            },
-            primaryAction: { selectedItems in
-                editItem(id: selectedItems.first)
-            }
+            menu: { KeyValueContextMenu(model: model, items: $items, selected: $0) },
+            primaryAction: { model.beginEditing(ids: $0) }
         )
         .actionBar {
             HStack(spacing: 2) {
-                Button {
-                    editingItem = KeyValueItem(key: "", value: "")
-                } label: {
-                    Image(systemName: "plus")
-                }
+                Button { model.beginAdding() } label: { Image(systemName: "plus") }
 
                 Divider()
                     .frame(minHeight: 15)
 
-                Button {
-                    removeItem()
-                } label: {
-                    Image(systemName: "minus")
-                }
-                .disabled(selection.isEmpty)
-                .opacity(selection.isEmpty ? 0.5 : 1)
+                Button { model.removeSelection(from: &items) } label: { Image(systemName: "minus") }
+                    .disabled(model.selection.isEmpty)
+                    .opacity(model.selection.isEmpty ? 0.5 : 1)
 
                 Spacer()
 
                 actionBarTrailing()
             }
         }
-        .sheet(item: $editingItem) { item in
-            NewListTableItemView(
-                key: item.key,
-                value: item.value,
-                keyColumnName,
-                valueColumnName,
-                newItemInstruction,
-                validKeys: validKeys,
-                headerView: newItemHeader()
-            ) { key, value in
-                items[key] = value
-                editingItem = nil
-            }
-        }
-        .cornerRadius(6)
-        .onAppear {
-            updateTableItems(items)
-            if let first = tableItems.first?.id {
-                selection = [first]
-            }
-            selection = []
-        }
-        .onChange(of: items) { _, newValue in
-            updateTableItems(newValue)
-        }
-    }
-
-    private func updateTableItems(_ newValue: [String: String]) {
-        tableItems = items
-            .sorted { $0.key < $1.key }
-            .map { KeyValueItem(key: $0.key, value: $0.value) }
-    }
-
-    private func removeItem() {
-        removeItem(selection)
-        self.selection.removeAll()
-    }
-
-    private func removeItem(_ selection: Set<UUID>) {
-        for selectedId in selection {
-            if let selectedItem = tableItems.first(where: { $0.id == selectedId }) {
-                items.removeValue(forKey: selectedItem.key)
-            }
-        }
-    }
-
-    private func editItem(id: UUID?) {
-        guard let id, let item = tableItems.first(where: { $0.id == id }) else {
-            return
-        }
-        editingItem = item
+        .sheet(item: $model.editingItem) { KeyValueItemSheet($0, form: form, header: newItemHeader(), model: model, items: $items) }
+        .clipShape(.rect(cornerRadius: 6))
+        .onAppear { model.reload(from: items) }
+        .onChange(of: items) { _, newValue in model.reload(from: newValue) }
     }
 }

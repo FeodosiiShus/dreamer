@@ -282,10 +282,6 @@ nonisolated enum MarkdownInlineParser {
                 if isLinear {
                     use = (closer.count >= 2 && opener.count >= 2) ? 2 : 1
                 } else {
-                    guard closer.count >= 2, opener.count >= 2 else {
-                        current += 1
-                        continue
-                    }
                     use = 2
                 }
                 let openStart = opener.remainingStart + opener.count - use

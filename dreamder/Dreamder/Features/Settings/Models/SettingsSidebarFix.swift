@@ -16,8 +16,10 @@ extension NSSplitViewItem {
     }
 
     static func swizzle() {
-        let origSelector = #selector(getter: NSSplitViewItem.canCollapse)
-        let swizzledSelector = #selector(getter: canCollapseSwizzled)
+        exchange(#selector(getter: NSSplitViewItem.canCollapse), #selector(getter: canCollapseSwizzled))
+    }
+
+    static func exchange(_ origSelector: Selector, _ swizzledSelector: Selector) {
         let originalMethodSet = class_getInstanceMethod(self as AnyClass, origSelector)
         let swizzledMethodSet = class_getInstanceMethod(self as AnyClass, swizzledSelector)
 

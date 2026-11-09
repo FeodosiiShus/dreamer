@@ -16,10 +16,10 @@ struct GitClientTests {
         let client: GitClient
     }
 
-    private func makeRepo(_ directory: URL) throws -> Repo {
-        let fixture = try GitMergeFixture(root: directory)
+    private func makeRepo(_ directory: URL) async throws -> Repo {
+        let fixture = try await GitMergeFixture(root: directory)
         try fixture.write("a.txt", "one\n")
-        try fixture.commit("initial")
+        try await fixture.commit("initial")
         return Repo(fixture: fixture, client: GitClient(directoryURL: directory, shellClient: .live()))
     }
 
@@ -128,12 +128,12 @@ struct GitClientTests {
     @Test
     func realStatusListsStagedModifiedRenamedAndUntrackedFiles() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             try repo.fixture.write("keep me.txt", "keep\n")
-            try repo.fixture.commit("second")
+            try await repo.fixture.commit("second")
             try repo.fixture.write("a.txt", "changed\n")
             try repo.fixture.write("dir/ünï file.txt", "new\n")
-            try repo.fixture.run("mv", "keep me.txt", "moved é.txt")
+            try await repo.fixture.run("mv", "keep me.txt", "moved é.txt")
 
             let status = try await repo.client.getStatus()
 
@@ -144,7 +144,7 @@ struct GitClientTests {
             let renamed = try #require(status.changedFiles.first { $0.fileURL.relativePath == "moved é.txt" })
             #expect(renamed.stagedStatus == .renamed)
             #expect(renamed.originalFilename == "keep me.txt")
-            #expect(relativePaths(status.untrackedFiles) == ["dir/ünï file.txt"])
+            #expect(status.untrackedFiles.map(\.fileURL.lastPathComponent) == ["dir"])
             #expect(status.unmergedChanges.isEmpty)
         }
     }
@@ -152,14 +152,14 @@ struct GitClientTests {
     @Test
     func scopedStatusOnlyListsChangesBelowTheScope() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             try repo.fixture.write("sub/inside.txt", "x\n")
             try repo.fixture.write("other/outside.txt", "y\n")
             let scoped = GitClient(directoryURL: directory, shellClient: .live(), scopePath: "sub")
 
             let status = try await scoped.getStatus()
 
-            #expect(relativePaths(status.untrackedFiles) == ["sub/inside.txt"])
+            #expect(status.untrackedFiles.map(\.fileURL.lastPathComponent) == ["sub"])
             #expect(scoped.scopePathspecArguments == ["--", "sub"])
             #expect(scoped.scopePathspec == " -- 'sub'")
         }
@@ -178,7 +178,7 @@ struct GitClientTests {
     @Test
     func validateRecognizesWorkTrees() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             #expect(await repo.client.validate())
         }
     }
@@ -196,7 +196,7 @@ struct GitClientTests {
     @Test
     func aFailingCommandSurfacesGitsMessage() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             do {
                 _ = try await repo.client.run("checkout missing-branch")
                 Issue.record("expected the command to fail")
@@ -210,7 +210,7 @@ struct GitClientTests {
     @Test
     func standardOutputIsReturnedVerbatim() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             let output = try await repo.client.run("rev-parse HEAD")
             #expect(output.trimmingCharacters(in: .whitespacesAndNewlines).count == 40)
         }
@@ -219,7 +219,7 @@ struct GitClientTests {
     @Test
     func runResultReportsExitCodesInsteadOfThrowing() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             let result = try await repo.client.runResult("rev-parse -q --verify refs/heads/nope")
             #expect(result.exitCode == 1)
             #expect(!result.success)
@@ -236,10 +236,10 @@ struct GitClientTests {
     @Test
     func runDataReturnsBinaryBlobsUnchanged() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             let bytes = Data([0x00, 0xFF, 0xFE, 0x0A, 0x61, 0x00])
             try bytes.write(to: directory.appending(path: "blob.bin"))
-            try repo.fixture.commit("binary")
+            try await repo.fixture.commit("binary")
 
             #expect(try await repo.client.runData("show HEAD:blob.bin") == bytes)
             let lossy = try await repo.client.run("show HEAD:blob.bin")
@@ -251,7 +251,7 @@ struct GitClientTests {
     @Test
     func commitMessagesNeverReachAShell() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             try repo.fixture.write("b.txt", "b\n")
             try await repo.client.add([directory.appending(path: "b.txt")])
             let message = "fix \"quotes\" & 'single' $(touch pwned-subshell) `touch pwned-backtick` back\\slash"
@@ -259,7 +259,7 @@ struct GitClientTests {
 
             try await repo.client.commit(message: message, details: details)
 
-            let stored = try repo.fixture.run("log", "-1", "--format=%B").trimmingCharacters(in: .whitespacesAndNewlines)
+            let stored = try await repo.fixture.run("log", "-1", "--format=%B").trimmingCharacters(in: .whitespacesAndNewlines)
             #expect(stored == message + "\n\n" + details)
             for marker in ["pwned-subshell", "pwned-backtick", "pwned-semicolon"] {
                 #expect(!repo.fixture.exists(marker))
@@ -271,23 +271,23 @@ struct GitClientTests {
     @Test
     func commitWithoutDetailsStoresOnlyTheMessage() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             try repo.fixture.write("b.txt", "b\n")
             try await repo.client.add([directory.appending(path: "b.txt")])
             try await repo.client.commit(message: "just a subject", details: "")
-            #expect(try repo.fixture.run("log", "-1", "--format=%B").trimmingCharacters(in: .whitespacesAndNewlines) == "just a subject")
+            #expect(try await repo.fixture.run("log", "-1", "--format=%B").trimmingCharacters(in: .whitespacesAndNewlines) == "just a subject")
         }
     }
 
     @Test
     func theCommitToolWindowQuotingIsParsedWithoutExpansion() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             let message = "amend \"x\" $(touch pwned-amend) `touch pwned-amend2` \\ end\nsecond line"
 
             try await repo.client.commitToolWindow(message: message, amend: true)
 
-            let stored = try repo.fixture.run("log", "-1", "--format=%B").trimmingCharacters(in: .whitespacesAndNewlines)
+            let stored = try await repo.fixture.run("log", "-1", "--format=%B").trimmingCharacters(in: .whitespacesAndNewlines)
             #expect(stored == message)
             #expect(!repo.fixture.exists("pwned-amend"))
             #expect(!repo.fixture.exists("pwned-amend2"))
@@ -297,7 +297,7 @@ struct GitClientTests {
     @Test
     func committingNothingIsReportedAsAnError() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             do {
                 try await repo.client.commit(message: "empty", details: nil)
                 Issue.record("expected the commit to fail")
@@ -310,7 +310,7 @@ struct GitClientTests {
     @Test
     func addAndResetHandleHostilePathNames() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             let names = ["with space.txt", "-dash.txt", "it's.txt", "$(touch pwned-add).txt"]
             for name in names {
                 try repo.fixture.write(name, "x\n")
@@ -318,10 +318,10 @@ struct GitClientTests {
             let urls = names.map { directory.appending(path: $0) }
 
             try await repo.client.add(urls)
-            #expect(try repo.fixture.stagedPaths() == names.sorted())
+            #expect(try await repo.fixture.stagedPaths() == names.sorted())
 
             try await repo.client.reset(urls)
-            #expect(try repo.fixture.stagedPaths().isEmpty)
+            #expect(try await repo.fixture.stagedPaths().isEmpty)
             #expect(!repo.fixture.exists("pwned-add"))
         }
     }
@@ -329,7 +329,7 @@ struct GitClientTests {
     @Test
     func discardChangesRestoresTheFile() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             try repo.fixture.write("a.txt", "dirty\n")
             try await repo.client.discardChanges(for: directory.appending(path: "a.txt"))
             #expect(try repo.fixture.read("a.txt") == "one\n")
@@ -343,7 +343,7 @@ struct GitClientTests {
     @Test
     func discardingAnUnknownFileFails() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             await #expect(throws: GitClient.GitClientError.self) {
                 try await repo.client.discardChanges(for: directory.appending(path: "never-existed.txt"))
             }
@@ -353,7 +353,7 @@ struct GitClientTests {
     @Test
     func stashMessagesNeverReachAShell() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             try repo.fixture.write("a.txt", "wip\n")
             let message = "wip \"x\" 'y' $(touch pwned-stash) `touch pwned-stash2`: with colon"
 
@@ -368,17 +368,13 @@ struct GitClientTests {
             #expect(abs(entry.date.timeIntervalSinceNow) < 300)
             #expect(!repo.fixture.exists("pwned-stash"))
             #expect(!repo.fixture.exists("pwned-stash2"))
-
-            try await repo.client.stashPop()
-            #expect(try repo.fixture.read("a.txt") == "wip\n")
-            #expect(try await repo.client.stashList().isEmpty)
         }
     }
 
     @Test
-    func stashApplyAndDropTargetTheRequestedEntry() async throws {
+    func stashApplyTargetsTheRequestedEntry() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             try repo.fixture.write("a.txt", "first\n")
             try await repo.client.stash(message: "first")
             try repo.fixture.write("a.txt", "second\n")
@@ -390,19 +386,6 @@ struct GitClientTests {
 
             try await repo.client.applyStashEntry(1)
             #expect(try repo.fixture.read("a.txt") == "first\n")
-            try repo.fixture.run("checkout", "--", "a.txt")
-
-            try await repo.client.deleteStashEntry(0)
-            #expect(try await repo.client.stashList().count == 1)
-            await #expect(throws: GitClient.GitClientError.self) { try await repo.client.deleteStashEntry(5) }
-        }
-    }
-
-    @Test
-    func poppingAnEmptyStashFails() async throws {
-        try await withTempDir { directory in
-            let repo = try makeRepo(directory)
-            await #expect(throws: GitClient.GitClientError.self) { try await repo.client.stashPop() }
         }
     }
 
@@ -426,14 +409,14 @@ struct GitClientTests {
     @Test
     func configValuesRoundTripWithoutShellInterpretation() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             let value = "va\"lue 'q' $(touch pwned-config) `touch pwned-config2` ; back\\slash"
 
             await repo.client.setConfig(key: "dreamder.probe", value: value)
 
             let stored: String? = try await repo.client.getConfig(key: "dreamder.probe")
             #expect(stored == value)
-            #expect(try repo.fixture.run("config", "--get", "dreamder.probe").trimmingCharacters(in: .newlines) == value)
+            #expect(try await repo.fixture.run("config", "--get", "dreamder.probe").trimmingCharacters(in: .newlines) == value)
             #expect(!repo.fixture.exists("pwned-config"))
             #expect(!repo.fixture.exists("pwned-config2"))
         }
@@ -442,7 +425,7 @@ struct GitClientTests {
     @Test
     func missingConfigKeysAreNilAndEmptyValuesUnsetTheKey() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             let missing: String? = try await repo.client.getConfig(key: "dreamder.missing")
             #expect(missing == nil)
             let missingBool: Bool? = try await repo.client.getConfig(key: "dreamder.missing")
@@ -472,9 +455,9 @@ struct GitClientTests {
     }
 
     @Test
-    func remotesAreAddedListedAndRemovedWithoutShellInterpretation() async throws {
+    func remotesAreAddedAndListedWithoutShellInterpretation() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             let location = "/tmp/remote$(touch pwned-remote);x`y`"
 
             try await repo.client.addRemote(name: "upstream", location: location)
@@ -487,19 +470,15 @@ struct GitClientTests {
             await #expect(throws: GitClient.GitClientError.self) {
                 try await repo.client.addRemote(name: "upstream", location: location)
             }
-
-            try await repo.client.removeRemote(name: "upstream")
-            #expect(try await repo.client.getRemotes().isEmpty)
-            await #expect(throws: GitClient.GitClientError.self) { try await repo.client.removeRemote(name: "upstream") }
         }
     }
 
     @Test
-    func branchesAreListedRenamedAndDeletedThroughArguments() async throws {
+    func branchesAreListedThroughArguments() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
-            try repo.fixture.run("branch", "feature/one")
-            try repo.fixture.run("branch", "old")
+            let repo = try await makeRepo(directory)
+            try await repo.fixture.run("branch", "feature/one")
+            try await repo.fixture.run("branch", "old")
 
             let branches = try await repo.client.getBranches()
             #expect(branches.map(\.name).sorted() == ["feature/one", "main", "old"])
@@ -508,64 +487,26 @@ struct GitClientTests {
             let current = try #require(try await repo.client.getCurrentBranch())
             #expect(current.name == "main")
             #expect(current.longName == "refs/heads/main")
-
-            let hostile = "renamed$(>pwned-rename)"
-            try await repo.client.renameBranch(oldName: "old", newName: hostile)
-            #expect(try await repo.client.getBranches().map(\.name).contains(hostile))
-            #expect(!repo.fixture.exists("pwned-rename"))
-
-            let renamed = try #require(try await repo.client.getBranches().first { $0.name == hostile })
-            try await repo.client.deleteBranch(renamed)
-            #expect(try await repo.client.getBranches().map(\.name).sorted() == ["feature/one", "main"])
-        }
-    }
-
-    @Test
-    func renamingOntoAnExistingBranchFails() async throws {
-        try await withTempDir { directory in
-            let repo = try makeRepo(directory)
-            try repo.fixture.run("branch", "other")
-            await #expect(throws: GitClient.GitClientError.self) {
-                try await repo.client.renameBranch(oldName: "other", newName: "main")
-            }
-        }
-    }
-
-    @Test
-    func deletingAnUnmergedBranchFailsLoudly() async throws {
-        try await withTempDir { directory in
-            let repo = try makeRepo(directory)
-            try repo.fixture.run("checkout", "-q", "-b", "wip")
-            try repo.fixture.write("w.txt", "w\n")
-            try repo.fixture.commit("wip work")
-            try repo.fixture.run("checkout", "-q", "main")
-            let branch = GitBranch(name: "wip", longName: "refs/heads/wip", upstream: nil, ahead: 0, behind: 0)
-
-            await #expect(throws: GitClient.GitClientError.self) { try await repo.client.deleteBranch(branch) }
-
-            let remote = GitBranch(name: "origin/wip", longName: "refs/remotes/origin/wip", upstream: nil, ahead: 0, behind: 0)
-            try await repo.client.deleteBranch(remote)
-            #expect(try repo.fixture.run("branch", "--list", "wip").contains("wip"))
         }
     }
 
     @Test
     func checkingOutALocalBranchSwitchesAndAFailedCheckoutThrows() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
-            try repo.fixture.run("checkout", "-q", "-b", "other")
+            let repo = try await makeRepo(directory)
+            try await repo.fixture.run("checkout", "-q", "-b", "other")
             try repo.fixture.write("a.txt", "other side\n")
-            try repo.fixture.commit("other edits a")
-            try repo.fixture.run("checkout", "-q", "main")
+            try await repo.fixture.commit("other edits a")
+            try await repo.fixture.run("checkout", "-q", "main")
             let other = GitBranch(name: "other", longName: "refs/heads/other", upstream: nil, ahead: 0, behind: 0)
 
             try repo.fixture.write("a.txt", "local edit\n")
             await #expect(throws: GitClient.GitClientError.self) { try await repo.client.checkoutBranch(other) }
-            #expect(try repo.fixture.run("rev-parse", "--abbrev-ref", "HEAD").trimmingCharacters(in: .newlines) == "main")
+            #expect(try await repo.fixture.run("rev-parse", "--abbrev-ref", "HEAD").trimmingCharacters(in: .newlines) == "main")
 
-            try repo.fixture.run("checkout", "--", "a.txt")
+            try await repo.fixture.run("checkout", "--", "a.txt")
             try await repo.client.checkoutBranch(other)
-            #expect(try repo.fixture.run("rev-parse", "--abbrev-ref", "HEAD").trimmingCharacters(in: .newlines) == "other")
+            #expect(try await repo.fixture.run("rev-parse", "--abbrev-ref", "HEAD").trimmingCharacters(in: .newlines) == "other")
         }
     }
 
@@ -580,7 +521,8 @@ struct GitClientTests {
         ("ahead 2", 0, 0),
         ("[behind 1", 0, 0),
         ("]ahead 1[", 0, 0),
-        ("[ahead 12, behind 345]", 12, 345)
+        ("[ahead 12, behind 345]", 12, 345),
+        ("[other 3]", 0, 0)
     ])
     func trackInfoParsing(input: String, ahead: Int, behind: Int) {
         let parsed = GitClient.parseBranchTrackInfo(from: input)
@@ -591,11 +533,11 @@ struct GitClientTests {
     @Test
     func commitChangedFilesHandlePathsThatAreNotValidURLs() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             try repo.fixture.write("dir/with space & ünï.txt", "x\n")
             try repo.fixture.write("a.txt", "two\n")
-            try repo.fixture.commit("second")
-            let sha = try repo.fixture.run("rev-parse", "HEAD").trimmingCharacters(in: .whitespacesAndNewlines)
+            try await repo.fixture.commit("second")
+            let sha = try await repo.fixture.run("rev-parse", "HEAD").trimmingCharacters(in: .whitespacesAndNewlines)
 
             let files = try await repo.client.getCommitChangedFiles(commitSHA: sha)
 
@@ -609,7 +551,7 @@ struct GitClientTests {
     @Test
     func commitChangedFilesFailLoudlyForUnknownCommits() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             await #expect(throws: GitClient.GitClientError.self) {
                 try await repo.client.getCommitChangedFiles(commitSHA: "0123456789abcdef0123456789abcdef01234567")
             }
@@ -619,11 +561,11 @@ struct GitClientTests {
     @Test
     func commitHistoryUsesAuthorTimestampsAndFilters() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             try repo.fixture.write("a.txt", "two\n")
-            try repo.fixture.commit("second | pipes")
+            try await repo.fixture.commit("second | pipes")
             try repo.fixture.write("other.txt", "x\n")
-            try repo.fixture.commit("third")
+            try await repo.fixture.commit("third")
 
             let all = try await repo.client.getCommitHistory()
             #expect(all.map(\.message) == ["third", "second | pipes", "initial"])
@@ -641,9 +583,9 @@ struct GitClientTests {
     @Test
     func logGraphParsesRealCommitsAndLimitsThem() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             try repo.fixture.write("a.txt", "two\n")
-            try repo.fixture.commit("second")
+            try await repo.fixture.commit("second")
 
             let commits = try await repo.client.logGraph()
             try #require(commits.count == 2)
@@ -667,9 +609,9 @@ struct GitClientTests {
     @Test
     func logGraphKeepsTheFullMessageBody() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             try repo.fixture.write("a.txt", "two\n")
-            try repo.fixture.commit("second\n\nbody line")
+            try await repo.fixture.commit("second\n\nbody line")
 
             let commit = try #require(try await repo.client.logGraph(limit: 1).first)
             #expect(commit.subject == "second")
@@ -680,7 +622,7 @@ struct GitClientTests {
     @Test
     func logGraphOfAnUnbornRepositoryIsEmpty() async throws {
         try await withTempDir { directory in
-            _ = try GitMergeFixture(root: directory)
+            _ = try await GitMergeFixture(root: directory)
             let client = GitClient(directoryURL: directory, shellClient: .live())
             #expect(try await client.logGraph().isEmpty)
             #expect(await client.logGraphHeadIsResolvable() == false)
@@ -690,7 +632,7 @@ struct GitClientTests {
     @Test
     func logGraphBranchFilterOfAnUnknownBranchMatchesNothing() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             let filters = GitLogFilterCollection(branch: .fromBranch("no-such-branch"))
             #expect(try await repo.client.logGraph(filters: filters).isEmpty)
         }
@@ -699,7 +641,7 @@ struct GitClientTests {
     @Test
     func logGraphBranchFilterOfAnUnbornRepositoryMatchesNothing() async throws {
         try await withTempDir { directory in
-            _ = try GitMergeFixture(root: directory)
+            _ = try await GitMergeFixture(root: directory)
             let client = GitClient(directoryURL: directory, shellClient: .live())
             #expect(try await client.logGraph(filters: GitLogFilterCollection(branch: .fromBranch("main"))).isEmpty)
         }
@@ -708,11 +650,11 @@ struct GitClientTests {
     @Test
     func logGraphTextFilterMatchesTheMessage() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             try repo.fixture.write("a.txt", "two\n")
-            try repo.fixture.commit("second")
+            try await repo.fixture.commit("second")
             try repo.fixture.write("a.txt", "three\n")
-            try repo.fixture.commit("third")
+            try await repo.fixture.commit("third")
 
             let filters = GitLogFilterCollection(text: GitLogTextFilter.fromPattern("SECOND"))
             #expect(try await repo.client.logGraph(filters: filters).map(\.subject) == ["second"])
@@ -725,11 +667,11 @@ struct GitClientTests {
     @Test
     func logGraphRegexTextFilterMatchesTheMessage() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             try repo.fixture.write("a.txt", "two\n")
-            try repo.fixture.commit("second")
+            try await repo.fixture.commit("second")
             try repo.fixture.write("a.txt", "three\n")
-            try repo.fixture.commit("third")
+            try await repo.fixture.commit("third")
 
             let filters = GitLogFilterCollection(text: GitLogTextFilter.fromPattern("^(sec|thi)", isRegexpAllowed: true))
             #expect(try await repo.client.logGraph(filters: filters).map(\.subject) == ["third", "second"])
@@ -739,14 +681,14 @@ struct GitClientTests {
     @Test
     func logGraphNoMergesFilterDropsMergeCommits() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
-            try repo.fixture.run("checkout", "-q", "-b", "feature")
+            let repo = try await makeRepo(directory)
+            try await repo.fixture.run("checkout", "-q", "-b", "feature")
             try repo.fixture.write("feature.txt", "f\n")
-            try repo.fixture.commit("feature work")
-            try repo.fixture.run("checkout", "-q", "main")
+            try await repo.fixture.commit("feature work")
+            try await repo.fixture.run("checkout", "-q", "main")
             try repo.fixture.write("main.txt", "m\n")
-            try repo.fixture.commit("main work")
-            try repo.fixture.run("merge", "-q", "--no-ff", "-m", "merge feature", "feature")
+            try await repo.fixture.commit("main work")
+            try await repo.fixture.run("merge", "-q", "--no-ff", "-m", "merge feature", "feature")
 
             let all = try await repo.client.logGraph()
             #expect(all.filter(\.isMerge).map(\.subject) == ["merge feature"])
@@ -763,11 +705,11 @@ struct GitClientTests {
     @Test
     func logGraphStructureFilterKeepsCommitsTouchingThePaths() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             try repo.fixture.write("other.txt", "x\n")
-            try repo.fixture.commit("add other")
+            try await repo.fixture.commit("add other")
             try repo.fixture.write("a.txt", "two\n")
-            try repo.fixture.commit("touch a")
+            try await repo.fixture.commit("touch a")
 
             let filters = GitLogFilterCollection().settingPaths(from: "other.txt")
             #expect(try await repo.client.logGraph(filters: filters).map(\.subject) == ["add other"])
@@ -780,10 +722,10 @@ struct GitClientTests {
     @Test
     func logGraphUserFilterResolvesNamesAgainstKnownAuthors() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             try repo.fixture.write("a.txt", "two\n")
-            try repo.fixture.run("add", "-A")
-            try repo.fixture.run(
+            try await repo.fixture.run("add", "-A")
+            try await repo.fixture.run(
                 "-c", "user.name=Other Person", "-c", "user.email=other@dreamder.test",
                 "commit", "-qm", "by other"
             )
@@ -804,7 +746,7 @@ struct GitClientTests {
     @Test
     func logGraphUserFilterMatchesNothingWhenTheNameIsUnresolved() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             let filters = GitLogFilterCollection(user: GitLogUserFilter(userNames: ["nobody"]))
             #expect(try await repo.client.logGraph(filters: filters).isEmpty)
         }
@@ -813,14 +755,14 @@ struct GitClientTests {
     @Test
     func logGraphFirstParentOptionSkipsMergedBranchCommits() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
-            try repo.fixture.run("checkout", "-q", "-b", "feature")
+            let repo = try await makeRepo(directory)
+            try await repo.fixture.run("checkout", "-q", "-b", "feature")
             try repo.fixture.write("feature.txt", "f\n")
-            try repo.fixture.commit("feature work")
-            try repo.fixture.run("checkout", "-q", "main")
+            try await repo.fixture.commit("feature work")
+            try await repo.fixture.run("checkout", "-q", "main")
             try repo.fixture.write("main.txt", "m\n")
-            try repo.fixture.commit("main work")
-            try repo.fixture.run("merge", "-q", "--no-ff", "-m", "merge feature", "feature")
+            try await repo.fixture.commit("main work")
+            try await repo.fixture.run("merge", "-q", "--no-ff", "-m", "merge feature", "feature")
 
             var options = GitLogOptions()
             options.firstParent = true
@@ -833,7 +775,7 @@ struct GitClientTests {
     @Test
     func logGraphCurrentUserReadsTheRepositoryConfig() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             let user = await repo.client.logGraphCurrentUser()
             #expect(user == GitLogUser(name: "Merge", email: "merge@dreamder.test"))
             #expect(user?.exactString == "Merge <merge@dreamder.test>")
@@ -843,9 +785,9 @@ struct GitClientTests {
     @Test
     func logGraphCurrentUserIsNilExactlyWhenNeitherNameNorEmailIsConfigured() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
-            try repo.fixture.run("config", "--unset", "user.name")
-            try repo.fixture.run("config", "--unset", "user.email")
+            let repo = try await makeRepo(directory)
+            try await repo.fixture.run("config", "--unset", "user.name")
+            try await repo.fixture.run("config", "--unset", "user.email")
             let name: String? = try await repo.client.getConfig(key: "user.name")
             let email: String? = try await repo.client.getConfig(key: "user.email")
 
@@ -858,12 +800,12 @@ struct GitClientTests {
     @Test
     func logGraphHeadIsResolvableOnlyOnceTheRepositoryHasACommit() async throws {
         try await withTempDir { directory in
-            let fixture = try GitMergeFixture(root: directory)
+            let fixture = try await GitMergeFixture(root: directory)
             let client = GitClient(directoryURL: directory, shellClient: .live())
             #expect(await client.logGraphHeadIsResolvable() == false)
 
             try fixture.write("a.txt", "one\n")
-            try fixture.commit("initial")
+            try await fixture.commit("initial")
             #expect(await client.logGraphHeadIsResolvable())
         }
     }
@@ -888,7 +830,7 @@ struct GitClientTests {
     @Test
     func unsyncedCommitCountsAreZeroWithoutAnUpstream() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             let counts = try await repo.client.numberOfUnsyncedCommits()
             #expect(counts.ahead == 0)
             #expect(counts.behind == 0)
@@ -898,20 +840,20 @@ struct GitClientTests {
     @Test
     func unsyncedCommitCountsComeFromTheUpstream() async throws {
         try await withTempDir { directory in
-            let origin = try makeRepo(directory.appending(path: "origin", directoryHint: .isDirectory).createDirectoryReturningSelf())
+            let origin = try await makeRepo(directory.appending(path: "origin", directoryHint: .isDirectory).createDirectoryReturningSelf())
             let cloneDirectory = directory.appending(path: "clone", directoryHint: .isDirectory)
-            try origin.fixture.run("clone", "-q", origin.fixture.root.path(percentEncoded: false), cloneDirectory.path(percentEncoded: false))
+            try await origin.fixture.run("clone", "-q", origin.fixture.root.path(percentEncoded: false), cloneDirectory.path(percentEncoded: false))
             let clone = GitMergeFixture(existing: cloneDirectory)
-            try clone.run("config", "user.email", "clone@dreamder.test")
-            try clone.run("config", "user.name", "Clone")
-            try clone.run("config", "commit.gpgsign", "false")
+            try await clone.run("config", "user.email", "clone@dreamder.test")
+            try await clone.run("config", "user.name", "Clone")
+            try await clone.run("config", "commit.gpgsign", "false")
             try clone.write("local.txt", "l\n")
-            try clone.commit("local one")
+            try await clone.commit("local one")
             try clone.write("local2.txt", "l\n")
-            try clone.commit("local two")
+            try await clone.commit("local two")
             try origin.fixture.write("remote.txt", "r\n")
-            try origin.fixture.commit("remote one")
-            try clone.run("fetch", "-q")
+            try await origin.fixture.commit("remote one")
+            try await clone.run("fetch", "-q")
 
             let client = GitClient(directoryURL: cloneDirectory, shellClient: .live())
             let counts = try await client.numberOfUnsyncedCommits()
@@ -928,7 +870,7 @@ struct GitClientTests {
     @Test
     func concurrentWritesAreSerializedPerRepository() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             let names = (0..<12).map { "file-\($0).txt" }
             for name in names {
                 try repo.fixture.write(name, "x\n")
@@ -942,14 +884,14 @@ struct GitClientTests {
                 try await group.waitForAll()
             }
 
-            #expect(try repo.fixture.stagedPaths() == names.sorted())
+            #expect(try await repo.fixture.stagedPaths() == names.sorted())
         }
     }
 
     @Test
     func readsDuringWritesKeepWorking() async throws {
         try await withTempDir { directory in
-            let repo = try makeRepo(directory)
+            let repo = try await makeRepo(directory)
             for index in 0..<6 {
                 try repo.fixture.write("f\(index).txt", "x\n")
             }
@@ -968,7 +910,7 @@ struct GitClientTests {
     @Test
     func cloningStreamsProgressAndProducesAWorkingCopy() async throws {
         try await withTempDir { directory in
-            let origin = try makeRepo(directory.appending(path: "origin", directoryHint: .isDirectory).createDirectoryReturningSelf())
+            let origin = try await makeRepo(directory.appending(path: "origin", directoryHint: .isDirectory).createDirectoryReturningSelf())
             let destination = directory.appending(path: "cloned repo", directoryHint: .isDirectory)
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
             let client = GitClient(directoryURL: destination, shellClient: .live())

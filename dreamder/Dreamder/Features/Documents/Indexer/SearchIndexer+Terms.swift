@@ -56,7 +56,7 @@ nonisolated extension SearchIndexer {
 
     /// Is the specified document empty (ie. it has no terms)
     public func isEmpty(for url: URL) -> Bool {
-        return self.termCount(for: url) > 0
+        return self.termCount(for: url) == 0
     }
 
     /// Returns an array containing the terms and counts for a specified URL
@@ -65,7 +65,9 @@ nonisolated extension SearchIndexer {
     /// - Returns: An array of the terms and corresponding counts located in the document.
     ///            Returns an empty array if the document cannot be located.
     public func terms(for url: URL) -> [TermCount] {
-        let document = SKDocumentCreateWithURL(url as CFURL).takeRetainedValue()
+        guard let document = SKDocumentCreateWithURL(url as CFURL)?.takeRetainedValue() else {
+            return []
+        }
         return withState { state -> [TermCount] in
             guard let index = state.index else {
                 return []

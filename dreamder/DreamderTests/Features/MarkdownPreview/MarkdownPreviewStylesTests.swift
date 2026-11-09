@@ -263,7 +263,7 @@ struct MarkdownPreviewStylesTests {
 }
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct MarkdownPreviewSettingsTests {
     @Test
     func defaultsMatchIntelliJ() {

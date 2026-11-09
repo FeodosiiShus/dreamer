@@ -1,11 +1,39 @@
 import SwiftUI
 
+@Observable
+final class SettingsSidebarModel {
+    var collapsedCategories: Set<SettingsPage.Category> = []
+
+    func isExpanded(_ category: SettingsPage.Category, isSearching: Bool) -> Bool {
+        isSearching || !collapsedCategories.contains(category)
+    }
+
+    func toggle(_ category: SettingsPage.Category, isSearching: Bool) {
+        guard !isSearching else { return }
+        if collapsedCategories.remove(category) == nil {
+            collapsedCategories.insert(category)
+        }
+    }
+}
+
 struct SettingsSidebarView: View {
     @Binding var searchText: String
     @Binding var selectedPage: SettingsPage.Name
     var showsDeveloperPage: Bool
 
-    @State private var collapsedCategories: Set<SettingsPage.Category> = []
+    @State private var sidebarModel: SettingsSidebarModel
+
+    init(
+        searchText: Binding<String>,
+        selectedPage: Binding<SettingsPage.Name>,
+        showsDeveloperPage: Bool,
+        sidebarModel: SettingsSidebarModel = SettingsSidebarModel()
+    ) {
+        self._searchText = searchText
+        self._selectedPage = selectedPage
+        self.showsDeveloperPage = showsDeveloperPage
+        self._sidebarModel = State(initialValue: sidebarModel)
+    }
 
     private var isSearching: Bool {
         !query.isEmpty
@@ -35,19 +63,12 @@ struct SettingsSidebarView: View {
                             .padding(.top, 6)
                     }
                     ForEach(nodes) { node in
-                        categoryRow(node)
-                        if isExpanded(node.category) {
+                        SettingsCategoryRow(category: node.category, isSearching: isSearching, model: sidebarModel)
+                        if sidebarModel.isExpanded(node.category, isSearching: isSearching) {
                             ForEach(node.pages) { page in
-                                SettingsPageRow(
-                                    node: page,
-                                    searchText: query,
-                                    isSelected: page.name == selectedPage,
-                                    onSelect: { selectedPage = page.name }
-                                )
+                                SettingsPageRow(node: page, searchText: query, selectedPage: $selectedPage)
                                 ForEach(page.matchingSettings, id: \.self) { setting in
-                                    SettingsSettingRow(title: setting) {
-                                        selectedPage = page.name
-                                    }
+                                    SettingsSettingRow(title: setting, page: page.name, selectedPage: $selectedPage)
                                 }
                             }
                         }
@@ -60,27 +81,30 @@ struct SettingsSidebarView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Islands.frame)
         .onChange(of: searchText) { _, _ in
-            selectFirstVisiblePageIfNeeded()
+            selectedPage = SettingsNavigation.pageSelection(afterSearch: nodes, selected: selectedPage)
         }
         .onChange(of: showsDeveloperPage) { _, showsDeveloperPage in
-            if !showsDeveloperPage && selectedPage == .developer {
-                selectedPage = SettingsNavigation.defaultPage
-            }
+            selectedPage = SettingsNavigation.pageSelection(
+                afterDeveloperPageVisibility: showsDeveloperPage,
+                selected: selectedPage
+            )
         }
     }
+}
 
-    private func isExpanded(_ category: SettingsPage.Category) -> Bool {
-        isSearching || !collapsedCategories.contains(category)
-    }
+struct SettingsCategoryRow: View {
+    let category: SettingsPage.Category
+    let isSearching: Bool
+    let model: SettingsSidebarModel
 
-    private func categoryRow(_ node: SettingsCategoryNode) -> some View {
+    var body: some View {
         HStack(spacing: 0) {
-            Image(isExpanded(node.category) ? "general/chevronDown" : "general/chevronRight")
+            Image(model.isExpanded(category, isSearching: isSearching) ? "general/chevronDown" : "general/chevronRight")
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 12, height: 12)
                 .padding(.trailing, 4)
-            Text(node.category.rawValue)
+            Text(category.rawValue)
                 .font(.system(size: Islands.uiFontSize, weight: .semibold))
                 .foregroundStyle(Islands.foreground)
                 .lineLimit(1)
@@ -89,30 +113,18 @@ struct SettingsSidebarView: View {
         .padding(.horizontal, 4)
         .frame(height: Islands.treeRowHeight + 4)
         .contentShape(Rectangle())
-        .onTapGesture {
-            guard !isSearching else { return }
-            if collapsedCategories.contains(node.category) {
-                collapsedCategories.remove(node.category)
-            } else {
-                collapsedCategories.insert(node.category)
-            }
-        }
+        .onTapGesture(perform: toggle)
     }
 
-    private func selectFirstVisiblePageIfNeeded() {
-        let names = SettingsNavigation.visiblePageNames(nodes)
-        guard let first = names.first else { return }
-        if !names.contains(selectedPage) {
-            selectedPage = first
-        }
+    func toggle() {
+        model.toggle(category, isSearching: isSearching)
     }
 }
 
-private struct SettingsPageRow: View {
+struct SettingsPageRow: View {
     let node: SettingsPageNode
     let searchText: String
-    let isSelected: Bool
-    let onSelect: () -> Void
+    @Binding var selectedPage: SettingsPage.Name
 
     @State private var isHovering = false
 
@@ -129,17 +141,26 @@ private struct SettingsPageRow: View {
         .frame(height: Islands.treeRowHeight)
         .background {
             RoundedRectangle(cornerRadius: Islands.rowRadius)
-                .fill(isSelected ? Islands.selection : (isHovering ? Islands.hover : Color.clear))
+                .fill(selectedPage == node.name ? Islands.selection : (isHovering ? Islands.hover : Color.clear))
         }
         .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
-        .onTapGesture(perform: onSelect)
+        .onHover(perform: setHovering)
+        .onTapGesture(perform: select)
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
+    }
+
+    func select() {
+        selectedPage = node.name
     }
 }
 
-private struct SettingsSettingRow: View {
+struct SettingsSettingRow: View {
     let title: String
-    let onSelect: () -> Void
+    let page: SettingsPage.Name
+    @Binding var selectedPage: SettingsPage.Name
 
     @State private var isHovering = false
 
@@ -160,7 +181,15 @@ private struct SettingsSettingRow: View {
                 .fill(isHovering ? Islands.hover : Color.clear)
         }
         .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
-        .onTapGesture(perform: onSelect)
+        .onHover(perform: setHovering)
+        .onTapGesture(perform: select)
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
+    }
+
+    func select() {
+        selectedPage = page
     }
 }

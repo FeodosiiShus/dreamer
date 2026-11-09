@@ -35,8 +35,27 @@ nonisolated extension SearchIndexer {
             guard let index = state.index else {
                 return false
             }
-            return SKIndexRemoveDocument(index, document)
+            let removed = SKIndexRemoveDocument(index, document)
+            Self.removeEmptyAncestors(of: document, in: index)
+            return removed
         }
+    }
+
+    private static func removeEmptyAncestors(of document: SKDocument, in index: SKIndex) {
+        var current = document
+        while let parent = SKDocumentGetParent(current)?.takeUnretainedValue(), !hasChildren(parent, in: index) {
+            _ = SKIndexRemoveDocument(index, parent)
+            current = parent
+        }
+    }
+
+    private static func hasChildren(_ document: SKDocument, in index: SKIndex) -> Bool {
+        guard let iterator = SKIndexDocumentIteratorCreate(index, document)?.takeRetainedValue(),
+              let first = SKIndexDocumentIteratorCopyNext(iterator) else {
+            return false
+        }
+        first.release()
+        return true
     }
 
     /// Recurse through the children of a document and return an array containing all the document-ids

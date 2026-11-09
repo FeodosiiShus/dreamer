@@ -37,7 +37,7 @@ struct MarkdownPreviewStoreHarness {
 }
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct MarkdownPreviewLayoutStoreTests {
     private let first = URL(fileURLWithPath: "/tmp/project/a.md")
     private let second = URL(fileURLWithPath: "/tmp/project/b.md")

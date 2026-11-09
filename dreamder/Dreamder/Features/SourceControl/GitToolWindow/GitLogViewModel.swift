@@ -177,7 +177,11 @@ final class GitLogViewModel {
         )
         guard token == generation else { return }
         visibleCommits = visible
-        graphRows = Dictionary(snapshot.rows.map { ($0.hash, $0) }, uniquingKeysWith: { first, _ in first })
+        var rowsByHash: [String: GitLogGraphRow] = [:]
+        for row in snapshot.rows where rowsByHash[row.hash] == nil {
+            rowsByHash[row.hash] = row
+        }
+        graphRows = rowsByHash
         laneCount = GitLogGraphLayout.displayedLaneCount(snapshot)
     }
 

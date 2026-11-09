@@ -44,23 +44,29 @@ struct GlobPatternListItem: View {
             .disableAutocorrection(true)
             .autocorrectionDisabled()
             .labelsHidden()
-            .onSubmit {
-                if !value.isEmpty {
-                    if isLast {
-                        addPattern()
-                    }
-                }
+            .onSubmit(submitCurrentValue)
+            .onChange(of: isFocused) { _, newIsFocused in focusChanged(newIsFocused, value: value) }
+    }
+
+    func submitCurrentValue() {
+        submit(value)
+    }
+
+    func submit(_ value: String) {
+        if !value.isEmpty, isLast {
+            addPattern()
+        }
+    }
+
+    func focusChanged(_ newIsFocused: Bool, value: String) {
+        if newIsFocused {
+            if !selection.contains(pattern.id) {
+                selection = [pattern.id]
             }
-            .onChange(of: isFocused) { _, newIsFocused in
-                if newIsFocused {
-                    if !selection.contains(pattern.id) {
-                        selection = [pattern.id]
-                    }
-                } else if value.isEmpty {
-                    removePatterns(selection)
-                } else if pattern.value != value {
-                    pattern.value = value
-                }
-            }
+        } else if value.isEmpty {
+            removePatterns(selection)
+        } else if pattern.value != value {
+            pattern.value = value
+        }
     }
 }

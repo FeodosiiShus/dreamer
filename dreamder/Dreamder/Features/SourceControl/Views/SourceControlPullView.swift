@@ -7,17 +7,82 @@
 
 import SwiftUI
 
+@Observable
+@MainActor
+final class SourceControlPullModel {
+    var loading: Bool = false
+    @ObservationIgnored let gitConfig: GitConfigClient
+    @ObservationIgnored var manager: SourceControlManager?
+    @ObservationIgnored var dismiss: (() -> Void)?
+    @ObservationIgnored private(set) var submission: Task<Void, Never>?
+    @ObservationIgnored private(set) var settingsLoad: Task<Void, Never>?
+
+    init(gitConfig: GitConfigClient = GitConfigClient(shellClient: currentWorld.shellClient)) {
+        self.gitConfig = gitConfig
+    }
+
+    func attach(manager: SourceControlManager, dismiss: @escaping () -> Void) {
+        self.manager = manager
+        self.dismiss = dismiss
+        settingsLoad = Task { await loadPullSettings() }
+    }
+
+    func cancel() {
+        dismiss?()
+    }
+
+    func submit() {
+        submission = Task { await perform() }
+    }
+
+    func loadPullSettings() async {
+        guard let manager else { return }
+        do {
+            let preferRebase: Bool = try await gitConfig.get(key: "pull.rebase", global: true) ?? false
+            if preferRebase {
+                manager.operationRebase = true
+            }
+        } catch {
+            await manager.showAlertForError(
+                title: "Failed to read pull settings",
+                error: error
+            )
+        }
+    }
+
+    func perform() async {
+        guard let manager else { return }
+        do {
+            if !manager.changedFiles.isEmpty {
+                manager.stashSheetIsPresented = true
+            } else {
+                loading = true
+                try await manager.pull(
+                    remote: manager.operationRemote?.name,
+                    branch: manager.operationBranch?.name,
+                    rebase: manager.operationRebase
+                )
+                loading = false
+                dismiss?()
+            }
+        } catch {
+            loading = false
+            await manager.showAlertForError(title: "Failed to pull", error: error)
+        }
+    }
+}
+
 struct SourceControlPullView: View {
     @Environment(\.dismiss)
     private var dismiss
 
     @Environment(SourceControlManager.self) private var sourceControlManager
 
-    let gitConfig = GitConfigClient(shellClient: currentWorld.shellClient)
+    @State private var model: SourceControlPullModel
 
-    @State var loading: Bool = false
-
-    @State var preferRebaseWhenPulling: Bool = false
+    init(model: SourceControlPullModel = SourceControlPullModel()) {
+        _model = State(initialValue: model)
+    }
 
     var body: some View {
         @Bindable var manager = sourceControlManager
@@ -27,7 +92,7 @@ struct SourceControlPullView: View {
                     RemoteBranchPicker(
                         branch: $manager.operationBranch,
                         remote: $manager.operationRemote,
-                        onSubmit: submit,
+                        onSubmit: model.submit,
                         canCreateBranch: false
                     )
                 } header: {
@@ -40,23 +105,8 @@ struct SourceControlPullView: View {
             .formStyle(.grouped)
             .scrollDisabled(true)
             .scrollContentBackground(.hidden)
-            .onAppear {
-                Task {
-                    do {
-                        preferRebaseWhenPulling = try await gitConfig.get(key: "pull.rebase", global: true) ?? false
-                        if preferRebaseWhenPulling {
-                            sourceControlManager.operationRebase = true
-                        }
-                    } catch {
-                        await sourceControlManager.showAlertForError(
-                            title: "Failed to read pull settings",
-                            error: error
-                        )
-                    }
-                }
-            }
             HStack {
-                if loading {
+                if model.loading {
                     HStack(spacing: 7.5) {
                         ProgressView()
                             .progressViewStyle(.circular)
@@ -66,46 +116,24 @@ struct SourceControlPullView: View {
                     }
                 }
                 Spacer()
-                Button {
-                    dismiss()
-                } label: {
+                Button(action: model.cancel) {
                     Text("Cancel")
                         .frame(minWidth: 56)
                 }
-                .disabled(loading)
-                Button(action: submit) {
+                .disabled(model.loading)
+                Button(action: model.submit) {
                     Text("Pull")
                         .frame(minWidth: 56)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(loading)
+                .disabled(model.loading)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 20)
         }
         .frame(minWidth: 500)
-    }
-
-    /// Pulls changes from the specified remote and branch. If local changes exist, prompts user to stash them first
-    func submit() {
-        Task {
-            do {
-                if !sourceControlManager.changedFiles.isEmpty {
-                    sourceControlManager.stashSheetIsPresented = true
-                } else {
-                    self.loading = true
-                    try await sourceControlManager.pull(
-                        remote: sourceControlManager.operationRemote?.name ?? nil,
-                        branch: sourceControlManager.operationBranch?.name ?? nil,
-                        rebase: sourceControlManager.operationRebase
-                    )
-                    self.loading = false
-                    dismiss()
-                }
-            } catch {
-                self.loading = false
-                await sourceControlManager.showAlertForError(title: "Failed to pull", error: error)
-            }
+        .onAppear {
+            model.attach(manager: sourceControlManager, dismiss: dismiss.callAsFunction)
         }
     }
 }

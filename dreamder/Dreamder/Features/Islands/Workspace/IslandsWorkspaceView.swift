@@ -72,7 +72,7 @@ struct IslandsWorkspaceView: View {
                     toolWindowManager.hide(.terminal)
                 }
             } else {
-                toolWindowManager.show(taskManager.taskShowingOutput == nil ? .terminal : .run)
+                toolWindowManager.show(Self.utilityWindow(showingOutput: taskManager.taskShowingOutput != nil))
             }
         }
         .onChange(of: taskManager.taskShowingOutput) { _, output in
@@ -172,16 +172,7 @@ struct IslandsWorkspaceView: View {
     private func splitHandle(anchor: ToolWindowAnchor, total: CGFloat) -> some View {
         IslandResizeHandle(
             orientation: anchor.splitsVertically ? .horizontal : .vertical,
-            onDrag: { delta in
-                let proportion = ToolWindowSplitState.proportion(
-                    movingDividerBy: delta,
-                    from: toolWindowManager.mainProportion(on: anchor),
-                    total: total,
-                    gap: Islands.islandGap,
-                    minimumPart: ToolWindowLayout.minSplitPart
-                )
-                toolWindowManager.setMainProportion(on: anchor, proportion)
-            },
+            onDrag: toolWindowManager.splitDividerDrag(on: anchor, total: total),
             onDragEnded: saveLayout
         )
     }
@@ -195,12 +186,7 @@ struct IslandsWorkspaceView: View {
     private func leftResizeHandle(availableWidth: CGFloat) -> some View {
         IslandResizeHandle(
             orientation: .vertical,
-            onDrag: { delta in
-                toolWindowManager.leftWidth = ToolWindowLayout.clampLeftWidth(
-                    toolWindowManager.leftWidth + delta,
-                    availableWidth: availableWidth
-                )
-            },
+            onDrag: toolWindowManager.leftResizeDrag(availableWidth: availableWidth),
             onDragEnded: saveLayout
         )
         .frame(width: Islands.islandGap)
@@ -210,12 +196,7 @@ struct IslandsWorkspaceView: View {
     private func bottomResizeHandle(availableHeight: CGFloat) -> some View {
         IslandResizeHandle(
             orientation: .horizontal,
-            onDrag: { delta in
-                toolWindowManager.bottomHeight = ToolWindowLayout.clampBottomHeight(
-                    toolWindowManager.bottomHeight - delta,
-                    availableHeight: availableHeight
-                )
-            },
+            onDrag: toolWindowManager.bottomResizeDrag(availableHeight: availableHeight),
             onDragEnded: saveLayout
         )
         .frame(maxWidth: .infinity)
@@ -224,66 +205,24 @@ struct IslandsWorkspaceView: View {
 
     private var editorIsland: some View {
         EditorLayoutView(
-            layout: editorManager.isFocusingActiveEditor
-                ? editorManager.activeEditor.getEditorLayout() ?? editorManager.editorLayout
-                : editorManager.editorLayout,
+            layout: editorManager.displayedLayout,
             focus: $focusedEditor
         )
         .environment(\.isEditorLayoutAtEdge, VerticalEdge.Set())
         .onChange(of: editorManager.activeEditor) { _, newValue in
             focusedEditor = newValue
         }
-        .onChange(of: focusedEditor) { _, newValue in
-            if let newValue, editorManager.activeEditor != newValue {
-                editorManager.activeEditor = newValue
-            }
-        }
+        .onChange(of: focusedEditor) { _, focused in editorManager.adoptFocus(of: focused) }
         .task {
             themeModel.colorScheme = colorScheme
         }
-        .onChange(of: colorScheme) { _, newValue in
-            themeModel.colorScheme = newValue
-            if matchAppearance {
-                themeModel.selectedTheme = newValue == .dark
-                    ? themeModel.selectedDarkTheme
-                    : themeModel.selectedLightTheme
-            }
-        }
-        .task {
-            guard sourceControlIsEnabled, let sourceControlManager = workspace.sourceControlManager else {
-                return
-            }
-            do {
-                try await sourceControlManager.refreshRemotes()
-                try await sourceControlManager.refreshStashEntries()
-            } catch {
-                await sourceControlManager.showAlertForError(
-                    title: "Error refreshing Git data",
-                    error: error
-                )
-            }
-        }
-        .onChange(of: sourceControlIsEnabled) { _, newValue in
-            guard let sourceControlManager = workspace.sourceControlManager else { return }
-            if newValue {
-                Task {
-                    await sourceControlManager.refreshCurrentBranch()
-                }
-            } else {
-                sourceControlManager.currentBranch = nil
-            }
-        }
+        .onChange(of: colorScheme, themeModel.colorSchemeAdoption(matchAppearance: matchAppearance))
+        .task { await Self.refreshGitData(enabled: sourceControlIsEnabled, in: workspace) }
+        .onChange(of: sourceControlIsEnabled, Self.branchSync(in: workspace))
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { output in
-            if let closingWindow = output.object as? NSWindow, self.window == closingWindow {
-                workspace.addToWorkspaceState(
-                    key: .workspaceWindowSize,
-                    value: NSStringFromRect(closingWindow.frame)
-                )
-            }
+            Self.recordWindowSize(closing: output.object, window: window, in: workspace)
         }
-        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-            handleDrop(providers: providers)
-        }
+        .onDrop(of: [.fileURL], isTargeted: nil, perform: Self.dropHandler(editorManager: editorManager))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
             if let sourceControlManager = workspace.sourceControlManager {
@@ -301,7 +240,7 @@ struct IslandsWorkspaceView: View {
         ToolWindowLayout(manager: toolWindowManager).save(to: workspace)
     }
 
-    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+    static func openDroppedFiles(_ providers: [NSItemProvider], in editorManager: EditorManager) -> Bool {
         for provider in providers {
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
                 guard let data = item as? Data,
@@ -309,12 +248,124 @@ struct IslandsWorkspaceView: View {
                     return
                 }
 
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     let file = CEWorkspaceFile(url: url)
                     editorManager.activeEditor.openTab(file: file)
                 }
             }
         }
         return true
+    }
+
+    static func recordWindowSize(closing object: Any?, window: NSWindow?, in workspace: WorkspaceDocument) {
+        if let closingWindow = object as? NSWindow, window == closingWindow {
+            workspace.addToWorkspaceState(
+                key: .workspaceWindowSize,
+                value: NSStringFromRect(closingWindow.frame)
+            )
+        }
+    }
+
+    static func refreshRemotesAndStashes(_ manager: SourceControlManager) async throws {
+        try await manager.refreshRemotes()
+        try await manager.refreshStashEntries()
+    }
+
+    static func refreshGitData(
+        enabled: Bool,
+        in workspace: WorkspaceDocument,
+        refresh: (SourceControlManager) async throws -> Void = IslandsWorkspaceView.refreshRemotesAndStashes
+    ) async {
+        guard enabled, let sourceControlManager = workspace.sourceControlManager else { return }
+        do {
+            try await refresh(sourceControlManager)
+        } catch {
+            await sourceControlManager.showAlertForError(
+                title: "Error refreshing Git data",
+                error: error
+            )
+        }
+    }
+
+    static func syncCurrentBranch(_ enabled: Bool, in workspace: WorkspaceDocument) async {
+        guard let sourceControlManager = workspace.sourceControlManager else { return }
+        if enabled {
+            await sourceControlManager.refreshCurrentBranch()
+        } else {
+            sourceControlManager.currentBranch = nil
+        }
+    }
+
+    static func utilityWindow(showingOutput: Bool) -> ToolWindowID {
+        showingOutput ? .run : .terminal
+    }
+
+    static func dropHandler(editorManager: EditorManager) -> ([NSItemProvider]) -> Bool {
+        { openDroppedFiles($0, in: editorManager) }
+    }
+
+    static func branchSync(in workspace: WorkspaceDocument) -> (Bool, Bool) -> Void {
+        { _, enabled in
+            Task { await syncCurrentBranch(enabled, in: workspace) }
+        }
+    }
+}
+
+extension EditorManager {
+    func adoptFocus(of editor: Editor?) {
+        if let editor, activeEditor != editor {
+            activeEditor = editor
+        }
+    }
+
+    var displayedLayout: EditorLayout {
+        guard isFocusingActiveEditor else { return editorLayout }
+        return activeEditor.getEditorLayout() ?? editorLayout
+    }
+}
+
+extension ThemeModel {
+    func adopt(_ newValue: ColorScheme, matchAppearance: Bool) {
+        colorScheme = newValue
+        if matchAppearance {
+            selectedTheme = newValue == .dark ? selectedDarkTheme : selectedLightTheme
+        }
+    }
+
+    func colorSchemeAdoption(matchAppearance: Bool) -> (ColorScheme, ColorScheme) -> Void {
+        { _, newValue in self.adopt(newValue, matchAppearance: matchAppearance) }
+    }
+}
+
+extension ToolWindowManager {
+    func resizeLeft(by delta: CGFloat, availableWidth: CGFloat) {
+        leftWidth = ToolWindowLayout.clampLeftWidth(leftWidth + delta, availableWidth: availableWidth)
+    }
+
+    func resizeBottom(by delta: CGFloat, availableHeight: CGFloat) {
+        bottomHeight = ToolWindowLayout.clampBottomHeight(bottomHeight - delta, availableHeight: availableHeight)
+    }
+
+    func moveSplitDivider(on anchor: ToolWindowAnchor, by delta: CGFloat, total: CGFloat) {
+        let proportion = ToolWindowSplitState.proportion(
+            movingDividerBy: delta,
+            from: mainProportion(on: anchor),
+            total: total,
+            gap: Islands.islandGap,
+            minimumPart: ToolWindowLayout.minSplitPart
+        )
+        setMainProportion(on: anchor, proportion)
+    }
+
+    func splitDividerDrag(on anchor: ToolWindowAnchor, total: CGFloat) -> (CGFloat) -> Void {
+        { self.moveSplitDivider(on: anchor, by: $0, total: total) }
+    }
+
+    func leftResizeDrag(availableWidth: CGFloat) -> (CGFloat) -> Void {
+        { self.resizeLeft(by: $0, availableWidth: availableWidth) }
+    }
+
+    func bottomResizeDrag(availableHeight: CGFloat) -> (CGFloat) -> Void {
+        { self.resizeBottom(by: $0, availableHeight: availableHeight) }
     }
 }

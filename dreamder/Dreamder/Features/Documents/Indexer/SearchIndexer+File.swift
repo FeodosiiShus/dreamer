@@ -33,7 +33,7 @@ nonisolated extension SearchIndexer {
             fileURL: URL,
             properties: CreateProperties = CreateProperties()
         ) -> SearchIndexer? {
-            guard !FileManager.default.fileExists(atPath: fileURL.absoluteString),
+            guard !FileManager.default.fileExists(atPath: fileURL.path),
                   let skIndex = SKIndexCreateWithURL(
                     fileURL as CFURL,
                     nil,

@@ -188,30 +188,13 @@ final class SearchStateModelTests: XCTestCase {
         XCTAssertEqual(searchState.getRegexPattern("  a.+b "), "  a.+b ")
     }
 
-    func testGetSearchTermIsExactForTheWholeWordsToggle() {
-        searchState.wholeWordsOnly = true
-        XCTAssertEqual(searchState.getSearchTerm("Test"), "test")
-
-        searchState.wholeWordsOnly = false
-        XCTAssertEqual(searchState.getSearchTerm("Test"), "*test*")
-    }
-
-    func testHasIndexableWordsNeedsAnAsciiLetterOrDigit() {
-        XCTAssertTrue(WorkspaceDocument.SearchState.hasIndexableWords("foo"))
-        XCTAssertTrue(WorkspaceDocument.SearchState.hasIndexableWords("-> 5"))
-        XCTAssertFalse(WorkspaceDocument.SearchState.hasIndexableWords("->"))
-        XCTAssertFalse(WorkspaceDocument.SearchState.hasIndexableWords("привет"))
-        XCTAssertFalse(WorkspaceDocument.SearchState.hasIndexableWords(""))
-    }
-
-    func testClearResultsResetsTheCounts() async {
+    func testClearResultsResetsTheCounts() {
         searchState.searchResultsCount = 4
         searchState.searchResultsFileCount = 2
         searchState.searchResult = [SearchResultModel(file: CEWorkspaceFile(url: directory), score: 1)]
         searchState.findNavigatorStatus = .found
 
         searchState.clearResults()
-        try? await Task.sleep(nanoseconds: 100_000_000)
 
         XCTAssertTrue(searchState.searchResult.isEmpty)
         XCTAssertEqual(searchState.searchResultsCount, 0)
@@ -234,18 +217,10 @@ final class SearchStateModelTests: XCTestCase {
         XCTAssertEqual(searchState.findNavigatorStatus, .found)
     }
 
-    func testSearchFailsWithoutAnIndex() async {
-        searchState.indexer = nil
+    func testSearchFailsWithoutAProject() async {
+        workspace.tearDownFileScope()
         await searchState.search("anything")
-        XCTAssertEqual(
-            searchState.findNavigatorStatus,
-            .failed(errorMessage: "No index found. Try rebuilding the index.")
-        )
-
-        try? await searchState.findAndReplace(query: "anything", replacingTerm: "x")
-        XCTAssertEqual(
-            searchState.findNavigatorStatus,
-            .failed(errorMessage: "No index found. Try rebuilding the index.")
-        )
+        XCTAssertEqual(searchState.findNavigatorStatus, .failed(errorMessage: "No project is open."))
+        XCTAssertTrue(searchState.searchResult.isEmpty)
     }
 }

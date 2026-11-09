@@ -81,6 +81,13 @@ final class SearchEverywherePanelHost {
     }
 
     private var entries: [Key: Entry] = [:]
+    private let defaults: UserDefaults
+    private let recentFiles: SearchEverywhereRecentFilesStore
+
+    init(defaults: UserDefaults = .standard, recentFiles: SearchEverywhereRecentFilesStore = .shared) {
+        self.defaults = defaults
+        self.recentFiles = recentFiles
+    }
 
     func toggle(in controller: DreamderWindowController) {
         let key = Key(controller: ObjectIdentifier(controller), mode: .everywhere)
@@ -119,7 +126,12 @@ final class SearchEverywherePanelHost {
             return
         }
 
-        let model = SearchEverywhereViewModel(workspace: workspace, mode: mode)
+        let model = SearchEverywhereViewModel(
+            workspace: workspace,
+            mode: mode,
+            defaults: defaults,
+            recentFiles: recentFiles
+        )
         let size = NSSize(width: model.panelWidth, height: model.panelHeight)
         let panel = SearchEverywherePanel(size: size)
         let hostingView = NSHostingView(rootView: SearchEverywhereView(model: model))

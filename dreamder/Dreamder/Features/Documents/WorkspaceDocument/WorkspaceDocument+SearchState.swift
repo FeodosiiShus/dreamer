@@ -39,6 +39,11 @@ extension WorkspaceDocument {
         var findNavigatorStatus: FindNavigatorStatus = .none
 
         var shouldFocusSearchField: Bool = false
+        var replaceNotice: String?
+        var replacementError: String?
+        var resultSelection: ResultSelection?
+        var shouldFocusResults: Bool = false
+        var skipRevision: Int = 0
 
         var findModel = FindModel()
         var selectedMode: [SearchModeModel] = [
@@ -47,20 +52,82 @@ extension WorkspaceDocument {
             .Containing
         ]
 
+        nonisolated struct PreviewInputs: Equatable, Sendable {
+            let replaceText: String
+            let preservesCase: Bool
+            let isReplaceMode: Bool
+        }
+
+        @ObservationIgnored var flushInterval: Duration = .milliseconds(100)
+        static let previewRefreshDelay: Duration = .milliseconds(300)
+
         @ObservationIgnored weak var workspace: WorkspaceDocument?
         @ObservationIgnored var tempSearchResults = [SearchResultModel]()
         @ObservationIgnored var indexer: SearchIndexer?
         @ObservationIgnored var indexGeneration: Int = 0
         @ObservationIgnored var indexingTask: Task<Void, Never>?
         @ObservationIgnored var indexingNotificationID: String?
+        @ObservationIgnored var notificationCenter: NotificationCenter = .default
+        @ObservationIgnored var searchTask: Task<Void, Never>?
+        @ObservationIgnored var searchGeneration: Int = 0
+        @ObservationIgnored var flushTask: Task<Void, Never>?
+        @ObservationIgnored var lastFlush: ContinuousClock.Instant?
+        @ObservationIgnored var previewObservation: Task<Void, Never>?
+        @ObservationIgnored var previewRefreshTask: Task<Void, Never>?
+        @ObservationIgnored var fileEvaluationOverride: (@Sendable (URL) async -> FileEvaluation?)?
+        @ObservationIgnored var resultsModel: FindModel?
+        @ObservationIgnored var resultsRegex: NSRegularExpression?
 
         init(_ workspace: WorkspaceDocument) {
             self.workspace = workspace
             addProjectToIndex()
+            observePreviewInputs()
         }
 
         isolated deinit {
             indexingTask?.cancel()
+            searchTask?.cancel()
+            flushTask?.cancel()
+            previewObservation?.cancel()
+            previewRefreshTask?.cancel()
+        }
+
+        var previewInputs: PreviewInputs {
+            PreviewInputs(
+                replaceText: replaceText,
+                preservesCase: findModel.isPreserveCase,
+                isReplaceMode: selectedMode.isReplaceMode
+            )
+        }
+
+        private func observePreviewInputs() {
+            previewObservation = Task { [weak self] in
+                var last = self?.previewInputs
+                let inputs = Observations { [weak self] in self?.previewInputs }
+                for await current in inputs where current != last {
+                    last = current
+                    self?.schedulePreviewRefresh()
+                }
+            }
+        }
+
+        func schedulePreviewRefresh() {
+            cancelPreviewRefresh()
+            guard selectedMode.isReplaceMode, findNavigatorStatus == .found, !searchQuery.isEmpty else { return }
+            previewRefreshTask = Task { [weak self] in
+                try? await Task.sleep(for: Self.previewRefreshDelay)
+                guard !Task.isCancelled, let self else { return }
+                await self.search(self.searchQuery)
+            }
+        }
+
+        func setReplaceMode(_ replace: Bool) {
+            let kind: SearchModeModel = replace ? .Replace : .Find
+            guard let second = selectedMode.second, kind.children.contains(second) else {
+                selectedMode = [kind, .Text, .Containing]
+                return
+            }
+            selectedMode[0] = kind
         }
 
         var caseSensitive: Bool {

@@ -15,14 +15,3 @@ extension UInt {
         self = value
     }
 }
-
-extension Int {
-    init?(hexString: String) {
-        // Trim 0x if it's there
-        let string = String(hexString.trimmingPrefix("0x"))
-        guard let value = Int(string, radix: 16) else {
-            return nil
-        }
-        self = value
-    }
-}

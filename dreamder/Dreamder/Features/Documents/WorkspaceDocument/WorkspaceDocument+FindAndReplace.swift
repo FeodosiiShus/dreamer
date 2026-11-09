@@ -6,166 +6,183 @@
 //
 
 import Foundation
-import AppKit
 
 extension WorkspaceDocument.SearchState {
-    /// Performs a search and replace operation in a collection of files based on the provided query.
-    ///
-    /// - Parameters:
-    ///   - query: The search query to look for in the files.
-    ///   - replacingTerm: The term to replace the matched query with.
-    ///
-    /// - Important: This function relies on an indexer and assumes that it has been previously set.
-    /// If the indexer is not available, the function will return early.
-    /// Also make sure to flush any pending changes to the index before calling this function.
-    func findAndReplace(query: String, replacingTerm: String) async throws {
-        await setStatus(.replacing)
+    nonisolated struct ReplaceReport: Equatable, Sendable {
+        var updatedFiles = 0
+        var errors = 0
 
-        let plan: FindPlan
-        do {
-            plan = try await makeFindPlan(query: query, replacement: replacingTerm)
-            if plan.model.isRegularExpressions {
-                try RegexReplacement.validate(template: replacingTerm, regex: plan.regex)
+        mutating func record(_ outcome: FindReplaceOutcome) {
+            if case .replaced = outcome {
+                updatedFiles += 1
             }
-        } catch let failure as FindFailure {
-            await setStatus(.failed(errorMessage: failure.message))
-            return
-        } catch let error as RegexReplacement.TemplateError {
-            await setStatus(.failed(errorMessage: FindFailure.invalidReplacement(error.message).message))
-            return
-        }
-
-        var errorCount: Int = 0, updatedFilesCount: Int = 0
-
-        await withTaskGroup(of: Bool?.self) { taskGroup in
-            for candidate in plan.files {
-                taskGroup.addTask { () -> Bool? in
-                    try? await Self.replaceOccurrences(in: candidate.url, model: plan.model, regex: plan.regex)
-                }
-            }
-
-            for await outcome in taskGroup {
-                switch outcome {
-                case .some(true): updatedFilesCount += 1
-                case .some(false): break
-                case .none: errorCount += 1
-                }
+            if !outcome.isClean {
+                errors += 1
             }
         }
 
-        if updatedFilesCount == 0 && errorCount == 0 {
-            await setStatus(.failed(errorMessage: "No files in the workspace matched: \(query)"))
-        } else if updatedFilesCount == 0 && errorCount > 0 {
-            await setStatus(
-                .failed(
-                    errorMessage: "All files failed to update. (\(errorCount)) " +
-                    "errors occurred. Check logs for more information"
-                )
+        var failureMessage: String? {
+            guard errors > 0 else { return nil }
+            if updatedFiles == 0 {
+                return "All files failed to update. (\(errors)) errors occurred. Check logs for more information"
+            }
+            return "\(updatedFiles) successfully updated, " +
+                "\(errors) errors occurred. Please check logs for more information."
+        }
+    }
+
+    enum ResultSelection: Equatable {
+        case file(SearchResultModel)
+        case match(SearchResultMatchModel)
+    }
+
+    struct ReplaceSelection {
+        let result: SearchResultModel
+        let ranges: [NSRange]
+
+        init(result: SearchResultModel, matches: [SearchResultMatchModel]) {
+            self.result = result
+            self.ranges = matches.compactMap { $0.isSkipped ? nil : $0.usage?.range }
+        }
+    }
+
+    func cancelPreviewRefresh() {
+        previewRefreshTask?.cancel()
+        previewRefreshTask = nil
+    }
+
+    func replaceAll() async {
+        cancelPreviewRefresh()
+        if findNavigatorStatus != .found {
+            await search(searchQuery)
+        }
+        await replace(searchResult.map { ReplaceSelection(result: $0, matches: $0.lineMatches) })
+    }
+
+    func replace(_ match: SearchResultMatchModel) async {
+        guard let result = searchResult.first(where: { $0.lineMatches.contains { $0 === match } }) else { return }
+        match.isSkipped = false
+        await replace([ReplaceSelection(result: result, matches: [match])])
+    }
+
+    func replaceInFile(_ result: SearchResultModel) async {
+        await replace([ReplaceSelection(result: result, matches: result.lineMatches)])
+    }
+
+    func replaceSelected() async {
+        switch resultSelection {
+        case .match(let match):
+            await replace(match)
+        case .file(let result):
+            await replaceInFile(result)
+        case nil:
+            break
+        }
+    }
+
+    func toggleSkip(_ match: SearchResultMatchModel) {
+        match.isSkipped.toggle()
+        skipRevision += 1
+    }
+
+    func toggleSkip(_ result: SearchResultModel) {
+        let skip = result.lineMatches.contains { !$0.isSkipped }
+        result.lineMatches.forEach { $0.isSkipped = skip }
+        skipRevision += 1
+    }
+
+    func toggleSkipSelected() {
+        switch resultSelection {
+        case .match(let match):
+            toggleSkip(match)
+        case .file(let result):
+            toggleSkip(result)
+        case nil:
+            break
+        }
+    }
+
+    func performReplacements(_ jobs: [FindReplaceJob]) async -> [FindReplaceOutcome] {
+        let documents = openDocuments()
+        var outcomes: [Int: FindReplaceOutcome] = [:]
+        var diskJobs: [Int: FindReplaceJob] = [:]
+        for (index, job) in jobs.enumerated() {
+            if let document = documents[job.url.workspacePathKey] {
+                outcomes[index] = FindBufferReplacer.apply(job, to: document)
+            } else {
+                diskJobs[index] = job
+            }
+        }
+        outcomes.merge(await FindFileRewriter.rewrite(diskJobs)) { buffer, _ in buffer }
+        return jobs.indices.map { outcomes[$0] ?? .stale }
+    }
+
+    private func replace(_ selections: [ReplaceSelection]) async {
+        cancelPreviewRefresh()
+        let work = selections.filter { !$0.ranges.isEmpty }
+        guard !work.isEmpty, var model = resultsModel, let regex = resultsRegex else { return }
+        model.stringToReplace = replaceText
+        model.isPreserveCase = findModel.isPreserveCase
+        if let issue = Self.replacementIssue(for: model, regex: regex) {
+            replaceNotice = FindFailure.invalidReplacement(issue).message
+            return
+        }
+
+        let jobs = work.map { FindReplaceJob(url: $0.result.file.url, ranges: $0.ranges, model: model, regex: regex) }
+        let generation = searchGeneration
+        let outcomes = await performReplacements(jobs)
+        guard isCurrentSearch(generation) else { return }
+
+        var report = ReplaceReport()
+        for (selection, outcome) in zip(work, outcomes) {
+            report.record(outcome)
+            switch outcome {
+            case .replaced(let result):
+                update(selection.result, selected: Set(selection.ranges), outcome: result)
+            case .stale:
+                removeMatches(in: selection.result, at: Set(selection.ranges))
+            case .failed:
+                break
+            }
+        }
+        finishReplacement(report)
+    }
+
+    private func removeMatches(in result: SearchResultModel, at ranges: Set<NSRange>) {
+        result.lineMatches.removeAll { match in match.usage.map { ranges.contains($0.range) } ?? false }
+    }
+
+    private func update(_ result: SearchResultModel, selected: Set<NSRange>, outcome: FindReplaceResult) {
+        let lines = FindLineIndex(outcome.text)
+        result.lineMatches = result.lineMatches.compactMap { match in
+            guard let usage = match.usage, !selected.contains(usage.range) else { return nil }
+            let delta = FindReplaceEngine.delta(before: usage.range.location, applied: outcome.applied)
+            let moved = usage.moved(by: delta, lines: lines)
+            guard let snapshot = FileMatchSnapshot.make(matchRange: moved.range, in: outcome.text) else { return nil }
+            let rebased = SearchResultMatchModel(
+                rangeWithinFile: snapshot.rangeWithinFile,
+                file: match.file,
+                lineContent: snapshot.lineContent,
+                keywordRange: snapshot.keywordRange,
+                usage: moved
             )
-        } else if updatedFilesCount > 0 && errorCount > 0 {
-            await setStatus(
-                .failed(
-                    errorMessage: "\(updatedFilesCount) successfully updated, " +
-                    "\(errorCount) errors occurred. Please check logs for more information."
-                )
-            )
+            rebased.isSkipped = match.isSkipped
+            return rebased
+        }
+    }
+
+    private func finishReplacement(_ report: ReplaceReport) {
+        cancelPreviewRefresh()
+        searchResult = searchResult.filter { !$0.lineMatches.isEmpty }
+        searchResultsFileCount = searchResult.count
+        searchResultsCount = searchResult.reduce(0) { $0 + $1.lineMatches.count }
+        resultSelection = nil
+        replaceNotice = report.failureMessage
+        if searchResult.isEmpty {
+            findNavigatorStatus = report.failureMessage.map { .failed(errorMessage: $0) }
+                ?? .replaced(updatedFiles: report.updatedFiles)
         } else {
-            await setStatus(.replaced(updatedFiles: updatedFilesCount))
-        }
-    }
-
-    /// Replaces occurrences of a specified query with a given replacement term in the content of a file.
-    ///
-    /// - Parameters:
-    ///     - fileURL: The URL of the file to be processed.
-    ///     - query:  The string to be searched for and replaced.
-    ///     - replacingTerm: The string to replace occurrences of the query.
-    ///     - options: The options for the search and replace operation.
-    ///             You can use options such as regular expression or case-insensitivity.
-    ///
-    /// The function performs the replacement in memory and then writes the modified content back to the file
-    func replaceOccurrencesInFile(
-        fileURL: URL,
-        query: String,
-        replacingTerm: String
-    ) async throws {
-        let model = makeFindModel(query: query, replacement: replacingTerm)
-        guard let regex = model.compileMatcher() else { throw FindFailure.invalidRegularExpression }
-        _ = try await Self.replaceOccurrences(in: fileURL, model: model, regex: regex)
-    }
-
-    @concurrent
-    static func replaceOccurrences(
-        in fileURL: URL,
-        model: FindModel,
-        regex: NSRegularExpression
-    ) async throws -> Bool {
-        let data = try Data(contentsOf: fileURL)
-        guard let content = String(bytes: data, encoding: .utf8) else { return false }
-        let replacement = try model.replaceAll(in: content, using: regex)
-        guard replacement.replacedCount > 0, replacement.text != content else { return false }
-        try replacement.text.write(to: fileURL, atomically: true, encoding: .utf8)
-        return true
-    }
-
-    /// Replaces a specified range of text within a file with a new string.
-    ///
-    /// - Parameters:
-    ///   - file: The URL of the file to be modified.
-    ///   - searchTerm: The string to be replaced within the specified range.
-    ///   - replacingTerm: The string to replace the specified searchTerm.
-    ///   - keywordRange: The range within which the replacement should occur.
-    ///
-    /// - Note: This function  can be utilised for two specific use cases:
-    ///         1. To replace a particular occurrence of a string within a file,
-    ///         provide the range of the keyword to be replaced.
-    ///         2. To replace all occurrences of the string within the file,
-    ///         pass the start and end index covering the entire range.
-    func replaceRange(
-        file: URL,
-        searchTerm: String,
-        replacingTerm: String,
-        keywordRange: Range<String.Index>
-    ) {
-        guard let fileContent = try? String(contentsOf: file, encoding: .utf8) else {
-            presentError("An error occurred while reading file contents of: \(file)")
-            return
-        }
-
-        let model = makeFindModel(query: searchTerm, replacement: replacingTerm)
-        guard let regex = model.compileMatcher() else {
-            presentError(FindFailure.invalidRegularExpression.message)
-            return
-        }
-        guard keywordRange.upperBound <= fileContent.endIndex else { return }
-
-        do {
-            let replacement = try model.replaceAll(
-                in: fileContent,
-                using: regex,
-                range: NSRange(keywordRange, in: fileContent)
-            )
-            guard replacement.replacedCount > 0, replacement.text != fileContent else { return }
-            try replacement.text.write(to: file, atomically: true, encoding: .utf8)
-        } catch let error as RegexReplacement.TemplateError {
-            presentError(FindFailure.invalidReplacement(error.message).message)
-        } catch {
-            presentError("An error occurred while writing to: \(error.localizedDescription)")
-        }
-    }
-
-    private func presentError(_ message: String) {
-        let alert = NSAlert()
-        alert.messageText = "Error"
-        alert.informativeText = message
-        alert.alertStyle = .critical
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
-
-    func setStatus(_ status: FindNavigatorStatus) async {
-        await MainActor.run {
-            self.findNavigatorStatus = status
+            findNavigatorStatus = .found
         }
     }
 }

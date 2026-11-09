@@ -86,9 +86,8 @@ nonisolated enum MarkdownTableCellContent {
             case .center: key = abs(left - right)
             case .left, .none: key = left
             }
-            if best == nil || key < (best?.key ?? Int.max) {
-                best = (left, right, key)
-            }
+            if let current = best, current.key <= key { continue }
+            best = (left, right, key)
         }
         let left = best?.left ?? 1
         let right = best?.right ?? 1
@@ -199,9 +198,7 @@ nonisolated struct MarkdownTableFormatter: Sendable {
         let text = MarkdownText(units: state.units)
         guard let layout = MarkdownTableLayout(text: text, lines: plan.lines, prefixLengths: plan.prefixLengths),
               column < layout.header.cells.count,
-              column < layout.separator.cells.count else {
-            return false
-        }
+              column < layout.separator.cells.count else { return false }
         let separatorRange = layout.separator.cells[column]
         var cellStates: [CellState] = []
         for (rowIndex, row) in layout.rows.enumerated() where rowIndex != 1 && column < row.cells.count {
@@ -275,7 +272,7 @@ nonisolated struct MarkdownTableFormatter: Sendable {
             }
         }
         let separatorHasCaret = tracked.contains { separatorRange.lowerBound <= $0 && $0 <= separatorRange.upperBound }
-        return max(widths.max() ?? 0, separatorHasCaret ? separatorRange.count : 1)
+        return max(widths.reduce(0, max), separatorHasCaret ? separatorRange.count : 1)
     }
 
     private func processCell(_ cell: CellState, alignment: MarkdownTableAlignment, maxWidth: Int, state: inout State) {

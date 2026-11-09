@@ -31,19 +31,6 @@ struct TrackableScrollView<Content>: View where Content: View {
         _ axes: Axis.Set = .vertical,
         showIndicators: Bool = true,
         contentOffset: Binding<CGFloat>,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.axes = axes
-        self.showIndicators = showIndicators
-        self._contentOffset = contentOffset
-        self._contentTrailingOffset = Binding.constant(nil)
-        self.content = content()
-    }
-
-    init(
-        _ axes: Axis.Set = .vertical,
-        showIndicators: Bool = true,
-        contentOffset: Binding<CGFloat>,
         contentTrailingOffset: Binding<CGFloat?>?,
         @ViewBuilder content: () -> Content
     ) {

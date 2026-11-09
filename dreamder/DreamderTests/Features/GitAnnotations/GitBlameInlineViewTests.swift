@@ -3,7 +3,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct GitBlameInlineViewTests {
     private let anchor = CGRect(x: 40, y: 100, width: 8, height: 20)
 
@@ -36,6 +36,14 @@ struct GitBlameInlineViewTests {
         #expect(view.translatesAutoresizingMaskIntoConstraints == false)
         #expect(view.autoresizingMask.isEmpty)
         #expect(view.hitTest(NSPoint(x: 10, y: 10)) == nil)
+    }
+
+    @Test
+    func overlayIsTransparentAndTopLeftOriented() {
+        let view = GitBlameInlineView(frame: CGRect(x: 0, y: 0, width: 400, height: 300))
+
+        #expect(!view.isOpaque)
+        #expect(view.isFlipped)
     }
 
     @Test

@@ -53,7 +53,7 @@ final class LanguageServerDocumentObjectsTests: XCTestCase {
             lspPid: -1,
             serverCapabilities: capabilities,
             rootPath: URL(fileURLWithPath: ""),
-            logContainer: LanguageServerLogContainer(language: .swift)
+            logContainer: LanguageServerLogContainer(languageID: "swift")
         )
         _ = try await server.lspInstance.initializeIfNeeded()
         document = MockDocumentType()

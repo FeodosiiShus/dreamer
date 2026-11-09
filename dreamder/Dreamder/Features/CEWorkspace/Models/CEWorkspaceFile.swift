@@ -8,7 +8,7 @@
 import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
-import Combine
+import Observation
 
 /// An object containing all necessary information and actions for a specific file in the workspace
 ///
@@ -31,6 +31,7 @@ import Combine
 /// fetching it from the ``CEWorkspaceFileManager`` may require loading and caching multiple directories. Instead, it
 /// just makes a disconnected object and uses it for the preview. Then, when opening the file in the workspace it
 /// forces the file to be loaded and cached.
+@Observable
 final class CEWorkspaceFile: Codable, Comparable, Hashable, Identifiable, EditorTabRepresentable {
 
     /// The id of the ``CEWorkspaceFile``.
@@ -62,7 +63,7 @@ final class CEWorkspaceFile: Codable, Comparable, Hashable, Identifiable, Editor
     let url: URL
 
     /// Returns the resolved symlink url of this object.
-    lazy var resolvedURL: URL = {
+    @ObservationIgnored lazy var resolvedURL: URL = {
         url.isSymbolicLink ? url.resolvingSymlinksInPath() : url
     }()
 
@@ -90,18 +91,7 @@ final class CEWorkspaceFile: Codable, Comparable, Hashable, Identifiable, Editor
     /// If the item already is the top-level ``CEWorkspaceFile`` this returns `nil`.
     weak var parent: CEWorkspaceFile?
 
-    private let fileDocumentSubject = PassthroughSubject<CodeFileDocument?, Never>()
-
-    weak var fileDocument: CodeFileDocument? {
-        didSet {
-            fileDocumentSubject.send(fileDocument)
-        }
-    }
-
-    /// Publisher for fileDocument property
-    var fileDocumentPublisher: AnyPublisher<CodeFileDocument?, Never> {
-        fileDocumentSubject.eraseToAnyPublisher()
-    }
+    weak var fileDocument: CodeFileDocument?
 
     var fileIdentifier = UUID().uuidString
 
@@ -115,7 +105,7 @@ final class CEWorkspaceFile: Codable, Comparable, Hashable, Identifiable, Editor
     var tabID: EditorTabID { .codeEditor(id) }
 
     /// Returns a boolean that is true if the resource represented by this object is a directory.
-    lazy var isFolder: Bool = {
+    @ObservationIgnored lazy var isFolder: Bool = {
         resolvedURL.isFolder
     }()
 
@@ -201,8 +191,8 @@ final class CEWorkspaceFile: Codable, Comparable, Hashable, Identifiable, Editor
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(String.self, forKey: .id)
         url = try values.decode(URL.self, forKey: .url)
-        gitStatus = try values.decode(GitStatus.self, forKey: .changeType)
-        staged = try values.decode(Bool.self, forKey: .staged)
+        gitStatus = try values.decodeIfPresent(GitStatus.self, forKey: .changeType)
+        staged = try values.decodeIfPresent(Bool.self, forKey: .staged)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -238,8 +228,7 @@ final class CEWorkspaceFile: Codable, Comparable, Hashable, Identifiable, Editor
 
     /// Generates a string based on user's file name preferences.
     /// - Returns: A `String` suitable for display.
-    func labelFileName() -> String {
-        let prefs = Settings.shared.preferences.general
+    func labelFileName(general prefs: SettingsData.GeneralSettings = Settings.shared.preferences.general) -> String {
         switch prefs.fileExtensionsVisibility {
         case .hideAll:
             return self.fileName(typeHidden: true)
@@ -279,13 +268,9 @@ final class CEWorkspaceFile: Codable, Comparable, Hashable, Identifiable, Editor
     static let fileManager = FileManager.default
 
     // MARK: Intents
-    /// Allows the user to view the file or folder in the finder application
-    func showInFinder() {
-        NSWorkspace.shared.activateFileViewerSelecting([url])
-    }
-
     /// Allows the user to launch the file or folder as it would be in finder
-    func openWithExternalEditor() {
+    @discardableResult
+    func openWithExternalEditor() -> Bool {
         NSWorkspace.shared.open(url)
     }
 

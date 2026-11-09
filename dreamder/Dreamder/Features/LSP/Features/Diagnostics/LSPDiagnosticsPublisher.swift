@@ -88,13 +88,14 @@ enum LSPDiagnosticsPublisher {
             }
         }
         let path = fileURL.standardizedFileURL.path
-        return workspaces.first { workspace in
-            guard let root = workspace.fileURL?.standardizedFileURL.path else { return false }
-            if path == root {
-                return true
-            }
-            let prefix = root.hasSuffix("/") ? root : root + "/"
-            return path.hasPrefix(prefix)
+        let rooted = workspaces.compactMap { workspace in
+            workspace.fileURL.map { (workspace, $0.standardizedFileURL.path) }
         }
+        return rooted.first { isPath(path, within: $0.1) }?.0
+    }
+
+    nonisolated static func isPath(_ path: String, within root: String) -> Bool {
+        let prefix = root.hasSuffix("/") ? root : root + "/"
+        return path == root || path.hasPrefix(prefix)
     }
 }

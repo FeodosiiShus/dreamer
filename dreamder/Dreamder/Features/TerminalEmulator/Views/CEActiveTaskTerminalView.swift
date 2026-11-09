@@ -10,14 +10,21 @@ import SwiftTerm
 
 class CEActiveTaskTerminalView: CELocalShellTerminalView {
     var activeTask: CEActiveTask
+    var makeLinkAtom: (String) -> TinyAtom? = { TinyAtom.lookup(value: $0) }
+    var shellIntegrationDirectory = FileManager.default.temporaryDirectory
 
-    var isUserCommandRunning: Bool {
-        activeTask.status == .running || activeTask.status == .stopped
-    }
+    private let linkDetector = ConsoleFileLinkDetector()
+    private var linkForwarder: ActiveTaskTerminalLinkForwarder?
+
+    static let detachedFrame = NSRect(x: 0, y: 0, width: 960, height: 480)
 
     init(activeTask: CEActiveTask) {
         self.activeTask = activeTask
-        super.init(frame: .zero)
+        super.init(frame: Self.detachedFrame)
+        settings = activeTask.settings
+        let forwarder = ActiveTaskTerminalLinkForwarder(view: self)
+        linkForwarder = forwarder
+        terminalDelegate = forwarder
     }
 
     public required init?(coder: NSCoder) {
@@ -30,7 +37,7 @@ class CEActiveTaskTerminalView: CELocalShellTerminalView {
         environment: [String] = [],
         interactive: Bool = true
     ) {
-        let terminalSettings = Settings.shared.preferences.terminal
+        let terminalSettings = settings.preferences.terminal
 
         var terminalEnvironment: [String] = Terminal.getEnvironmentVariables()
         terminalEnvironment.append("TERM_PROGRAM=DreamderApp_Terminal")
@@ -51,7 +58,9 @@ class CEActiveTaskTerminalView: CELocalShellTerminalView {
                 for: shell,
                 environment: &terminalEnvironment,
                 useLogin: true,
-                interactive: interactive
+                interactive: interactive,
+                bundle: shellIntegrationBundle,
+                temporaryDirectory: shellIntegrationDirectory
            ) {
             shellArgs = integrationArgs + ["-c"]
         }
@@ -68,22 +77,29 @@ class CEActiveTaskTerminalView: CELocalShellTerminalView {
             execName: shell.rawValue,
             currentDirectory: URL(filePath: activeTask.task.workingDirectory, relativeTo: url).absolutePath
         )
+        adoptPseudoTerminal()
+    }
+
+    override func dataReceived(slice: ArraySlice<UInt8>) {
+        lastOutputAt = .now
+        super.dataReceived(slice: slice)
     }
 
     override func processTerminated(_ source: LocalProcess, exitCode: Int32?) {
         let status = exitCode ?? 1
+        lastOutputAt = .now
         Task { @MainActor [weak self] in
-            var attempts = 0
-            while let self, self.process.childfd != -1, attempts < Self.drainAttempts {
+            while let self, self.process.childfd != -1, ContinuousClock.now - self.lastOutputAt < Self.drainIdleLimit {
                 try? await Task.sleep(for: Self.drainInterval)
-                attempts += 1
             }
+            self?.drainProcessEvents()
             self?.activeTask.handleProcessFinished(terminationStatus: status)
         }
     }
 
+    private var lastOutputAt = ContinuousClock.now
     private static let drainInterval: Duration = .milliseconds(10)
-    private static let drainAttempts = 200
+    private static let drainIdleLimit: Duration = .seconds(5)
 
     func sendOutputMessage(_ message: String) {
         sendSpecialSequence()
@@ -113,9 +129,58 @@ class CEActiveTaskTerminalView: CELocalShellTerminalView {
     }
 
     func getBufferAsString() -> String {
-        terminal.getText(
-            start: .init(col: 0, row: 0),
-            end: .init(col: terminal.cols, row: terminal.rows + terminal.buffer.yDisp)
-        )
+        String(decoding: terminal.getBufferAsData(), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    override func linefeed(source: Terminal) {
+        super.linefeed(source: source)
+        let cursorRow = source.buffer.y
+        markFileLinks(inRow: cursorRow - 1)
+        if cursorRow == source.rows - 1 {
+            markFileLinks(inRow: cursorRow)
+        }
+    }
+
+    func openConsoleLink(link: String, params: [String: String]) {
+        guard let payload = ConsoleFileLinkPayload(link: link, params: params),
+              let target = linkResolver.target(path: payload.path, line: payload.line, column: payload.column)
+        else { return }
+        activeTask.openFileLink?(target)
+    }
+
+    private var linkResolver: ConsoleFileLinkResolver {
+        let workspaceURL = activeTask.workspaceURL
+        let baseDirectories = workspaceURL.map {
+            [URL(filePath: activeTask.task.workingDirectory, relativeTo: $0), $0]
+        } ?? []
+        return ConsoleFileLinkResolver(baseDirectories: baseDirectories)
+    }
+
+    private func markFileLinks(inRow row: Int) {
+        guard let line = terminal.getLine(row: row) else { return }
+        var characters: [Character] = []
+        var columns: [Int] = []
+        for column in 0..<line.count {
+            let cell = line[column]
+            guard cell.width > 0 else { continue }
+            let character = cell.getCharacter()
+            characters.append(character == "\0" ? " " : character)
+            columns.append(column)
+        }
+        let links = linkDetector.links(inCharacters: characters)
+        guard !links.isEmpty else { return }
+        let resolver = linkResolver
+        for link in links {
+            guard let target = resolver.target(for: link),
+                  let atom = makeLinkAtom(ConsoleFileLinkPayload(target: target).cellValue)
+            else { continue }
+            let endColumn = (link.range.upperBound < columns.count ? columns[link.range.upperBound] : line.count) - 1
+            for column in columns[link.range.lowerBound]...endColumn {
+                var cell = line[column]
+                cell.setPayload(atom: atom)
+                line[column] = cell
+            }
+        }
     }
 }

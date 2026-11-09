@@ -186,13 +186,6 @@ extension SettingsData {
         case monochrome
     }
 
-    /// The position for a sidebar tab bar
-    /// - **top**: Tab bar is positioned at the top of the sidebar
-    /// - **side**: Tab bar is positioned to the side of the sidebar
-    enum SidebarTabBarPosition: String, Codable {
-        case top, side
-    }
-
     /// The reopen behavior of the app
     /// - **welcome**: On restart the app will show the welcome screen
     /// - **openPanel**: On restart the app will show an open panel

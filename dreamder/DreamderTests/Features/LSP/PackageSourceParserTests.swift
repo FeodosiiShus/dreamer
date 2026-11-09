@@ -397,4 +397,93 @@ struct PackageSourceParserTests {
             #expect(source.options == ["buildTool": buildTool], "\(id)")
         }
     }
+
+    @Test
+    func npmParsesPlainAndScopedPackageNames() throws {
+        let cases: [(id: String, name: String, version: String)] = [
+            ("pkg:npm/tool@1.2.3", "tool", "1.2.3"),
+            ("pkg:npm/tool", "tool", "latest"),
+            ("pkg:npm/tool@", "tool", "latest"),
+            ("pkg:npm/@org/tool@1.0.0", "@org/tool", "1.0.0"),
+            ("pkg:npm/%40org%2Ftool@1.0.0", "@org/tool", "1.0.0"),
+            ("pkg:npm/@org/tool", "@org/tool", "latest")
+        ]
+        for (id, name, version) in cases {
+            let item = try makeItem(name: "entry", id: id)
+            let source = try standardSource(PackageSourceParser.parseNpmPackage(item))
+            #expect(source.pkgName == name, "\(id)")
+            #expect(source.version == version, "\(id)")
+            #expect(source.type == .npm)
+            #expect(source.entryName == "entry")
+        }
+    }
+
+    @Test
+    func npmRejectsOtherSchemes() throws {
+        #expect(PackageSourceParser.parseNpmPackage(try makeItem(id: "pkg:cargo/tool@1")) == .unknown)
+    }
+
+    @Test
+    func everyStandardParserHandlesRepositoryRevisionTagAndPlainQualifiers() throws {
+        let parsers: [(prefix: String, buildTool: String, parse: (RegistryItem) -> InstallationMethod)] = [
+            ("pkg:npm/tool@1.0.0", "npm", PackageSourceParser.parseNpmPackage),
+            ("pkg:gem/tool@1.0.0", "gem", PackageSourceParser.parseRubyGem),
+            ("pkg:pypi/tool@1.0.0", "pip", PackageSourceParser.parsePythonPackage)
+        ]
+        for (prefix, buildTool, parse) in parsers {
+            let repository = try standardSource(parse(makeItem(id: "\(prefix)?repository_url=https://example.com/tool")))
+            #expect(repository.repositoryUrl == "https://example.com/tool", "\(prefix)")
+            #expect(repository.gitReference == nil, "\(prefix)")
+            #expect(repository.options == ["buildTool": buildTool], "\(prefix)")
+
+            let revision = try standardSource(parse(makeItem(id: "\(prefix)?rev=true")))
+            #expect(revision.gitReference == .revision("1.0.0"), "\(prefix)")
+            #expect(revision.options == ["buildTool": buildTool], "\(prefix)")
+
+            let tag = try standardSource(parse(makeItem(id: "\(prefix)?tag=TRUE")))
+            #expect(tag.gitReference == .tag("1.0.0"), "\(prefix)")
+
+            let plain = try standardSource(parse(makeItem(id: "\(prefix)?extra=a,b&rev=false&dev=true")))
+            #expect(plain.gitReference == nil, "\(prefix)")
+            #expect(plain.options == ["buildTool": buildTool, "extra": "a,b", "rev": "false", "dev": "true"], "\(prefix)")
+        }
+    }
+
+    @Test
+    func gemAndPypiParseNamesAndVersions() throws {
+        let gem = try standardSource(PackageSourceParser.parseRubyGem(makeItem(id: "pkg:gem/rubocop@1.2")))
+        #expect(gem.pkgName == "rubocop")
+        #expect(gem.version == "1.2")
+        #expect(gem.type == .gem)
+        #expect(PackageSourceParser.parseRubyGem(try makeItem(id: "pkg:pypi/ruff@1")) == .unknown)
+        #expect(PackageSourceParser.parseRubyGem(try makeItem(id: "pkg:gem/@1")) == .unknown)
+
+        let pypi = try standardSource(PackageSourceParser.parsePythonPackage(makeItem(id: "pkg:pypi/ruff")))
+        #expect(pypi.pkgName == "ruff")
+        #expect(pypi.version == "latest")
+        #expect(pypi.type == .pip)
+        #expect(PackageSourceParser.parsePythonPackage(try makeItem(id: "pkg:gem/ruff@1")) == .unknown)
+        #expect(PackageSourceParser.parsePythonPackage(try makeItem(id: "pkg:pypi/@1")) == .unknown)
+    }
+
+    @Test
+    func installMethodDispatchesEveryRegistryScheme() throws {
+        let cases: [(String, PackageManagerType)] = [
+            ("pkg:npm/tool@1", .npm),
+            ("pkg:pypi/tool@1", .pip),
+            ("pkg:gem/tool@1", .gem)
+        ]
+        for (id, type) in cases {
+            let method = try #require(try makeItem(id: id).installMethod, "\(id)")
+            #expect(method.packageManagerType == type, "\(id)")
+            #expect(method.packageDescription == "tool@1", "\(id)")
+        }
+
+        let build = try #require(try makeItem(id: "pkg:github/acme/tool@v1", sourceExtras: #", "build": { "run": "make" }"#).installMethod)
+        #expect(build.packageManagerType == .sourceBuild)
+
+        let asset = #", "asset": { "target": "darwin", "file": "tool.zip" }"#
+        let download = try #require(try makeItem(id: "pkg:github/acme/tool@v1", sourceExtras: asset).installMethod)
+        #expect(download.packageManagerType == .github)
+    }
 }

@@ -28,10 +28,7 @@ final class EditorStateRestoration {
     /// degraded but not catastrophic.
     static let shared: EditorStateRestoration? = try? EditorStateRestoration()
 
-    private static let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "",
-        category: "EditorStateRestoration"
-    )
+    private static let logger = EditorLogging.logger(category: "EditorStateRestoration")
 
     struct StateRestorationRecord: Codable, TableRecord, FetchableRecord, PersistableRecord {
         let uri: String
@@ -69,10 +66,13 @@ final class EditorStateRestoration {
     ///                          create a new database named `editor-restoration.db` in the application support
     ///                          directory.
     init(_ databaseURL: URL? = nil) throws {
-        self.databaseURL = databaseURL ?? FileManager.default
-            .homeDirectoryForCurrentUser
-            .appending(path: "Library/Application Support/Dreamder", directoryHint: .isDirectory)
-            .appending(path: "editor-restoration.db", directoryHint: .notDirectory)
+        if let databaseURL {
+            self.databaseURL = databaseURL
+        } else {
+            let directory = Settings.defaultBaseURL()
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            self.databaseURL = directory.appending(path: "editor-restoration.db", directoryHint: .notDirectory)
+        }
         try attemptMigration(retry: true)
     }
 

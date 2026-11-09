@@ -153,6 +153,27 @@ struct GitBlameParserTests {
     }
 
     @Test
+    func ignoresRowsBeforeTheFirstHeaderAndUnparsableTimestamps() throws {
+        let output = [
+            "\tstray content",
+            "author Nobody",
+            "\(recentHash) 1 1 1",
+            "author Ann",
+            "author-time not-a-number",
+            "boundary",
+            "summary Real",
+            "\tcode"
+        ].joined(separator: "\n")
+
+        let lines = GitBlameParser.parse(output)
+
+        try #require(lines.count == 1)
+        #expect(lines[0].author == "Ann")
+        #expect(lines[0].authorDate == Date(timeIntervalSince1970: 0))
+        #expect(lines[0].summary == "Real")
+    }
+
+    @Test
     func sortsLinesByFinalLineNumber() {
         let output = """
         \(recentHash) 2 2 1

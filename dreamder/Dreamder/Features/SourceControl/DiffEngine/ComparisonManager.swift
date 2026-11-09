@@ -330,15 +330,11 @@ nonisolated enum ComparisonManager {
 
         if !tryComputeDifferences { return [fragment] }
 
-        switch fragmentsPolicy {
-        case .words:
-            return try createInnerWordFragments(fragment, subSequence1, subSequence2, policy)
-        case .chars:
+        if fragmentsPolicy == .chars {
             let innerChanges = try compareChars(subSequence1, subSequence2, policy)
             return [LineFragment(fragment, innerFragments: innerChanges)]
-        case .none:
-            return [fragment]
         }
+        return try createInnerWordFragments(fragment, subSequence1, subSequence2, policy)
     }
 
     private static func createInnerWordFragments(
@@ -464,23 +460,13 @@ nonisolated enum ComparisonManager {
     private static func isSignificantUnderIgnoreWhitespaces(_ fragment: LineFragment, _ text1: DiffUnits, _ text2: DiffUnits) -> Bool {
         let sequence1 = Array(text1[fragment.startOffset1..<fragment.endOffset1])
         let sequence2 = Array(text2[fragment.startOffset2..<fragment.endOffset2])
-        let hasInnerChanges = fragment.innerFragments == nil || !(fragment.innerFragments?.isEmpty ?? true)
+        let hasInnerChanges = fragment.innerFragments.map { !$0.isEmpty } ?? true
         return hasInnerChanges && !ComparisonUtil.equalsIgnoreWhitespaces(sequence1, sequence2)
     }
 
     private static func doSquash(_ oldFragments: [LineFragment]) -> LineFragment {
-        guard let firstFragment = oldFragments.first, let lastFragment = oldFragments.last else {
-            return LineFragment(
-                startLine1: 0,
-                endLine1: 0,
-                startLine2: 0,
-                endLine2: 0,
-                startOffset1: 0,
-                endOffset1: 0,
-                startOffset2: 0,
-                endOffset2: 0
-            )
-        }
+        let firstFragment = oldFragments[0]
+        let lastFragment = oldFragments[oldFragments.count - 1]
         if oldFragments.count == 1 { return firstFragment }
 
         var newInnerFragments: [DiffFragment] = []

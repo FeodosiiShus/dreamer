@@ -11,7 +11,7 @@ import AppKit
 struct NSTableViewWrapper<Content: View, Item: Identifiable & Hashable>: NSViewRepresentable {
 
     var data: [Item]
-    var rowHeight: CGFloat = 50
+    var rowHeight: CGFloat
 
     @Binding var selection: Item?
 

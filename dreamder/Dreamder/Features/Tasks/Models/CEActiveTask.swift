@@ -16,6 +16,7 @@ class CEActiveTask: Identifiable, Hashable {
     var output: CEActiveTaskTerminalView?
 
     @ObservationIgnored var hasOutputBeenConfigured: Bool = false
+    @ObservationIgnored var openFileLink: (@MainActor (ConsoleFileLinkTarget) -> Void)?
 
     /// The status of the task.
     private(set) var status: CETaskStatus = .notRunning
@@ -34,8 +35,11 @@ class CEActiveTask: Identifiable, Hashable {
 
     var workspaceURL: URL?
 
-    init(task: CETask) {
+    @ObservationIgnored let settings: Settings
+
+    init(task: CETask, settings: Settings = SettingsScope.current ?? .shared) {
         self.task = task
+        self.settings = settings
     }
 
     @MainActor
@@ -111,7 +115,7 @@ class CEActiveTask: Identifiable, Hashable {
 
     @MainActor
     func resume() {
-        if let shellPID = output?.runningPID(), status == .running {
+        if let shellPID = output?.runningPID(), status == .stopped {
             kill(shellPID, SIGCONT)
             updateTaskStatus(to: .running)
         }

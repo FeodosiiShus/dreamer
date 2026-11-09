@@ -3,7 +3,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct MergeToolIntegrationTests {
     private func answering<T>(_ answer: Bool, _ body: () async -> T) async -> T {
         await MergeToolConfirmation.$override.withValue(answer) {
@@ -43,7 +43,7 @@ struct MergeToolIntegrationTests {
     @Test
     func acceptYoursStagesOursVersion() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            let fixture = try await GitMergeFixture.mergeConflict(in: dir)
             let repo = repository(dir)
             let context = await repo.context()
             #expect(context.summary == "Merging branch feature into branch main")
@@ -57,8 +57,8 @@ struct MergeToolIntegrationTests {
             try await repo.accept(.yours, entry: entry, context: context)
 
             #expect(try trimmed(fixture.read("app/config.txt")) == "alpha\nbeta-main\ngamma\ndelta\nepsilon\nzeta-main\neta\ntheta\niota\nkappa\nlambda")
-            #expect(try fixture.isFullyStaged("app/config.txt"))
-            #expect(try fixture.unmergedPaths() == ["docs/notes.txt"])
+            #expect(try await fixture.isFullyStaged("app/config.txt"))
+            #expect(try await fixture.unmergedPaths() == ["docs/notes.txt"])
             #expect(await repo.entries().map(\.path) == ["docs/notes.txt"])
         }
     }
@@ -66,22 +66,22 @@ struct MergeToolIntegrationTests {
     @Test
     func acceptTheirsStagesTheirsVersion() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            let fixture = try await GitMergeFixture.mergeConflict(in: dir)
             let repo = repository(dir)
             let context = await repo.context()
             let entry = try #require(await repo.entries().first { $0.path == "docs/notes.txt" })
             try await repo.accept(.theirs, entry: entry, context: context)
 
             #expect(try trimmed(fixture.read("docs/notes.txt")) == "one\nnotes-feature\nthree")
-            #expect(try fixture.isFullyStaged("docs/notes.txt"))
-            #expect(try fixture.unmergedPaths() == ["app/config.txt"])
+            #expect(try await fixture.isFullyStaged("docs/notes.txt"))
+            #expect(try await fixture.unmergedPaths() == ["app/config.txt"])
         }
     }
 
     @Test
     func acceptYoursDuringRebaseAcceptsOurCommits() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.rebaseConflict(in: dir) }
+            let fixture = try await GitMergeFixture.rebaseConflict(in: dir)
             let repo = repository(dir)
             let context = await repo.context()
 
@@ -96,17 +96,17 @@ struct MergeToolIntegrationTests {
             try await repo.accept(.yours, entry: entry, context: context)
 
             #expect(try trimmed(fixture.read("src/main.swift")) == "line1\nfeature-line\nline3")
-            #expect(try fixture.isFullyStaged("src/main.swift"))
-            #expect(try fixture.unmergedPaths().isEmpty)
+            #expect(try await fixture.isFullyStaged("src/main.swift"))
+            #expect(try await fixture.unmergedPaths().isEmpty)
         }
     }
 
     @Test
     func rebaseOntoACommitWithoutABranchNamesTheShortHash() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.rebaseOntoDetachedCommitConflict(in: dir) }
+            let fixture = try await GitMergeFixture.rebaseOntoDetachedCommitConflict(in: dir)
             let onto = try fixture.read(".git/rebase-merge/onto").trimmingCharacters(in: .whitespacesAndNewlines)
-            let short = try fixture.run("rev-parse", "--short", onto).trimmingCharacters(in: .whitespacesAndNewlines)
+            let short = try await fixture.run("rev-parse", "--short", onto).trimmingCharacters(in: .whitespacesAndNewlines)
             let context = await repository(dir).context()
 
             #expect(context.operation == .rebase(branch: "feature", onto: short))
@@ -118,21 +118,21 @@ struct MergeToolIntegrationTests {
     @Test
     func cherryPickConflictIsReportedWithTheShortHash() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.cherryPickConflict(in: dir) }
-            let short = try fixture.run("rev-parse", "--short", "CHERRY_PICK_HEAD")
+            let fixture = try await GitMergeFixture.cherryPickConflict(in: dir)
+            let short = try await fixture.run("rev-parse", "--short", "CHERRY_PICK_HEAD")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let context = await repository(dir).context()
 
             #expect(context.operation == .cherryPick(hash: short))
             #expect(context.swapsSides == false)
-            #expect(try fixture.unmergedPaths() == ["src/main.swift"])
+            #expect(try await fixture.unmergedPaths() == ["src/main.swift"])
         }
     }
 
     @Test
     func acceptYoursDeletesFileDeletedOnOurSide() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.deleteModifyConflict(in: dir) }
+            let fixture = try await GitMergeFixture.deleteModifyConflict(in: dir)
             let repo = repository(dir)
             let context = await repo.context()
             let entry = try #require(await repo.entries().first)
@@ -142,14 +142,14 @@ struct MergeToolIntegrationTests {
             try await repo.accept(.yours, entry: entry, context: context)
 
             #expect(fixture.exists("gone.txt") == false)
-            #expect(try fixture.unmergedPaths().isEmpty)
+            #expect(try await fixture.unmergedPaths().isEmpty)
         }
     }
 
     @Test
     func acceptTheirsRestoresFileDeletedOnOurSide() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.deleteModifyConflict(in: dir) }
+            let fixture = try await GitMergeFixture.deleteModifyConflict(in: dir)
             let repo = repository(dir)
             let context = await repo.context()
             let entry = try #require(await repo.entries().first)
@@ -158,14 +158,14 @@ struct MergeToolIntegrationTests {
 
             #expect(fixture.exists("gone.txt"))
             #expect(try trimmed(fixture.read("gone.txt")) == "keep me\nmodified by feature")
-            #expect(try fixture.unmergedPaths().isEmpty)
+            #expect(try await fixture.unmergedPaths().isEmpty)
         }
     }
 
     @Test
     func acceptYoursResolvesFileAddedOnBothSides() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.bothAddedConflict(in: dir) }
+            let fixture = try await GitMergeFixture.bothAddedConflict(in: dir)
             let repo = repository(dir)
             let context = await repo.context()
             let entry = try #require(await repo.entries().first)
@@ -175,14 +175,14 @@ struct MergeToolIntegrationTests {
             try await repo.accept(.yours, entry: entry, context: context)
 
             #expect(try trimmed(fixture.read("new.txt")) == "main version")
-            #expect(try fixture.unmergedPaths().isEmpty)
+            #expect(try await fixture.unmergedPaths().isEmpty)
         }
     }
 
     @Test
     func mergeWindowLoadsAllThreeRevisions() async throws {
         try await withTempDir { dir in
-            _ = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            _ = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
 
@@ -216,7 +216,7 @@ struct MergeToolIntegrationTests {
     @Test
     func acceptingBlockLeftWritesThatSideIntoResult() async throws {
         try await withTempDir { dir in
-            _ = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            _ = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
             let merge = try #require(model.merge)
@@ -233,7 +233,7 @@ struct MergeToolIntegrationTests {
     @Test
     func acceptingBlockRightWritesThatSideIntoResult() async throws {
         try await withTempDir { dir in
-            _ = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            _ = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
             let merge = try #require(model.merge)
@@ -249,7 +249,7 @@ struct MergeToolIntegrationTests {
     @Test
     func ignoringConflictKeepsBaseText() async throws {
         try await withTempDir { dir in
-            _ = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            _ = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
             let merge = try #require(model.merge)
@@ -264,7 +264,7 @@ struct MergeToolIntegrationTests {
     @Test
     func applyNonConflictingFromLeftKeepsOnlyLeftChanges() async throws {
         try await withTempDir { dir in
-            _ = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            _ = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
 
@@ -279,7 +279,7 @@ struct MergeToolIntegrationTests {
     @Test
     func applyNonConflictingFromRightKeepsOnlyRightChanges() async throws {
         try await withTempDir { dir in
-            _ = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            _ = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
 
@@ -294,7 +294,7 @@ struct MergeToolIntegrationTests {
     @Test
     func applyNonConflictingAllKeepsBothSides() async throws {
         try await withTempDir { dir in
-            _ = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            _ = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
 
@@ -309,7 +309,7 @@ struct MergeToolIntegrationTests {
     @Test
     func acceptLeftWritesWholeLeftSideAndStages() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            let fixture = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
 
@@ -317,15 +317,15 @@ struct MergeToolIntegrationTests {
             #expect(finished)
             #expect(try trimmed(fixture.read("app/config.txt")) ==
                     "alpha\nbeta-main\ngamma\ndelta\nepsilon\nzeta-main\neta\ntheta\niota\nkappa\nlambda")
-            #expect(try fixture.isFullyStaged("app/config.txt"))
-            #expect(try fixture.unmergedPaths() == ["docs/notes.txt"])
+            #expect(try await fixture.isFullyStaged("app/config.txt"))
+            #expect(try await fixture.unmergedPaths() == ["docs/notes.txt"])
         }
     }
 
     @Test
     func acceptRightWritesWholeRightSideAndStages() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            let fixture = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
 
@@ -333,14 +333,14 @@ struct MergeToolIntegrationTests {
             #expect(finished)
             #expect(try trimmed(fixture.read("app/config.txt")) ==
                     "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta-feature\neta\ntheta\niota\nkappa\nfeature-added\nlambda")
-            #expect(try fixture.unmergedPaths() == ["docs/notes.txt"])
+            #expect(try await fixture.unmergedPaths() == ["docs/notes.txt"])
         }
     }
 
     @Test
     func applyWritesResultAndStagesAndRefreshesList() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            let fixture = try await GitMergeFixture.mergeConflict(in: dir)
             let repo = repository(dir)
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
@@ -350,7 +350,7 @@ struct MergeToolIntegrationTests {
             #expect(try trimmed(fixture.read("app/config.txt")) ==
                     "alpha\nbeta-main\ngamma\ndelta\nepsilon\nzeta\neta\ntheta\niota\nkappa\nfeature-added\nlambda")
             #expect(fixture.hasConflictMarkers("app/config.txt") == false)
-            #expect(try fixture.unmergedPaths() == ["docs/notes.txt"])
+            #expect(try await fixture.unmergedPaths() == ["docs/notes.txt"])
             #expect(await repo.entries().map(\.path) == ["docs/notes.txt"])
         }
     }
@@ -358,7 +358,7 @@ struct MergeToolIntegrationTests {
     @Test
     func applyWithUnresolvedConflictsRequiresConfirmation() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            let fixture = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
             #expect(model.hasUnresolvedConflicts)
@@ -370,14 +370,14 @@ struct MergeToolIntegrationTests {
             let accepted = await answering(true) { await model.requestApply(window: nil) }
             #expect(accepted)
             #expect(fixture.hasConflictMarkers("app/config.txt") == false)
-            #expect(try fixture.unmergedPaths() == ["docs/notes.txt"])
+            #expect(try await fixture.unmergedPaths() == ["docs/notes.txt"])
         }
     }
 
     @Test
     func applyWritesManuallyEditedResult() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            let fixture = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
 
@@ -392,20 +392,20 @@ struct MergeToolIntegrationTests {
     @Test
     func cancelWithoutEditsClosesImmediately() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            let fixture = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
             #expect(model.isResultEdited == false)
             #expect(await model.requestCancel(window: nil))
             #expect(fixture.hasConflictMarkers("app/config.txt"))
-            #expect(try fixture.unmergedPaths() == ["app/config.txt", "docs/notes.txt"])
+            #expect(try await fixture.unmergedPaths() == ["app/config.txt", "docs/notes.txt"])
         }
     }
 
     @Test
     func cancelWithEditsRequiresConfirmation() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            let fixture = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
             model.userEditedResult("draft\n")
@@ -414,20 +414,20 @@ struct MergeToolIntegrationTests {
 
             #expect(await answering(true) { await model.requestCancel(window: nil) })
             #expect(fixture.hasConflictMarkers("app/config.txt"))
-            #expect(try fixture.unmergedPaths() == ["app/config.txt", "docs/notes.txt"])
+            #expect(try await fixture.unmergedPaths() == ["app/config.txt", "docs/notes.txt"])
         }
     }
 
     @Test
     func acceptSideWithEditsRequiresConfirmation() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.mergeConflict(in: dir) }
+            let fixture = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try mergeModel(dir, "app/config.txt")
             await model.load()
             model.userEditedResult("draft\n")
 
             #expect(await answering(false) { await model.requestAcceptSide(.yours, window: nil) } == false)
-            #expect(try fixture.unmergedPaths() == ["app/config.txt", "docs/notes.txt"])
+            #expect(try await fixture.unmergedPaths() == ["app/config.txt", "docs/notes.txt"])
 
             #expect(await answering(true) { await model.requestAcceptSide(.yours, window: nil) })
             #expect(try trimmed(fixture.read("app/config.txt")) ==
@@ -438,20 +438,20 @@ struct MergeToolIntegrationTests {
     @Test
     func acceptLeftOfDeleteConflictRemovesTheFile() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.deleteModifyConflict(in: dir) }
+            let fixture = try await GitMergeFixture.deleteModifyConflict(in: dir)
             let model = try mergeModel(dir, "gone.txt")
             await model.load()
 
             #expect(await model.requestAcceptSide(.yours, window: nil))
             #expect(fixture.exists("gone.txt") == false)
-            #expect(try fixture.unmergedPaths().isEmpty)
+            #expect(try await fixture.unmergedPaths().isEmpty)
         }
     }
 
     @Test
     func mergeWindowOnDeleteConflictShowsMissingLeftSide() async throws {
         try await withTempDir { dir in
-            _ = try await GitMergeFixture.offMain { try GitMergeFixture.deleteModifyConflict(in: dir) }
+            _ = try await GitMergeFixture.deleteModifyConflict(in: dir)
             let model = try mergeModel(dir, "gone.txt")
             await model.load()
 
@@ -465,7 +465,7 @@ struct MergeToolIntegrationTests {
     @Test
     func rebaseMergeWindowUsesSwappedSides() async throws {
         try await withTempDir { dir in
-            let fixture = try await GitMergeFixture.offMain { try GitMergeFixture.rebaseConflict(in: dir) }
+            let fixture = try await GitMergeFixture.rebaseConflict(in: dir)
             let model = try mergeModel(dir, "src/main.swift")
             await model.load()
 

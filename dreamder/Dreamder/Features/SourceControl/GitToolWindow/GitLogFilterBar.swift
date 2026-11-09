@@ -1,26 +1,172 @@
 import SwiftUI
 
-struct GitLogFilterBar: View {
-    @Environment(SourceControlManager.self) private var sourceControlManager
-    let viewModel: GitLogViewModel
-
-    @State private var text = ""
-    @State private var matchesCase = false
-    @State private var usesRegex = false
-    @State private var showsBranches = false
-    @State private var showsUsers = false
-    @State private var showsDates = false
-    @State private var showsPaths = false
-    @State private var pathsText = ""
-    @State private var afterDate = Date()
-    @State private var beforeDate = Date()
-    @State private var usesAfter = false
-    @State private var usesBefore = false
-
-    private struct TextState: Hashable {
+@Observable
+final class GitLogFilterBarModel {
+    struct TextState: Hashable {
         let text: String
         let matchesCase: Bool
         let usesRegex: Bool
+    }
+
+    let viewModel: GitLogViewModel
+    let debounce: Duration
+
+    var text = ""
+    var matchesCase = false
+    var usesRegex = false
+    var showsBranches = false
+    var showsUsers = false
+    var showsDates = false
+    var showsPaths = false
+    var pathsText = ""
+    var afterDate = Date()
+    var beforeDate = Date()
+    var usesAfter = false
+    var usesBefore = false
+
+    init(viewModel: GitLogViewModel, debounce: Duration = .milliseconds(250)) {
+        self.viewModel = viewModel
+        self.debounce = debounce
+    }
+
+    var textState: TextState {
+        TextState(text: text, matchesCase: matchesCase, usesRegex: usesRegex)
+    }
+
+    func applyDebouncedText() async {
+        try? await Task.sleep(for: debounce)
+        guard !Task.isCancelled else { return }
+        let updated = viewModel.filters.settingText(text, isRegexpAllowed: usesRegex, isMatchCase: matchesCase)
+        guard updated != viewModel.filters else { return }
+        await viewModel.setFilters(updated)
+    }
+
+    func clearText() {
+        text = ""
+    }
+
+    func toggleMatchCase() {
+        matchesCase.toggle()
+    }
+
+    func toggleRegex() {
+        usesRegex.toggle()
+    }
+
+    func toggler(_ flag: ReferenceWritableKeyPath<GitLogFilterBarModel, Bool>) -> () -> Void {
+        { self[keyPath: flag].toggle() }
+    }
+
+    func parentBinding(_ filter: GitLogParentFilter) -> Binding<Bool> {
+        Binding {
+            self.viewModel.filters.parent == filter
+        } set: { isOn in
+            self.update(self.viewModel.filters.settingParent(isOn ? filter : nil))
+        }
+    }
+
+    var firstParentBinding: Binding<Bool> {
+        Binding {
+            self.viewModel.options.firstParent
+        } set: { isOn in
+            Task {
+                await self.viewModel.setFirstParent(isOn)
+            }
+        }
+    }
+
+    func branchAction(_ filter: GitLogBranchFilter?) -> () -> Void {
+        { self.chooseBranch(filter) }
+    }
+
+    func chooseBranch(_ filter: GitLogBranchFilter?) {
+        showsBranches = false
+        Task {
+            await viewModel.setBranchFilter(filter)
+        }
+    }
+
+    func clearUsersAction() -> () -> Void {
+        { self.chooseUsers([]) }
+    }
+
+    func toggleUserAction(_ name: String) -> () -> Void {
+        { self.toggleUser(name) }
+    }
+
+    func toggleUser(_ name: String) {
+        var names = viewModel.filters.user?.userNames ?? []
+        if names.contains(name) {
+            names.removeAll { $0 == name }
+        } else {
+            names.append(name)
+        }
+        chooseUsers(names)
+    }
+
+    func chooseUsers(_ names: [String]) {
+        update(viewModel.filters.settingUserNames(names))
+    }
+
+    var dateSummary: String? {
+        guard let date = viewModel.filters.date else { return nil }
+        switch (date.after, date.before) {
+        case (let after?, let before?):
+            return "\(after.formatted(date: .abbreviated, time: .omitted)) – \(before.formatted(date: .abbreviated, time: .omitted))"
+        case (let after?, nil):
+            return "since \(after.formatted(date: .abbreviated, time: .omitted))"
+        case (nil, let before?):
+            return "until \(before.formatted(date: .abbreviated, time: .omitted))"
+        case (nil, nil):
+            return nil
+        }
+    }
+
+    func presetAction(_ preset: GitLogDatePreset) -> () -> Void {
+        { self.applyDate(after: preset.filter().after, before: nil) }
+    }
+
+    func clearDates() {
+        usesAfter = false
+        usesBefore = false
+        applyDate(after: nil, before: nil)
+    }
+
+    func applyDates() {
+        applyDate(after: usesAfter ? afterDate : nil, before: usesBefore ? beforeDate : nil)
+    }
+
+    func applyDate(after: Date?, before: Date?) {
+        showsDates = false
+        update(viewModel.filters.settingDate(after: after, before: before))
+    }
+
+    func clearPaths() {
+        pathsText = ""
+        applyPaths()
+    }
+
+    func applyPaths() {
+        showsPaths = false
+        update(viewModel.filters.settingPaths(from: pathsText))
+    }
+
+    private func update(_ updated: GitLogFilterCollection) {
+        Task {
+            await viewModel.setFilters(updated)
+        }
+    }
+}
+
+struct GitLogFilterBar: View {
+    @State private var model: GitLogFilterBarModel
+
+    init(viewModel: GitLogViewModel, model: GitLogFilterBarModel? = nil) {
+        _model = State(initialValue: model ?? GitLogFilterBarModel(viewModel: viewModel))
+    }
+
+    private var viewModel: GitLogViewModel {
+        model.viewModel
     }
 
     var body: some View {
@@ -30,43 +176,39 @@ struct GitLogFilterBar: View {
                 popupButton(
                     title: "Branch",
                     value: viewModel.filters.branch?.displayText,
-                    isPresented: $showsBranches
-                ) {
-                    branchesPopup
-                }
+                    isPresented: $model.showsBranches,
+                    toggle: model.toggler(\.showsBranches),
+                    content: GitLogBranchFilterPopup(model: model)
+                )
                 popupButton(
                     title: "User",
                     value: viewModel.filters.user?.displayText,
-                    isPresented: $showsUsers
-                ) {
-                    usersPopup
-                }
+                    isPresented: $model.showsUsers,
+                    toggle: model.toggler(\.showsUsers),
+                    content: GitLogUserFilterPopup(model: model)
+                )
                 popupButton(
                     title: "Date",
-                    value: dateSummary,
-                    isPresented: $showsDates
-                ) {
-                    datesPopup
-                }
+                    value: model.dateSummary,
+                    isPresented: $model.showsDates,
+                    toggle: model.toggler(\.showsDates),
+                    content: GitLogDateFilterPopup(model: model)
+                )
                 popupButton(
                     title: "Paths",
                     value: viewModel.filters.structure?.paths.joined(separator: ", "),
-                    isPresented: $showsPaths
-                ) {
-                    pathsPopup
-                }
+                    isPresented: $model.showsPaths,
+                    toggle: model.toggler(\.showsPaths),
+                    content: GitLogPathsFilterPopup(model: model)
+                )
                 optionsMenu
                 Spacer(minLength: 0)
             }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .task(id: TextState(text: text, matchesCase: matchesCase, usesRegex: usesRegex)) {
-            try? await Task.sleep(for: .milliseconds(250))
-            guard !Task.isCancelled else { return }
-            let updated = viewModel.filters.settingText(text, isRegexpAllowed: usesRegex, isMatchCase: matchesCase)
-            guard updated != viewModel.filters else { return }
-            await viewModel.setFilters(updated)
+        .task(id: model.textState) {
+            await model.applyDebouncedText()
         }
     }
 
@@ -77,24 +219,22 @@ struct GitLogFilterBar: View {
                 .foregroundStyle(Islands.secondaryForeground)
             TextField(
                 "",
-                text: $text,
+                text: $model.text,
                 prompt: Text("Text or hash").foregroundStyle(Islands.disabledForeground)
             )
             .textFieldStyle(.plain)
             .font(Islands.uiFont)
             .foregroundStyle(Islands.foreground)
-            if !text.isEmpty {
-                Button {
-                    text = ""
-                } label: {
+            if !model.text.isEmpty {
+                Button(action: model.clearText) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 11))
                         .foregroundStyle(Islands.secondaryForeground)
                 }
                 .buttonStyle(.plain)
             }
-            toggleButton("Cc", help: "Match Case", isOn: $matchesCase)
-            toggleButton(".*", help: "Regex", isOn: $usesRegex)
+            toggleButton("Cc", help: "Match Case", isOn: model.matchesCase, action: model.toggleMatchCase)
+            toggleButton(".*", help: "Regex", isOn: model.usesRegex, action: model.toggleRegex)
         }
         .padding(.horizontal, 8)
         .frame(height: 26)
@@ -108,17 +248,20 @@ struct GitLogFilterBar: View {
         )
     }
 
-    private func toggleButton(_ label: String, help: String, isOn: Binding<Bool>) -> some View {
-        Button {
-            isOn.wrappedValue.toggle()
-        } label: {
+    private func toggleButton(
+        _ label: String,
+        help: String,
+        isOn: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
             Text(label)
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(isOn.wrappedValue ? Islands.foreground : Islands.secondaryForeground)
+                .foregroundStyle(isOn ? Islands.foreground : Islands.secondaryForeground)
                 .frame(width: 22, height: 18)
                 .background(
                     RoundedRectangle(cornerRadius: Islands.rowRadius)
-                        .fill(isOn.wrappedValue ? Islands.selection : Color.clear)
+                        .fill(isOn ? Islands.selection : Color.clear)
                 )
         }
         .buttonStyle(.plain)
@@ -129,14 +272,13 @@ struct GitLogFilterBar: View {
         title: String,
         value: String?,
         isPresented: Binding<Bool>,
-        @ViewBuilder content: @escaping () -> Content
+        toggle: @escaping () -> Void,
+        content: Content
     ) -> some View {
         let isActive = value?.isEmpty == false
-        return Button {
-            isPresented.wrappedValue.toggle()
-        } label: {
+        return Button(action: toggle) {
             HStack(spacing: 4) {
-                Text(isActive ? "\(title): \(value ?? "")" : title)
+                Text(Self.popupLabel(title: title, value: value))
                     .font(Islands.smallFont)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -152,17 +294,17 @@ struct GitLogFilterBar: View {
             )
         }
         .buttonStyle(.plain)
-        .popover(isPresented: isPresented, arrowEdge: .bottom) {
-            content()
-        }
+        .popover(isPresented: isPresented, arrowEdge: .bottom) { content }
+    }
+
+    static func popupLabel(title: String, value: String?) -> String {
+        guard let value, !value.isEmpty else { return title }
+        return "\(title): \(value)"
     }
 
     private var optionsMenu: some View {
         Menu {
-            Toggle("Hide Merge Commits", isOn: parentBinding(.noMerges))
-            Toggle("Only Merge Commits", isOn: parentBinding(.onlyMerges))
-            Divider()
-            Toggle("First Parent Only", isOn: firstParentBinding)
+            GitLogFilterOptionItems(model: model)
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 11))
@@ -174,217 +316,151 @@ struct GitLogFilterBar: View {
         .fixedSize()
         .help("Options")
     }
+}
 
-    private func parentBinding(_ filter: GitLogParentFilter) -> Binding<Bool> {
-        Binding {
-            viewModel.filters.parent == filter
-        } set: { isOn in
-            let updated = viewModel.filters.settingParent(isOn ? filter : nil)
-            Task {
-                await viewModel.setFilters(updated)
-            }
-        }
-    }
+struct GitLogFilterOptionItems: View {
+    let model: GitLogFilterBarModel
 
-    private var firstParentBinding: Binding<Bool> {
-        Binding {
-            viewModel.options.firstParent
-        } set: { isOn in
-            Task {
-                await viewModel.setFirstParent(isOn)
-            }
-        }
+    var body: some View {
+        Toggle("Hide Merge Commits", isOn: model.parentBinding(.noMerges))
+        Toggle("Only Merge Commits", isOn: model.parentBinding(.onlyMerges))
+        Divider()
+        Toggle("First Parent Only", isOn: model.firstParentBinding)
     }
+}
 
-    private var branchesPopup: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                GitLogBranchRow(
-                    title: "All",
-                    subtitle: nil,
-                    icon: "vcs/currentBranchLabel",
-                    isSelected: viewModel.filters.branch == nil
-                ) {
-                    chooseBranch(nil)
-                }
-                GitLogBranchRow(
-                    title: "HEAD",
-                    subtitle: sourceControlManager.currentBranch?.name,
-                    icon: "vcs/currentBranchLabel",
-                    isSelected: viewModel.filters.branch == .fromBranch("HEAD")
-                ) {
-                    chooseBranch(.fromBranch("HEAD"))
-                }
-                ForEach(branchNames, id: \.self) { name in
-                    GitLogBranchRow(
-                        title: name,
-                        subtitle: nil,
-                        icon: "vcs/branch",
-                        isSelected: viewModel.filters.branch == .fromBranch(name)
-                    ) {
-                        chooseBranch(.fromBranch(name))
-                    }
-                }
-            }
-            .padding(.vertical, 4)
-        }
-        .frame(width: 260, height: 280)
-    }
+struct GitLogBranchFilterPopup: View {
+    @Environment(SourceControlManager.self) private var sourceControlManager
+    let model: GitLogFilterBarModel
 
     private var branchNames: [String] {
         sourceControlManager.orderedLocalBranches.map(\.logFilterName)
             + sourceControlManager.branches.filter(\.isRemote).map(\.logFilterName).sorted()
     }
 
-    private func chooseBranch(_ filter: GitLogBranchFilter?) {
-        showsBranches = false
-        Task {
-            await viewModel.setBranchFilter(filter)
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                GitLogBranchRow(
+                    title: "All",
+                    subtitle: nil,
+                    icon: "vcs/currentBranchLabel",
+                    isSelected: model.viewModel.filters.branch == nil,
+                    action: model.branchAction(nil)
+                )
+                GitLogBranchRow(
+                    title: "HEAD",
+                    subtitle: sourceControlManager.currentBranch?.name,
+                    icon: "vcs/currentBranchLabel",
+                    isSelected: model.viewModel.filters.branch == .fromBranch("HEAD"),
+                    action: model.branchAction(.fromBranch("HEAD"))
+                )
+                ForEach(branchNames, id: \.self) { name in
+                    GitLogBranchRow(
+                        title: name,
+                        subtitle: nil,
+                        icon: "vcs/branch",
+                        isSelected: model.viewModel.filters.branch == .fromBranch(name),
+                        action: model.branchAction(.fromBranch(name))
+                    )
+                }
+            }
+            .padding(.vertical, 4)
         }
+        .frame(width: 260, height: 280)
     }
+}
 
-    private var usersPopup: some View {
-        let selected = Set(viewModel.filters.user?.userNames ?? [])
+struct GitLogUserFilterPopup: View {
+    let model: GitLogFilterBarModel
+
+    var body: some View {
+        let selected = Set(model.viewModel.filters.user?.userNames ?? [])
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 GitLogBranchRow(
                     title: "All",
                     subtitle: nil,
                     icon: "general/user",
-                    isSelected: selected.isEmpty
-                ) {
-                    chooseUsers([])
-                }
+                    isSelected: selected.isEmpty,
+                    action: model.clearUsersAction()
+                )
                 GitLogBranchRow(
                     title: "me",
                     subtitle: nil,
                     icon: "general/user",
-                    isSelected: selected.contains(GitLogUserFilter.me)
-                ) {
-                    toggleUser(GitLogUserFilter.me, selected: selected)
-                }
-                ForEach(viewModel.availableUsers, id: \.self) { user in
+                    isSelected: selected.contains(GitLogUserFilter.me),
+                    action: model.toggleUserAction(GitLogUserFilter.me)
+                )
+                ForEach(model.viewModel.availableUsers, id: \.self) { user in
                     GitLogBranchRow(
                         title: user.shortPresentation,
                         subtitle: user.email,
                         icon: "general/user",
-                        isSelected: selected.contains(user.shortPresentation)
-                    ) {
-                        toggleUser(user.shortPresentation, selected: selected)
-                    }
+                        isSelected: selected.contains(user.shortPresentation),
+                        action: model.toggleUserAction(user.shortPresentation)
+                    )
                 }
             }
             .padding(.vertical, 4)
         }
         .frame(width: 280, height: 280)
     }
+}
 
-    private func toggleUser(_ name: String, selected: Set<String>) {
-        var names = viewModel.filters.user?.userNames ?? []
-        if selected.contains(name) {
-            names.removeAll { $0 == name }
-        } else {
-            names.append(name)
-        }
-        chooseUsers(names)
-    }
+struct GitLogDateFilterPopup: View {
+    @Bindable var model: GitLogFilterBarModel
 
-    private func chooseUsers(_ names: [String]) {
-        let updated = viewModel.filters.settingUserNames(names)
-        Task {
-            await viewModel.setFilters(updated)
-        }
-    }
-
-    private var dateSummary: String? {
-        guard let date = viewModel.filters.date else { return nil }
-        switch (date.after, date.before) {
-        case (let after?, let before?):
-            return "\(after.formatted(date: .abbreviated, time: .omitted)) – \(before.formatted(date: .abbreviated, time: .omitted))"
-        case (let after?, nil):
-            return "since \(after.formatted(date: .abbreviated, time: .omitted))"
-        case (nil, let before?):
-            return "until \(before.formatted(date: .abbreviated, time: .omitted))"
-        case (nil, nil):
-            return nil
-        }
-    }
-
-    private var datesPopup: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(GitLogDatePreset.allCases) { preset in
-                Button(preset.title) {
-                    applyDate(after: preset.filter().after, before: nil)
-                }
-                .buttonStyle(.plain)
-                .font(Islands.uiFont)
+                Button(preset.title, action: model.presetAction(preset))
+                    .buttonStyle(.plain)
+                    .font(Islands.uiFont)
             }
             Divider()
-            Toggle("After", isOn: $usesAfter)
-            if usesAfter {
-                DatePicker("", selection: $afterDate, displayedComponents: .date)
+            Toggle("After", isOn: $model.usesAfter)
+            if model.usesAfter {
+                DatePicker("", selection: $model.afterDate, displayedComponents: .date)
                     .labelsHidden()
             }
-            Toggle("Before", isOn: $usesBefore)
-            if usesBefore {
-                DatePicker("", selection: $beforeDate, displayedComponents: .date)
+            Toggle("Before", isOn: $model.usesBefore)
+            if model.usesBefore {
+                DatePicker("", selection: $model.beforeDate, displayedComponents: .date)
                     .labelsHidden()
             }
             HStack {
-                Button("Clear") {
-                    usesAfter = false
-                    usesBefore = false
-                    applyDate(after: nil, before: nil)
-                }
+                Button("Clear", action: model.clearDates)
                 Spacer()
-                Button("Apply") {
-                    applyDate(after: usesAfter ? afterDate : nil, before: usesBefore ? beforeDate : nil)
-                }
-                .keyboardShortcut(.defaultAction)
+                Button("Apply", action: model.applyDates)
+                    .keyboardShortcut(.defaultAction)
             }
         }
         .padding(12)
         .frame(width: 220)
     }
+}
 
-    private func applyDate(after: Date?, before: Date?) {
-        showsDates = false
-        let updated = viewModel.filters.settingDate(after: after, before: before)
-        Task {
-            await viewModel.setFilters(updated)
-        }
-    }
+struct GitLogPathsFilterPopup: View {
+    @Bindable var model: GitLogFilterBarModel
 
-    private var pathsPopup: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Paths relative to the repository root, separated by commas or new lines")
                 .font(Islands.smallFont)
                 .foregroundStyle(Islands.secondaryForeground)
                 .fixedSize(horizontal: false, vertical: true)
-            TextEditor(text: $pathsText)
+            TextEditor(text: $model.pathsText)
                 .font(Islands.uiFont)
                 .frame(height: 80)
             HStack {
-                Button("Clear") {
-                    pathsText = ""
-                    applyPaths()
-                }
+                Button("Clear", action: model.clearPaths)
                 Spacer()
-                Button("Apply") {
-                    applyPaths()
-                }
-                .keyboardShortcut(.defaultAction)
+                Button("Apply", action: model.applyPaths)
+                    .keyboardShortcut(.defaultAction)
             }
         }
         .padding(12)
         .frame(width: 280)
-    }
-
-    private func applyPaths() {
-        showsPaths = false
-        let updated = viewModel.filters.settingPaths(from: pathsText)
-        Task {
-            await viewModel.setFilters(updated)
-        }
     }
 }

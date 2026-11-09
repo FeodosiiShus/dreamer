@@ -10,6 +10,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
+@Suite(.uiGate)
 struct CEWorkspaceSettingsTests {
     let settings: CEWorkspaceSettings = CEWorkspaceSettings(workspaceURL: URL(filePath: "/"))
 

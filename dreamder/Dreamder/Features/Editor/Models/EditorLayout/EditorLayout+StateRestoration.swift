@@ -27,16 +27,10 @@ extension EditorManager {
 
             let state = try JSONDecoder().decode(EditorRestorationState.self, from: data)
 
-            guard !state.groups.isEmpty else {
+            guard !state.groups.isEmpty,
+                  let activeEditor = state.groups.find(editor: state.activeEditor) ?? state.groups.findSomeEditor()
+            else {
                 logger.warning("Empty Editor State found, restoring to clean editor state.")
-                initCleanState()
-                return
-            }
-
-            guard let activeEditor = state.groups.find(
-                editor: state.activeEditor
-            ) ?? state.groups.findSomeEditor() else {
-                logger.warning("Editor state could not restore active editor.")
                 initCleanState()
                 return
             }
@@ -74,17 +68,6 @@ extension EditorManager {
         }
     }
 
-    private func findEditorLayout(group: EditorLayout, searchFor id: UUID) throws -> Editor? {
-        switch group {
-        case let .one(data):
-            return data.id == id ? data : nil
-        case let .vertical(splitData):
-            return try splitData.editorLayouts.compactMap { try findEditorLayout(group: $0, searchFor: id) }.first
-        case let .horizontal(splitData):
-            return try splitData.editorLayouts.compactMap { try findEditorLayout(group: $0, searchFor: id) }.first
-        }
-    }
-
     /// Fixes any hanging files after restoring from saved state.
     ///
     /// Resolves all file references with the workspace's file manager to ensure any referenced files use their shared
@@ -100,7 +83,7 @@ extension EditorManager {
             .compactMap({ fileManager.getFile($0.file.url.path(percentEncoded: false), createIfNotFound: true) })
             .map({ EditorInstance(workspace: workspace, file: $0) })
 
-        for tab in resolvedTabs {
+        for tab in resolvedTabs where tab.file.fileDocument == nil {
             try tab.file.loadCodeFile()
         }
 
@@ -119,10 +102,11 @@ extension EditorManager {
         }
     }
 
-    func saveRestorationState(_ workspace: WorkspaceDocument) {
-        if let data = try? JSONEncoder().encode(
-            EditorRestorationState(activeEditor: activeEditor.id, groups: editorLayout)
-        ) {
+    func saveRestorationState(
+        _ workspace: WorkspaceDocument,
+        encode: (EditorRestorationState) throws -> Data = { try JSONEncoder().encode($0) }
+    ) {
+        if let data = try? encode(EditorRestorationState(activeEditor: activeEditor.id, groups: editorLayout)) {
             workspace.addToWorkspaceState(key: .openTabs, value: data)
         } else {
             workspace.addToWorkspaceState(key: .openTabs, value: nil)
@@ -225,6 +209,7 @@ extension Editor: Codable {
         case tabs
         case selectedTab
         case id
+        case pinned
     }
 
     convenience init(from decoder: Decoder) throws {
@@ -232,6 +217,7 @@ extension Editor: Codable {
         let fileURLs = try container.decode([URL].self, forKey: .tabs)
         let selectedTab = try? container.decode(URL.self, forKey: .selectedTab)
         let id = try container.decode(UUID.self, forKey: .id)
+        let pinned = try container.decodeIfPresent([URL].self, forKey: .pinned) ?? []
         self.init(
             files: OrderedSet(fileURLs.map { CEWorkspaceFile(url: $0) }),
             selectedTab: selectedTab.map { EditorInstance(workspace: nil, file: CEWorkspaceFile(url: $0)) },
@@ -239,6 +225,7 @@ extension Editor: Codable {
             workspace: nil
         )
         self.id = id
+        self.pinnedURLs = Set(pinned.filter { pinnedURL in fileURLs.contains(pinnedURL) })
     }
 
     func encode(to encoder: Encoder) throws {
@@ -246,5 +233,6 @@ extension Editor: Codable {
         try container.encode(tabs.map { $0.file.url }, forKey: .tabs)
         try container.encode(selectedTab?.file.url, forKey: .selectedTab)
         try container.encode(id, forKey: .id)
+        try container.encode(tabs.map(\.file.url).filter { pinnedURLs.contains($0) }, forKey: .pinned)
     }
 }

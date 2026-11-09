@@ -2,6 +2,6 @@ import AppKit
 
 extension AppDelegate {
     @IBAction func showDreamderSettings(_ sender: Any?) {
-        openWindow(sceneID: .settings)
+        openScene(.settings)
     }
 }

@@ -127,12 +127,7 @@ private nonisolated struct MarkdownInlineScanner {
 
     mutating func render() -> String {
         while index < characters.count {
-            let start = index
             scan()
-            if index == start {
-                pendingText.append(characters[index])
-                index += 1
-            }
         }
         flushText()
         processEmphasis()
@@ -630,17 +625,9 @@ private nonisolated struct MarkdownInlineScanner {
                 let leftover = delimiter.count > 0
                     ? String(repeating: String(delimiter.character), count: delimiter.count)
                     : ""
-                if delimiter.openTags.isEmpty {
-                    html += delimiter.closeTags.joined()
-                    html += leftover
-                } else if delimiter.closeTags.isEmpty {
-                    html += leftover
-                    html += delimiter.openTags.joined()
-                } else {
-                    html += leftover
-                    html += delimiter.openTags.joined()
-                    html += delimiter.closeTags.joined()
-                }
+                html += delimiter.closeTags.joined()
+                html += leftover
+                html += delimiter.openTags.joined()
             }
         }
         return html

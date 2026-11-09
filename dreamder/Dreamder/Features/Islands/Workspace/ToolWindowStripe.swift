@@ -4,6 +4,8 @@ import SwiftUI
 struct ToolWindowStripe: View {
     @Environment(ToolWindowManager.self) private var toolWindowManager
 
+    private var lspService: LSPService { .shared }
+
     @AppStorage(Islands.BackgroundImageKey.path)
     private var backgroundImagePath = ""
 
@@ -48,26 +50,29 @@ struct ToolWindowStripe: View {
     @ViewBuilder
     private func stripeButton(_ id: ToolWindowID) -> some View {
         if id == .languageServices {
-            LanguageServicesStripeButton()
+            LanguageServicesStripeButton(serverStates: lspService.serverStates)
         } else {
             ToolWindowStripeButton(id: id)
         }
     }
 }
 
-private struct LanguageServicesStripeButton: View {
+struct LanguageServicesStripeButton: View {
+    let serverStates: [LSPService.ClientKey: LSPService.ServerState]
+
     @Environment(ToolWindowManager.self) private var toolWindowManager
     @Environment(WorkspaceDocument.self) private var workspace
 
-    @Service private var lspService: LSPService
-
-    private var problemCount: Int {
-        let path = workspace.fileURL?.absolutePath
-        return lspService.serverStates.filter { key, state in
-            guard path == nil || key.workspacePath == path else { return false }
+    static func problemCount(in states: [LSPService.ClientKey: LSPService.ServerState], workspacePath: String?) -> Int {
+        states.filter { key, state in
+            guard workspacePath == nil || key.workspacePath == workspacePath else { return false }
             if case .failed = state { return true }
             return false
         }.count
+    }
+
+    private var problemCount: Int {
+        Self.problemCount(in: serverStates, workspacePath: workspace.fileURL?.absolutePath)
     }
 
     var body: some View {
@@ -106,9 +111,7 @@ struct ToolWindowStripeButton: View {
     }
 
     var body: some View {
-        Button {
-            toolWindowManager.toggle(id)
-        } label: {
+        Button(action: bound(toolWindowManager.toggle, id)) {
             Image(id.icon)
                 .resizable()
                 .interpolation(.high)
@@ -122,12 +125,27 @@ struct ToolWindowStripeButton: View {
         }
         .buttonStyle(.plain)
         .help("\(id.title) \(id.shortcutHint)")
-        .onHover { isHovering = $0 }
-        .contextMenu {
-            let isSplit = toolWindowManager.isSplit(id)
-            Button(isSplit ? "Move to Main" : "Move to Split") {
-                toolWindowManager.setSplit(id, !isSplit)
-            }
-        }
+        .onHover(perform: setHovering)
+        .contextMenu { ToolWindowSplitMenuItem(id: id) }
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
+    }
+}
+
+struct ToolWindowSplitMenuItem: View {
+    let id: ToolWindowID
+
+    @Environment(ToolWindowManager.self) private var toolWindowManager
+
+    var body: some View {
+        Button(toolWindowManager.isSplit(id) ? "Move to Main" : "Move to Split", action: bound(toolWindowManager.toggleSplit, id))
+    }
+}
+
+extension ToolWindowManager {
+    func toggleSplit(_ id: ToolWindowID) {
+        setSplit(id, !isSplit(id))
     }
 }

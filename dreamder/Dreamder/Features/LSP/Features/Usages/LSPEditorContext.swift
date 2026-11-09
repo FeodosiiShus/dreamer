@@ -14,6 +14,7 @@ struct LSPEditorContext {
     let lineText: String
     let symbol: String
     let client: LanguageServer<CodeFileDocument>
+    let service: LSPService
 }
 
 enum LSPEditorContextResult {
@@ -24,14 +25,17 @@ enum LSPEditorContextResult {
 
 @MainActor
 enum LSPEditorContextResolver {
-    static func resolve(workspace: WorkspaceDocument?) -> LSPEditorContextResult {
+    static func resolve(
+        workspace: WorkspaceDocument?,
+        lspService: LSPService? = .shared
+    ) -> LSPEditorContextResult {
         guard let workspace,
               let tab = workspace.editorManager?.activeEditor.selectedTab,
               let cursor = tab.cursorPositions.first else {
             return .unavailable
         }
         let fileURL = tab.file.url
-        guard let lspService = ServiceContainer.resolve(.singleton, LSPService.self),
+        guard let lspService,
               let client = lspService.languageClient(forDocument: fileURL) else {
             return .missingServer
         }
@@ -52,7 +56,8 @@ enum LSPEditorContextResolver {
             documentText: text,
             lineText: line,
             symbol: LSPUsagesMapping.symbol(inLine: line, character: position.character),
-            client: client
+            client: client,
+            service: lspService
         ))
     }
 

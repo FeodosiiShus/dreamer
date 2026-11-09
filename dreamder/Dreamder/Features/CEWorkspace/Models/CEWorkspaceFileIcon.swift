@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-// TODO: DOCS (Nanashi Li)
 nonisolated enum FileIcon {
 
     // swiftlint:disable identifier_name

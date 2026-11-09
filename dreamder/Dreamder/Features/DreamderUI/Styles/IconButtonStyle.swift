@@ -76,14 +76,20 @@ struct IconButtonStyle: ButtonStyle {
                 .frame(width: width, height: height, alignment: .center)
                 .contentShape(Rectangle())
                 .brightness(
-                    configuration.isPressed
-                    ? colorScheme == .dark
-                    ? 0.5
-                    : isActive ? -0.25 : -0.75
-                    : 0
+                    Self.brightness(
+                        isPressed: configuration.isPressed,
+                        colorScheme: colorScheme,
+                        isActive: isActive
+                    )
                 )
                 .opacity(controlActiveState == .inactive ? 0.5 : 1)
                 .symbolVariant(isActive ? .fill : .none)
+        }
+
+        static func brightness(isPressed: Bool, colorScheme: ColorScheme, isActive: Bool) -> Double {
+            guard isPressed else { return 0 }
+            if colorScheme == .dark { return 0.5 }
+            return isActive ? -0.25 : -0.75
         }
     }
 }
@@ -102,20 +108,6 @@ extension ButtonStyle where Self == IconButtonStyle {
         size: CGSize? = CGSize(width: 24, height: 24)
     ) -> IconButtonStyle {
         return IconButtonStyle(isActive: isActive, font: font, width: size?.width, height: size?.height)
-    }
-    static func icon(
-        isActive: Bool? = false,
-        font: Font? = Font.system(size: 14.5, weight: .regular, design: .default),
-        width: CGFloat? = nil,
-        height: CGFloat? = nil
-    ) -> IconButtonStyle {
-        return IconButtonStyle(isActive: isActive, font: font, width: width, height: height)
-    }
-    static func icon(
-        isActive: Bool? = false,
-        font: Font? = Font.system(size: 14.5, weight: .regular, design: .default)
-    ) -> IconButtonStyle {
-        return IconButtonStyle(isActive: isActive, font: font)
     }
     static var icon: IconButtonStyle { .init() }
 }

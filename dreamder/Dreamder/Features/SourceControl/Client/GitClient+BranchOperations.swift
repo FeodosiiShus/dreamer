@@ -275,11 +275,20 @@ nonisolated extension GitClient {
     }
 
     func branchOpsAddWorktree(path: String, ref: String?) async throws {
+        let directory = Self.worktreeDirectory(path)
         if let ref {
-            try await branchOpsCheckedRun(["worktree", "add", path, ref])
+            try await branchOpsCheckedRun(["worktree", "add", directory, ref])
         } else {
-            try await branchOpsCheckedRun(["worktree", "add", path])
+            try await branchOpsCheckedRun(["worktree", "add", directory])
         }
+    }
+
+    static func worktreeDirectory(_ path: String) -> String {
+        var directory = Substring(path)
+        while directory.count > 1, directory.hasSuffix("/") {
+            directory = directory.dropLast()
+        }
+        return String(directory)
     }
 
     func branchOpsPushTag(name: String, remote: String) async throws {

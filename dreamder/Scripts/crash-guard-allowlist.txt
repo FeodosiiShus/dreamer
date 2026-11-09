@@ -1,3 +1,5 @@
-# path|kind|source line. Each entry is a deliberate trap for a programming error, never for runtime input.
-Dreamder/Utils/DependencyInjection/LazyServiceWrapper.swift|fatalError|fatalError("No service of type \(serviceName) registered!")
-Dreamder/Utils/DependencyInjection/ServiceWrapper.swift|fatalError|fatalError("No service of type \(serviceName) registered!")
+# path|kind|source line. Each entry is a deliberate trap for a programming error, never for runtime input, or a protocol requirement that must repeat an AppKit declaration's implicitly unwrapped type so the AppKit class conforms.
+Dreamder/Utils/FilePanels/FilePanels.swift|implicitlyUnwrappedOptional|var title: String! { get set }
+Dreamder/Utils/FilePanels/FilePanels.swift|implicitlyUnwrappedOptional|var prompt: String! { get set }
+Dreamder/Utils/FilePanels/FilePanels.swift|implicitlyUnwrappedOptional|var message: String! { get set }
+Dreamder/Utils/FilePanels/FilePanels.swift|implicitlyUnwrappedOptional|var nameFieldLabel: String! { get set }

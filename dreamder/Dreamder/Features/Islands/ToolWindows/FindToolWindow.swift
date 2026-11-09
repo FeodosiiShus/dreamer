@@ -11,9 +11,11 @@ struct FindToolWindow: View {
             ToolWindowHeader(title: "Find") {
                 EmptyView()
             } actions: {
-                ToolWindowActionButton(icon: "general/hide", help: "Hide") {
-                    toolWindowManager.hide(.find)
-                }
+                ToolWindowActionButton(
+                    icon: "general/hide",
+                    help: "Hide",
+                    action: toolWindowManager.hideCallback(for: .find)
+                )
             }
             FindNavigatorView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

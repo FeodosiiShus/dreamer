@@ -22,14 +22,12 @@ final class PackageManagerProgressModel {
     }
 
     let outputStream: AsyncStream<OutputItem>
-    var progress: Progress
 
     private let shellClient: ShellClient
     private let outputContinuation: AsyncStream<OutputItem>.Continuation
 
     init(shellClient: ShellClient) {
         self.shellClient = shellClient
-        self.progress = Progress(totalUnitCount: 1)
         (outputStream, outputContinuation) = AsyncStream<OutputItem>.makeStream()
     }
 
@@ -73,6 +71,5 @@ final class PackageManagerProgressModel {
 
     func finish() {
         outputContinuation.finish()
-        progress.completedUnitCount = progress.totalUnitCount
     }
 }

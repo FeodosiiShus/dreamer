@@ -10,7 +10,7 @@ struct GitLogDetailsPane: View {
             if let commit = viewModel.selectedCommit {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        changedFilesSection
+                        changedFilesSection(commit)
                         Rectangle()
                             .fill(Islands.separator)
                             .frame(height: 1)
@@ -27,7 +27,7 @@ struct GitLogDetailsPane: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var changedFilesSection: some View {
+    private func changedFilesSection(_ commit: GitLogCommit) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(fileSectionTitle)
                 .font(.system(size: 11, weight: .semibold))
@@ -39,8 +39,10 @@ struct GitLogDetailsPane: View {
                 GitLogChangedFileRow(
                     file: file,
                     directory: file.gitRelativeDirectory(from: sourceControlManager.repositoryURL),
-                    onShowDiff: { showDiff(file) },
-                    onOpen: { open(file) }
+                    onShowDiff: { showDiff(file, in: commit) },
+                    onOpen: { open(file) },
+                    onOpenInNewWindow: { openInNewWindow(file) },
+                    onReveal: { revealInProject(file) }
                 )
             }
         }
@@ -89,26 +91,43 @@ struct GitLogDetailsPane: View {
         .padding(10)
     }
 
-    private func showDiff(_ file: GitChangedFile) {
-        guard let commit = viewModel.selectedCommit else { return }
-        let path = DiffPath.relativePath(of: file.fileURL, from: sourceControlManager.repositoryURL)
-        guard !path.isEmpty else { return }
+    private func showDiff(_ file: GitChangedFile, in commit: GitLogCommit) {
         DiffViewerPresenter.showCommitFileDiff(
             workspace: workspace,
             commitHash: commit.hash,
             parentHash: commit.parents.first,
-            path: path
+            path: DiffPath.relativePath(of: file.fileURL, from: sourceControlManager.repositoryURL)
         )
     }
 
+    private func workspaceFile(for file: GitChangedFile) -> CEWorkspaceFile? {
+        guard file.status != .deleted else { return nil }
+        return workspace.workspaceFileManager?.getFile(file.ceFileKey, createIfNotFound: true)
+    }
+
     private func open(_ file: GitChangedFile) {
-        guard file.status != .deleted else { return }
-        guard let ceFile = workspace.workspaceFileManager?.getFile(file.ceFileKey, createIfNotFound: true) else {
-            return
-        }
+        guard let ceFile = workspaceFile(for: file) else { return }
         Task { @MainActor in
             workspace.editorManager?.openTab(item: ceFile, asTemporary: true)
         }
+    }
+
+    private func openInNewWindow(_ file: GitChangedFile) {
+        guard let ceFile = workspaceFile(for: file) else { return }
+        if ceFile.fileDocument == nil {
+            try? ceFile.loadCodeFile()
+        }
+        guard let document = ceFile.fileDocument else { return }
+        if document.windowControllers.isEmpty {
+            document.makeWindowControllers()
+        }
+        document.showWindows()
+    }
+
+    private func revealInProject(_ file: GitChangedFile) {
+        guard let ceFile = workspaceFile(for: file) else { return }
+        workspace.toolWindowManager.show(.project)
+        workspace.listenerModel.highlightedFileItem = ceFile
     }
 }
 
@@ -117,6 +136,8 @@ struct GitLogChangedFileRow: View {
     let directory: String
     let onShowDiff: () -> Void
     let onOpen: () -> Void
+    let onOpenInNewWindow: () -> Void
+    let onReveal: () -> Void
 
     @State private var isHovering = false
 
@@ -140,13 +161,25 @@ struct GitLogChangedFileRow: View {
         }
         .padding(.horizontal, 10)
         .frame(height: Islands.listRowHeight)
-        .background(isHovering ? Islands.hover : Color.clear)
+        .background(Self.background(isHovering: isHovering))
         .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
+        .onHover(perform: setHovering)
         .onTapGesture(count: 2, perform: onShowDiff)
         .contextMenu {
+            Button("Show Diff", action: onShowDiff)
             Button("Open File", action: onOpen)
+            Button("Open in New Window", action: onOpenInNewWindow)
+            Divider()
+            Button("Reveal in Project Navigator", action: onReveal)
         }
         .help(file.fileURL.relativePath)
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
+    }
+
+    static func background(isHovering: Bool) -> Color {
+        isHovering ? Islands.hover : Color.clear
     }
 }

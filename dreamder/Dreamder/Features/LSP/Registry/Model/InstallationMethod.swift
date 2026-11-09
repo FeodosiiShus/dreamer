@@ -63,10 +63,7 @@ nonisolated enum InstallationMethod: Equatable, Sendable {
             return GolangPackageManager(installationDirectory: installPath)
         case .github, .sourceBuild:
             return GithubPackageManager(installationDirectory: installPath)
-        case .nuget, .opam, .gem, .composer:
-            // TODO: IMPLEMENT OTHER PACKAGE MANAGERS
-            return nil
-        default:
+        case .nuget, .opam, .gem, .composer, nil:
             return nil
         }
     }
@@ -82,10 +79,7 @@ nonisolated enum InstallationMethod: Equatable, Sendable {
     }
 
     var packageDescription: String? {
-        guard let packageName else { return nil }
-        if let version {
-            return "\(packageName)@\(version)"
-        }
-        return packageName
+        guard let packageName, let version else { return nil }
+        return "\(packageName)@\(version)"
     }
 }

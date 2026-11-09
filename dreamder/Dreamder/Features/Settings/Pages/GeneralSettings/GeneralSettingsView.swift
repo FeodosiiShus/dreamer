@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import os
 
 /// A view that implements the `General` settings page
 struct GeneralSettingsView: View {
@@ -18,17 +19,23 @@ struct GeneralSettingsView: View {
     @AppSettings(\.general)
     var settings
 
-    @State private var openInDreamder: Bool = true
+    @State private var openInDreamder: Bool
 
-    init() {
-        guard let defaults = UserDefaults.init(
-            suiteName: "dev.dreamder.Dreamder.shared"
-        ) else {
-            print("Failed to get/init shared defaults")
+    private static let logger = Logger(subsystem: "dev.dreamder.Dreamder", category: "GeneralSettingsView")
+
+    private let sharedDefaults: () -> UserDefaults?
+
+    init(
+        sharedDefaults: @escaping () -> UserDefaults? = { UserDefaults(suiteName: "dev.dreamder.Dreamder.shared") }
+    ) {
+        self.sharedDefaults = sharedDefaults
+        guard let defaults = sharedDefaults() else {
+            Self.logger.error("Failed to get/init shared defaults")
+            self._openInDreamder = State(initialValue: true)
             return
         }
 
-        self.openInDreamder = defaults.bool(forKey: "enableOpenInCE")
+        self._openInDreamder = State(initialValue: defaults.bool(forKey: "enableOpenInCE"))
     }
 
     var body: some View {
@@ -53,6 +60,23 @@ struct GeneralSettingsView: View {
             }
         }
     }
+
+    func persistOpenInDreamder(_ newValue: Bool) {
+        guard let defaults = sharedDefaults() else {
+            Self.logger.error("Failed to get/init shared defaults")
+            return
+        }
+
+        defaults.set(newValue, forKey: "enableOpenInCE")
+    }
+
+    func openInDreamderChanged(_ oldValue: Bool, _ newValue: Bool) {
+        persistOpenInDreamder(newValue)
+    }
+
+    func appearanceChanged(_ oldValue: SettingsData.Appearances, _ newValue: SettingsData.Appearances) {
+        newValue.applyAppearance()
+    }
 }
 
 /// The extension of the view with all the preferences
@@ -67,9 +91,7 @@ private extension GeneralSettingsView {
             Text("Dark")
                 .tag(SettingsData.Appearances.dark)
         }
-        .onChange(of: settings.appAppearance) { _, tag in
-            tag.applyAppearance()
-        }
+        .onChange(of: settings.appAppearance, appearanceChanged)
     }
 
     var dimEditorsWithoutFocus: some View {
@@ -153,16 +175,7 @@ private extension GeneralSettingsView {
 
     var openInDreamderToggle: some View {
         Toggle("Show “Open With Dreamder” option in Finder", isOn: $openInDreamder)
-            .onChange(of: openInDreamder) { _, newValue in
-                guard let defaults = UserDefaults.init(
-                    suiteName: "dev.dreamder.Dreamder.shared"
-                ) else {
-                    print("Failed to get/init shared defaults")
-                    return
-                }
-
-                defaults.set(newValue, forKey: "enableOpenInCE")
-            }
+            .onChange(of: openInDreamder, openInDreamderChanged)
     }
 
     var revealFileOnFocusChangeToggle: some View {

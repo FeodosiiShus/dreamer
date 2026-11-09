@@ -109,4 +109,33 @@ struct PreserveCaseTests {
         #expect(PreserveCase.applyCase(found: "", replacement: "foo") == "foo")
         #expect(PreserveCase.applyCase(found: "Bar", replacement: "").isEmpty)
     }
+
+    @Test
+    func singleCharacterReplacementFollowsTheFirstFoundCharacter() {
+        #expect(PreserveCase.replaceWithCaseRespect("b", foundString: "Foo") == "B")
+        #expect(PreserveCase.replaceWithCaseRespect("b", foundString: "foo") == "b")
+    }
+
+    @Test
+    func singleCharacterMatchCapitalizesOnlyTheFirstReplacementCharacter() {
+        #expect(PreserveCase.replaceWithCaseRespect("bar", foundString: "F") == "Bar")
+        #expect(PreserveCase.replaceWithCaseRespect("bar", foundString: "f") == "bar")
+    }
+
+    @Test
+    func foundTailWithoutLettersFallsBackToTheFirstCharacterCase() {
+        #expect(PreserveCase.replaceWithCaseRespect("bar", foundString: "A1") == "BAR")
+        #expect(PreserveCase.replaceWithCaseRespect("Bar", foundString: "a1") == "bar")
+        #expect(PreserveCase.replaceWithCaseRespect("bar", foundString: "11") == "bar")
+    }
+
+    @Test
+    func mixedCaseFoundTailKeepsTheReplacementTail() {
+        #expect(PreserveCase.replaceWithCaseRespect("Bar", foundString: "fOoBar") == "bar")
+    }
+
+    @Test
+    func foundTextWithoutWordCharactersLeavesTheReplacementUnchanged() {
+        #expect(PreserveCase.applyCase(found: "--", replacement: "foo") == "foo")
+    }
 }

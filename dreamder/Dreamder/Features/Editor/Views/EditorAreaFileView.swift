@@ -45,14 +45,6 @@ struct EditorAreaFileView: View {
     var body: some View {
         editorAreaFileView
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onHover { hover in
-                DispatchQueue.main.async {
-                    if hover {
-                        NSCursor.iBeam.push()
-                    } else {
-                        NSCursor.pop()
-                    }
-                }
-            }
+            .pointerStyle(.horizontalText)
     }
 }

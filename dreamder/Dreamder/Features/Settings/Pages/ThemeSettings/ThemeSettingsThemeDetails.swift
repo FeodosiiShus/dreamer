@@ -11,26 +11,31 @@ struct ThemeSettingsThemeDetails: View {
     @Environment(\.dismiss)
     var dismiss
 
-    @Environment(\.colorScheme)
-    var colorScheme
-
     @Binding var theme: Theme
 
     var originalTheme: Theme
 
-    private let themeModel: ThemeModel = .shared
+    private let themeModel: ThemeModel
 
     @State private var duplicatingTheme: Theme?
 
-    @State private var deleteConfirmationIsPresented = false
+    @State private var isConfirmingDelete: Bool
 
     var isActive: Bool {
         themeModel.getThemeActive(theme)
     }
 
-    init(theme: Binding<Theme>) {
+    init(
+        theme: Binding<Theme>,
+        themeModel: ThemeModel = .shared,
+        duplicatingTheme: Theme? = nil,
+        isConfirmingDelete: Bool = false
+    ) {
         _theme = theme
         originalTheme = theme.wrappedValue
+        self.themeModel = themeModel
+        _duplicatingTheme = State(initialValue: duplicatingTheme)
+        _isConfirmingDelete = State(initialValue: isConfirmingDelete)
     }
 
     var body: some View {
@@ -149,12 +154,7 @@ struct ThemeSettingsThemeDetails: View {
                         }
                         .background(theme.editor.background.swiftColor)
                         .padding(-10)
-                        .colorScheme(
-                            theme.appearance == .dark
-                            ? .dark
-                            : theme.appearance == .light
-                            ? .light : colorScheme
-                        )
+                        .colorScheme(theme.appearance == .dark ? .dark : .light)
                     }
                 }
                 .disabled(theme.isBundled)
@@ -175,71 +175,30 @@ struct ThemeSettingsThemeDetails: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Warning: Duplicate this theme to make changes.")
                 } else if !themeModel.isAdding {
-                    Button(role: .destructive) {
-                        deleteConfirmationIsPresented = true
-                    } label: {
+                    Button(role: .destructive, action: requestDelete) {
                         Text("Delete...")
                             .foregroundStyle(.red)
                             .frame(minWidth: 56)
                     }
-                    Button {
-                        if let fileURL = theme.fileURL {
-                            duplicatingTheme = theme
-                            themeModel.duplicate(fileURL)
-                        }
-                    } label: {
+                    Button(action: beginDuplicating) {
                         Text("Duplicate...")
                             .frame(minWidth: 56)
                     }
                 }
                 Spacer()
                 if !themeModel.isAdding && theme.isBundled {
-                    Button {
-                        if let fileURL = theme.fileURL {
-                            duplicatingTheme = theme
-                            themeModel.duplicate(fileURL)
-                        }
-                    } label: {
+                    Button(action: beginDuplicating) {
                         Text("Duplicate")
                             .frame(minWidth: 56)
                     }
                 } else {
-                    Button {
-                        if themeModel.isAdding {
-                            if let previousTheme = themeModel.previousTheme {
-                                themeModel.activateTheme(previousTheme)
-                            }
-                            if let duplicatingWithinDetails = duplicatingTheme {
-                                let duplicateTheme = theme
-                                themeModel.detailsTheme = duplicatingWithinDetails
-                                themeModel.delete(duplicateTheme)
-                            } else {
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                                    themeModel.delete(theme)
-                                }
-                            }
-                        } else {
-                            themeModel.cancelDetails(theme)
-                        }
-
-                        if duplicatingTheme == nil {
-                            dismiss()
-                        } else {
-                            duplicatingTheme = nil
-                            themeModel.isAdding = false
-                        }
-                    } label: {
+                    Button(action: cancelTapped) {
                         Text("Cancel")
                             .frame(minWidth: 56)
                     }
                     .buttonStyle(.bordered)
                 }
-                Button {
-                    if !theme.isBundled {
-                        themeModel.rename(to: theme.displayName, theme: theme)
-                    }
-                    dismiss()
-                } label: {
+                Button(action: doneTapped) {
                     Text("Done")
                         .frame(minWidth: 56)
                 }
@@ -248,19 +207,50 @@ struct ThemeSettingsThemeDetails: View {
             .padding()
         }
         .constrainHeightToWindow()
-        .alert(
-            Text("Are you sure you want to delete the theme “\(theme.displayName)”?"),
-            isPresented: $deleteConfirmationIsPresented
-        ) {
-            Button("Delete Theme") {
-                themeModel.delete(theme)
-                dismiss()
-            }
-            Button("Cancel") {
-                deleteConfirmationIsPresented = false
-            }
-        } message: {
-            Text("This action cannot be undone.")
+        .alert(deleteTitle, isPresented: $isConfirmingDelete, actions: { deleteActions }, message: { deleteMessage })
+    }
+
+    var deleteTitle: Text {
+        Text("Are you sure you want to delete the theme “\(theme.displayName)”?")
+    }
+
+    var deleteActions: some View {
+        Group {
+            Button("Delete Theme", action: confirmDelete)
+            Button("Cancel", action: cancelDelete)
+        }
+    }
+
+    var deleteMessage: some View {
+        Text("This action cannot be undone.")
+    }
+
+    func cancelTapped() {
+        let shouldDismiss = themeModel.cancelDetailsEditing(theme, duplicatingTheme: duplicatingTheme)
+        if shouldDismiss { dismiss() } else { duplicatingTheme = nil }
+    }
+
+    func doneTapped() {
+        themeModel.finishDetails(theme)
+        dismiss()
+    }
+
+    func confirmDelete() {
+        themeModel.delete(theme)
+        dismiss()
+    }
+
+    func requestDelete() {
+        isConfirmingDelete = true
+    }
+
+    func cancelDelete() {
+        isConfirmingDelete = false
+    }
+
+    func beginDuplicating() {
+        if let copied = themeModel.beginDuplicating(theme) {
+            duplicatingTheme = copied
         }
     }
 }

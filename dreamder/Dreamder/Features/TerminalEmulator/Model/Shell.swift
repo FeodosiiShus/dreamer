@@ -12,22 +12,6 @@ nonisolated enum Shell: String, CaseIterable, Sendable {
     case bash
     case zsh
 
-    var url: String {
-        switch self {
-        case .bash:
-            "/bin/bash"
-        case .zsh:
-            "/bin/zsh"
-        }
-    }
-
-    var isSh: Bool {
-        switch self {
-        case .bash, .zsh:
-            return true
-        }
-    }
-
     var defaultPath: String {
         switch self {
         case .bash:
@@ -62,9 +46,9 @@ nonisolated enum Shell: String, CaseIterable, Sendable {
     /// Gets the default shell from the current user and returns the string of the shell path.
     ///
     /// If getting the user's shell does not work, defaults to `zsh`,
-    static func autoDetectDefaultShell() -> String {
-        guard let currentUser = CurrentUser.getCurrentUser() else {
-            return Self.zsh.rawValue // macOS defaults to zsh
+    static func autoDetectDefaultShell(currentUser: CurrentUser? = CurrentUser.getCurrentUser()) -> String {
+        guard let currentUser else {
+            return Self.zsh.defaultPath
         }
         return currentUser.shell
     }

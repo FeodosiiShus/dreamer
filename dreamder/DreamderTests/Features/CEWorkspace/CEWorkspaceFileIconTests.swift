@@ -24,7 +24,34 @@ struct CEWorkspaceFileIconTests {
         (.mp4, "film"),
         (.wav, "speaker.wave.2"),
         (.LICENSE, "key.fill"),
-        (.gitignore, "arrow.triangle.branch")
+        (.gitignore, "arrow.triangle.branch"),
+        (.lock, "lock.doc"),
+        (.css, "curlybraces"),
+        (.env, "gearshape.fill"),
+        (.example, "gearshape.fill"),
+        (.jpeg, "photo"),
+        (.ico, "photo"),
+        (.svg, "square.fill.on.circle.fill"),
+        (.entitlements, "checkmark.seal"),
+        (.plist, "tablecells"),
+        (.rtf, "doc.richtext"),
+        (.html, "chevron.left.forwardslash.chevron.right"),
+        (.java, "cup.and.saucer"),
+        (.py, "doc.python"),
+        (.rb, "doc.ruby"),
+        (.strings, "text.quote"),
+        (.h, "h.square"),
+        (.vue, "v.square"),
+        (.go, "g.square"),
+        (.rs, "r.square"),
+        (.scpt, "applescript"),
+        (.xcconfig, "gearshape.2"),
+        (.cetheme, "paintbrush"),
+        (.mjs, "doc.javascript"),
+        (.jsx, "atom"),
+        (.bash, "terminal"),
+        (.mp3, "speaker.wave.2"),
+        (.avi, "film")
     ]
 
     static let fileNames: [(String, FileIcon.FileType)] = [
@@ -72,10 +99,14 @@ struct CEWorkspaceFileIconTests {
 }
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct CEWorkspaceFileColorAndWorkspaceFileTests {
     private static let goTeal = Color(red: 0.02, green: 0.675, blue: 0.757, opacity: 1.0)
     private static let makefileRed = Color(red: 0.937, green: 0.325, blue: 0.314, opacity: 1.0)
+    private static let vueGreen = Color(red: 0.255, green: 0.722, blue: 0.514, opacity: 1.0)
+    private static let headerRed = Color(red: 0.667, green: 0.031, blue: 0.133, opacity: 1.0)
+    private static let objectiveCPurple = Color(red: 0.271, green: 0.106, blue: 0.525, opacity: 1.0)
+    private static let modulePink = Color(red: 0.925, green: 0.251, blue: 0.478, opacity: 1.0)
 
     @Test
     func iconColorPerFileType() {
@@ -95,6 +126,23 @@ struct CEWorkspaceFileColorAndWorkspaceFileTests {
         #expect(FileIcon.iconColor(fileType: .sh) == Color.steel)
         #expect(FileIcon.iconColor(fileType: .go) == Self.goTeal)
         #expect(FileIcon.iconColor(fileType: .Makefile) == Self.makefileRed)
+        #expect(FileIcon.iconColor(fileType: .vue) == Self.vueGreen)
+        #expect(FileIcon.iconColor(fileType: .h) == Self.headerRed)
+        #expect(FileIcon.iconColor(fileType: .m) == Self.objectiveCPurple)
+        #expect(FileIcon.iconColor(fileType: .sum) == Self.modulePink)
+        #expect(FileIcon.iconColor(fileType: .mod) == Self.modulePink)
+        #expect(FileIcon.iconColor(fileType: .java) == .blue)
+        #expect(FileIcon.iconColor(fileType: .jpg) == .blue)
+        #expect(FileIcon.iconColor(fileType: .svg) == .blue)
+        #expect(FileIcon.iconColor(fileType: .mjs) == Color.amber)
+        #expect(FileIcon.iconColor(fileType: .entitlements) == Color.amber)
+        #expect(FileIcon.iconColor(fileType: .LICENSE) == Color.amber)
+        #expect(FileIcon.iconColor(fileType: .resolved) == Color.scarlet)
+        #expect(FileIcon.iconColor(fileType: .rb) == Color.scarlet)
+        #expect(FileIcon.iconColor(fileType: .strings) == Color.scarlet)
+        #expect(FileIcon.iconColor(fileType: .plist) == Color.steel)
+        #expect(FileIcon.iconColor(fileType: .xcconfig) == Color.steel)
+        #expect(FileIcon.iconColor(fileType: .cetheme) == .purple)
     }
 
     @Test

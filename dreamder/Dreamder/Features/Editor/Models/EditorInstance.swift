@@ -25,7 +25,10 @@ class EditorInstance: Hashable {
     var findText: String?
     var replaceText: String?
 
-    @ObservationIgnored var rangeTranslator: RangeTranslator = RangeTranslator()
+    @ObservationIgnored let actions: EditorActionCoordinator
+    @ObservationIgnored let rangeTranslator: RangeTranslator
+
+    var wrapLinesOverride: Bool?
 
     @ObservationIgnored private var observationTasks: [Task<Void, Never>] = []
 
@@ -34,6 +37,9 @@ class EditorInstance: Hashable {
     init(workspace: WorkspaceDocument?, file: CEWorkspaceFile, cursorPositions: [CursorPosition]? = nil) {
         self.file = file
         let url = file.url
+        let actions = EditorActionCoordinator(file: file)
+        self.actions = actions
+        self.rangeTranslator = RangeTranslator(actions: actions)
         let editorState = EditorStateRestoration.shared?.restorationState(for: url)
 
         findText = workspace?.searchState?.searchQuery
@@ -63,9 +69,10 @@ class EditorInstance: Hashable {
             var pendingSave: Task<Void, Never>?
             var lastPersisted: (cursorPositions: [CursorPosition], scrollPosition: CGPoint?)?
             let changes = Observations { [weak self] in
-                (cursorPositions: self?.cursorPositions ?? [], scrollPosition: self?.scrollPosition)
+                self.map { (cursorPositions: $0.cursorPositions, scrollPosition: $0.scrollPosition) }
             }
-            for await change in changes {
+            for await observed in changes {
+                guard let change = observed else { continue }
                 if let lastPersisted,
                    lastPersisted.cursorPositions == change.cursorPositions,
                    lastPersisted.scrollPosition == change.scrollPosition {
@@ -139,6 +146,13 @@ class EditorInstance: Hashable {
         return [fromSearch, toSearch]
     }
 
+    // MARK: - Soft Wraps
+
+    func toggleSoftWraps() {
+        guard let wraps = actions.toggleSoftWraps() else { return }
+        wrapLinesOverride = wraps
+    }
+
     // MARK: - Hashable, Equatable
 
     func hash(into hasher: inout Hasher) {
@@ -154,14 +168,19 @@ class EditorInstance: Hashable {
     /// Translates ranges (eg: from a cursor position) to other information like the number of lines in a range.
     class RangeTranslator: TextViewCoordinator {
         private weak var textViewController: TextViewController?
+        private let actions: EditorActionCoordinator
 
-        init() { }
+        init(actions: EditorActionCoordinator = EditorActionCoordinator()) {
+            self.actions = actions
+        }
 
         func prepareCoordinator(controller: TextViewController) {
             self.textViewController = controller
+            actions.prepareCoordinator(controller: controller)
         }
 
         func controllerDidAppear(controller: TextViewController) {
+            actions.controllerDidAppear(controller: controller)
             if controller.isEditable && controller.isSelectable {
                 controller.view.window?.makeFirstResponder(controller.textView)
             }
@@ -169,6 +188,7 @@ class EditorInstance: Hashable {
 
         func destroy() {
             self.textViewController = nil
+            actions.destroy()
         }
 
         /// Returns the lines contained in the given range.
@@ -177,8 +197,7 @@ class EditorInstance: Hashable {
         ///            or lines could not be found for the given range.
         func linesInRange(_ range: NSRange) -> Int {
             guard let controller = textViewController,
-                  let scrollView = controller.view as? NSScrollView,
-                  let textView = scrollView.documentView as? TextView,
+                  let textView = controller.textView,
                   // Find the lines at the beginning and end of the range
                   let startTextLine = textView.layoutManager.textLineForOffset(range.location),
                   let endTextLine = textView.layoutManager.textLineForOffset(range.upperBound) else {
@@ -188,13 +207,11 @@ class EditorInstance: Hashable {
         }
 
         func moveLinesUp() {
-            guard let controller = textViewController else { return }
-            controller.moveLinesUp()
+            actions.moveLines(up: true)
         }
 
         func moveLinesDown() {
-            guard let controller = textViewController else { return }
-            controller.moveLinesDown()
+            actions.moveLines(up: false)
         }
     }
 }

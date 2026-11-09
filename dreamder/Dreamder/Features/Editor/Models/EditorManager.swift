@@ -5,7 +5,6 @@
 //  Created by Wouter Hennen on 03/03/2023.
 //
 
-import Combine
 import Foundation
 import Observation
 import DequeModule
@@ -15,7 +14,7 @@ import os
 
 @Observable
 class EditorManager {
-    let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "EditorManager")
+    let logger = EditorLogging.logger(category: "EditorManager")
 
     /// The complete editor layout.
     var editorLayout: EditorLayout
@@ -32,10 +31,6 @@ class EditorManager {
     /// History of last-used editors.
     @ObservationIgnored var activeEditorHistory: Deque<() -> Editor?> = []
 
-    /// notify listeners whenever tab selection changes on the active editor.
-    @ObservationIgnored var tabBarTabIdSubject = PassthroughSubject<Editor.Tab?, Never>()
-    @ObservationIgnored private var selectionObservation: Task<Void, Never>?
-
     var flattenedEditors: [Editor] {
         getFlattened()
     }
@@ -48,7 +43,6 @@ class EditorManager {
         self.activeEditorHistory.prepend { [weak tab] in tab }
         self.editorLayout = .horizontal(.init(.horizontal, editorLayouts: [.one(tab)]))
         self.isFocusingActiveEditor = false
-        observeActiveSelection()
     }
 
     /// Initializes the editor manager's state to the "initial" state.
@@ -123,9 +117,13 @@ class EditorManager {
         guard let parent = source.parent, let index = parent.indexOfEditor(source) else {
             return nil
         }
+        let wasPinned = source.isPinned(file)
         let newEditor = Editor(files: [file], workspace: workspace)
         parent.split(edge, at: index, new: newEditor)
         source.closeTab(file: file)
+        if wasPinned {
+            newEditor.setPinned(true, file: file)
+        }
         activeEditor = newEditor
         return newEditor
     }
@@ -173,6 +171,9 @@ class EditorManager {
         for sibling in siblings {
             for tab in sibling.tabs where !editor.tabs.contains(tab) {
                 editor.tabs.append(tab)
+                if sibling.isPinned(tab.file) {
+                    editor.setPinned(true, file: tab.file)
+                }
                 mergedFiles.append(tab.file)
             }
             sibling.parent = nil
@@ -203,20 +204,6 @@ class EditorManager {
         return true
     }
 
-    private func observeActiveSelection() {
-        selectionObservation = Task { [weak self] in
-            let selections = Observations { [weak self] in self?.activeEditor.selectedTab }
-            for await tab in selections {
-                guard let self else { return }
-                tabBarTabIdSubject.send(tab)
-            }
-        }
-    }
-
-    isolated deinit {
-        selectionObservation?.cancel()
-    }
-
     // MARK: - Close Editor
 
     /// Close an editor and fix editor manager state, updating active editor, etc.
@@ -234,11 +221,12 @@ class EditorManager {
     /// - Parameter editor: The editor to exclude.
     func setNewActiveEditor(excluding editor: Editor) {
         activeEditorHistory.removeAll { $0() == nil || $0() == editor }
-        if activeEditorHistory.isEmpty {
+        guard let recent = activeEditorHistory.first?() else {
             activeEditor = findSomeEditor(excluding: editor)
-        } else {
-            activeEditor = activeEditorHistory.removeFirst()() ?? findSomeEditor(excluding: editor)
+            return
         }
+        activeEditorHistory.removeFirst()
+        activeEditor = recent
     }
 
     /// Find some editor, or if one cannot be found set up the editor manager with a clean state.

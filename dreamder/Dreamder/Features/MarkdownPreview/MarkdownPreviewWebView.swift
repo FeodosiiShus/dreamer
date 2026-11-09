@@ -31,6 +31,7 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
+        private let openExternal: @MainActor (URL) -> Void
         private var loadedBaseURL: URL?
         private var loadedPalette: MarkdownPreviewPalette?
         private var loadedBody: String?
@@ -38,6 +39,15 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
         private var followOffset: Int?
         private var appliedFollowOffset: Int?
         private var isPageLoaded = false
+
+        init(openExternal: @escaping @MainActor (URL) -> Void = { Coordinator.openInWorkspace($0) }) {
+            self.openExternal = openExternal
+            super.init()
+        }
+
+        static func openInWorkspace(_ url: URL) {
+            _ = NSWorkspace.shared.open(url)
+        }
 
         func show(_ view: MarkdownPreviewWebView, in webView: WKWebView) {
             currentBody = view.bodyHTML
@@ -64,8 +74,8 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-            guard let loadedPalette else { return }
-            load(loadedBody ?? "", baseURL: loadedBaseURL, palette: loadedPalette, in: webView)
+            guard let loadedPalette, let loadedBody else { return }
+            load(loadedBody, baseURL: loadedBaseURL, palette: loadedPalette, in: webView)
         }
 
         private func load(_ body: String, baseURL: URL?, palette: MarkdownPreviewPalette, in webView: WKWebView) {
@@ -81,7 +91,7 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
 
         private func apply(_ body: String, in webView: WKWebView) {
             loadedBody = body
-            let literal = Self.javaScriptLiteral(body) ?? "\"\""
+            guard let literal = Self.javaScriptLiteral(body) else { return }
             let script = MarkdownPreviewScripts.replaceBodyScript(bodyLiteral: literal, follow: followOffset != nil)
             webView.evaluateJavaScript(script, completionHandler: { _, _ in })
         }
@@ -114,7 +124,7 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
             }
 
             decisionHandler(.cancel)
-            _ = NSWorkspace.shared.open(url)
+            openExternal(url)
         }
 
         private func scroll(toAnchor fragment: String, in webView: WKWebView) {

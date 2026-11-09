@@ -8,10 +8,16 @@
 import SwiftUI
 
 struct SearchSettingsView: View {
+    private let model: SearchSettingsModel
+
+    init(model: SearchSettingsModel = .shared) {
+        self.model = model
+    }
+
     var body: some View {
         SettingsForm {
             Section {
-                ExcludedGlobPatternList()
+                ExcludedGlobPatternList(model: model)
             } header: {
                 Text("Exclude")
                 Text(
@@ -24,7 +30,11 @@ struct SearchSettingsView: View {
 }
 
 struct ExcludedGlobPatternList: View {
-    @Bindable private var model: SearchSettingsModel = .shared
+    @Bindable private var model: SearchSettingsModel
+
+    init(model: SearchSettingsModel) {
+        self.model = model
+    }
 
     var body: some View {
         GlobPatternList(

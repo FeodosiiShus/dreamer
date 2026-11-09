@@ -10,15 +10,23 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 class TaskManagerTests {
     var taskManager: TaskManager!
     var mockWorkspaceSettings: CEWorkspaceSettingsData!
+    let settingsStore: Dreamder.Settings
+    private let settingsDirectory: URL
 
     init() throws {
         let workspaceSettings = try JSONDecoder().decode(CEWorkspaceSettingsData.self, from: Data("{}".utf8))
         mockWorkspaceSettings = workspaceSettings
-        taskManager = TaskManager(workspaceSettings: mockWorkspaceSettings, workspaceURL: nil)
+        settingsDirectory = try makeTemporaryDirectory(label: "TaskManagerTestsSettings")
+        settingsStore = Dreamder.Settings(baseURL: settingsDirectory)
+        taskManager = TaskManager(workspaceSettings: mockWorkspaceSettings, workspaceURL: nil, settings: settingsStore)
+    }
+
+    deinit {
+        removeTemporaryDirectory(settingsDirectory)
     }
 
     func testInitialization() {
@@ -40,7 +48,7 @@ class TaskManagerTests {
 
     @Test
     func executeTaskInZsh() async throws {
-        Settings.shared.preferences.terminal.shell = .zsh
+        settingsStore.preferences.terminal.shell = .zsh
 
         let task = CETask(name: "Test Task", command: "echo 'Hello World'")
         mockWorkspaceSettings.tasks.append(task)
@@ -59,7 +67,7 @@ class TaskManagerTests {
 
     @Test
     func executeTaskInBash() async throws {
-        Settings.shared.preferences.terminal.shell = .bash
+        settingsStore.preferences.terminal.shell = .bash
 
         let task = CETask(name: "Test Task", command: "echo 'Hello World'")
         mockWorkspaceSettings.tasks.append(task)

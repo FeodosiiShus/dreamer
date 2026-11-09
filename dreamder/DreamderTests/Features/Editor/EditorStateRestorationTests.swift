@@ -10,7 +10,7 @@ import Foundation
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct EditorStateRestorationTests {
     @Test
     func createsDatabase() throws {
@@ -71,6 +71,19 @@ struct EditorStateRestorationTests {
             try "bad data".write(to: url, atomically: true, encoding: .utf8)
             // This will throw if it can't connect to the database.
             _ = try EditorStateRestoration(url)
+        }
+    }
+
+    @Test
+    func anUnusableDatabaseLocationThrows() throws {
+        try withTempDir { dir in
+            let blocker = dir.appending(path: "blocker")
+            try "file".write(to: blocker, atomically: true, encoding: .utf8)
+            let url = blocker.appending(path: "database.db")
+
+            #expect(throws: (any Error).self) {
+                _ = try EditorStateRestoration(url)
+            }
         }
     }
 }

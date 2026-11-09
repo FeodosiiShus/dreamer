@@ -108,12 +108,14 @@ struct ProjectNavigatorOpenFilesView: View {
         }
     }
 
+    static func openAction(for file: CEWorkspaceFile, in editorManager: EditorManager) -> () -> Void {
+        { editorManager.openTab(item: file) }
+    }
+
     private func row(for file: CEWorkspaceFile) -> some View {
         let isSelected = model.selectedFileID == file.id
         let directory = directoryName(of: file)
-        return Button {
-            editorManager.openTab(item: file)
-        } label: {
+        return Button(action: Self.openAction(for: file, in: editorManager)) {
             HStack(spacing: 6) {
                 Image(IntelliJIcon.fileIcon(for: file.name))
                     .resizable()

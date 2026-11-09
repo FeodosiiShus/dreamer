@@ -72,10 +72,7 @@ nonisolated struct RegistryItem: Codable, Sendable {
     func toDictionary() throws -> [String: Any] {
         let data = try JSONEncoder().encode(self)
         let jsonObject = try JSONSerialization.jsonObject(with: data)
-        guard let dictionary = jsonObject as? [String: Any] else {
-            throw NSError(domain: "ConversionError", code: 1)
-        }
-        return dictionary
+        return jsonObject as? [String: Any] ?? [:]
     }
 }
 

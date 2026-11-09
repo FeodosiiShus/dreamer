@@ -104,7 +104,7 @@ final class GitBlameAnnotationView: NSView, NSViewToolTipOwner {
 
     private weak var textView: TextView?
     private var lines: [Int: GitBlameLine] = [:]
-    private var tints: [String: NSColor] = [:]
+    private var lineTints: [Int: NSColor] = [:]
 
     var onSelectCommit: (() -> Void)?
 
@@ -129,7 +129,10 @@ final class GitBlameAnnotationView: NSView, NSViewToolTipOwner {
 
     func update(lines: [Int: GitBlameLine]) {
         self.lines = lines
-        tints = Self.tints(for: lines)
+        let commitTints = Self.tints(for: lines)
+        lineTints = Dictionary(uniqueKeysWithValues: lines.compactMap { number, blame in
+            commitTints[blame.commitHash].map { (number, $0) }
+        })
         needsDisplay = true
     }
 
@@ -167,9 +170,7 @@ final class GitBlameAnnotationView: NSView, NSViewToolTipOwner {
         while index < lineCount {
             guard let position = layoutManager.textLineForIndex(index) else { break }
             if position.yPos > visible.maxY { break }
-            if let blame = lines[index + 1] {
-                let tint = tints[blame.commitHash]
-                    ?? GitBlameAnnotationPalette.tint(ageFraction: 1, alternate: false)
+            if let blame = lines[index + 1], let tint = lineTints[index + 1] {
                 let row = textView.convert(
                     CGRect(x: 0, y: position.yPos, width: 1, height: max(position.height, 1)),
                     to: self
@@ -208,7 +209,8 @@ final class GitBlameAnnotationView: NSView, NSViewToolTipOwner {
     }
 
     private func columnRect() -> NSRect {
-        let leading = max(textView?.textInsets.left ?? 0, 0)
+        guard let textView else { return .zero }
+        let leading = max(textView.textInsets.left, 0)
         return NSRect(
             x: leading,
             y: 0,
@@ -271,7 +273,7 @@ final class GitBlameAnnotationView: NSView, NSViewToolTipOwner {
         let span = newest.timeIntervalSince(oldest)
 
         for (index, hash) in order.enumerated() {
-            let date = dates[hash] ?? oldest
+            guard let date = dates[hash] else { continue }
             let age = span > 0 ? newest.timeIntervalSince(date) / span : 0
             tints[hash] = GitBlameAnnotationPalette.tint(ageFraction: age, alternate: index % 2 == 1)
         }

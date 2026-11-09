@@ -111,7 +111,7 @@ extension DreamderWindowController {
 
         // If the interface has been restored, reset the remembered states
         if !stillHidden {
-            DispatchQueue.main.async { [weak self] in
+            Task { [weak self] in
                 self?.resetStoredInterfaceCollapseState()
             }
         }

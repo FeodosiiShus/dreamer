@@ -1,15 +1,46 @@
 import AppKit
 import SwiftUI
 
+struct BranchesPopupRowActions {
+    let row: BranchesPopupRow
+    let viewModel: BranchesPopupViewModel
+    let anchors: BranchesPopupRowAnchors
+    let presentMenu: @MainActor (BranchesPopupRow, BranchesPopupRowAnchors, BranchesPopupViewModel) -> Void
+    let focusSearch: @MainActor () -> Void
+
+    func activate() {
+        viewModel.activate(row)
+        focusSearch()
+    }
+
+    func toggle() {
+        viewModel.toggleExpansion(row.id)
+        focusSearch()
+    }
+
+    func openMenu() {
+        presentMenu(row, anchors, viewModel)
+        focusSearch()
+    }
+
+    func toggleFavorite() {
+        if let ref = row.ref {
+            viewModel.toggleFavorite(ref)
+        }
+        focusSearch()
+    }
+}
+
 struct GitBranchesPopupView: View {
     private let dismissPopup: () -> Void
     private let onSizeChange: ((CGSize) -> Void)?
+    let presentMenu: @MainActor (BranchesPopupRow, BranchesPopupRowAnchors, BranchesPopupViewModel) -> Void
 
     @State private var viewModel: BranchesPopupViewModel
     @State private var anchors = BranchesPopupRowAnchors()
     @State private var keyMonitor: BranchesPopupKeyMonitor?
     @State private var popupWindow: NSWindow?
-    @State private var searchText = ""
+    @State private var searchText: String
     @FocusState private var isSearchFocused: Bool
 
     init(
@@ -18,13 +49,30 @@ struct GitBranchesPopupView: View {
         dismiss: @escaping () -> Void,
         onSizeChange: ((CGSize) -> Void)? = nil
     ) {
+        self.init(
+            viewModel: BranchesPopupViewModel(
+                sourceControlManager: sourceControlManager,
+                workspace: workspace,
+                dismiss: dismiss
+            ),
+            dismiss: dismiss,
+            onSizeChange: onSizeChange
+        )
+    }
+
+    init(
+        viewModel: BranchesPopupViewModel,
+        dismiss: @escaping () -> Void,
+        onSizeChange: ((CGSize) -> Void)? = nil,
+        initialSearchText: String = "",
+        presentMenu: @escaping @MainActor (BranchesPopupRow, BranchesPopupRowAnchors, BranchesPopupViewModel) -> Void
+            = { BranchesPopupMenuPresenter.present(row: $0, anchors: $1, model: $2) }
+    ) {
         self.dismissPopup = dismiss
         self.onSizeChange = onSizeChange
-        _viewModel = State(wrappedValue: BranchesPopupViewModel(
-            sourceControlManager: sourceControlManager,
-            workspace: workspace,
-            dismiss: dismiss
-        ))
+        self.presentMenu = presentMenu
+        _viewModel = State(wrappedValue: viewModel)
+        _searchText = State(wrappedValue: initialSearchText)
     }
 
     var body: some View {
@@ -39,23 +87,35 @@ struct GitBranchesPopupView: View {
             BranchesPopupWindowReader(onWindowChange: configureWindow)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         )
-        .onAppear {
-            viewModel.presentRefActions = { row in
-                BranchesPopupMenuPresenter.present(row: row, anchors: anchors, model: viewModel)
-            }
-            DispatchQueue.main.async { isSearchFocused = true }
-        }
-        .onDisappear {
-            keyMonitor?.remove()
-            keyMonitor = nil
-        }
+        .onAppear(perform: appeared)
+        .onDisappear(perform: removeKeyMonitor)
         .task { await viewModel.reload() }
-        .task(id: searchText) {
-            if searchText == viewModel.query { return }
-            try? await Task.sleep(for: .milliseconds(100))
-            guard !Task.isCancelled else { return }
-            viewModel.query = searchText
+        .task(id: searchText) { await applySearchText() }
+    }
+
+    func appeared() {
+        viewModel.presentRefActions = { row in
+            presentMenu(row, anchors, viewModel)
         }
+        requestSearchFocus()
+    }
+
+    func removeKeyMonitor() {
+        keyMonitor?.remove()
+        keyMonitor = nil
+    }
+
+    func applySearchText() async {
+        if searchText == viewModel.query { return }
+        try? await Task.sleep(for: .milliseconds(100))
+        guard !Task.isCancelled else { return }
+        viewModel.query = searchText
+    }
+
+    func searchTextChanged(_ oldValue: String, _ value: String) {
+        guard value == "/" else { return }
+        searchText = ""
+        viewModel.query = ""
     }
 
     private var header: some View {
@@ -70,11 +130,7 @@ struct GitBranchesPopupView: View {
                     .font(Islands.uiFont)
                     .foregroundStyle(Islands.foreground)
                     .focused($isSearchFocused)
-                    .onChange(of: searchText) { _, value in
-                        guard value == "/" else { return }
-                        searchText = ""
-                        viewModel.query = ""
-                    }
+                    .onChange(of: searchText, searchTextChanged)
             }
             .padding(.horizontal, 7)
             .frame(height: 28)
@@ -84,9 +140,7 @@ struct GitBranchesPopupView: View {
                     .strokeBorder(Islands.componentBorder, lineWidth: 1)
             )
 
-            Button {
-                viewModel.fetch()
-            } label: {
+            Button(action: viewModel.fetch) {
                 fetchLabel
             }
             .buttonStyle(.plain)
@@ -170,28 +224,21 @@ struct GitBranchesPopupView: View {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 4)
         } else {
+            let actions = BranchesPopupRowActions(
+                row: row,
+                viewModel: viewModel,
+                anchors: anchors,
+                presentMenu: presentMenu,
+                focusSearch: requestSearchFocus
+            )
             BranchesPopupRowView(
                 row: row,
                 isSelected: viewModel.selectedID == row.id,
                 isExpanded: row.isExpanded,
-                onActivate: {
-                    viewModel.activate(row)
-                    DispatchQueue.main.async { isSearchFocused = true }
-                },
-                onToggle: {
-                    viewModel.toggleExpansion(row.id)
-                    DispatchQueue.main.async { isSearchFocused = true }
-                },
-                onOpenMenu: {
-                    BranchesPopupMenuPresenter.present(row: row, anchors: anchors, model: viewModel)
-                    DispatchQueue.main.async { isSearchFocused = true }
-                },
-                onToggleFavorite: {
-                    if let ref = row.ref {
-                        viewModel.toggleFavorite(ref)
-                    }
-                    DispatchQueue.main.async { isSearchFocused = true }
-                }
+                onActivate: actions.activate,
+                onToggle: actions.toggle,
+                onOpenMenu: actions.openMenu,
+                onToggleFavorite: actions.toggleFavorite
             )
             .overlay(alignment: .topTrailing) {
                 BranchesPopupAnchorView(id: row.id, anchors: anchors)
@@ -199,6 +246,10 @@ struct GitBranchesPopupView: View {
             }
             .id(row.id)
         }
+    }
+
+    private func requestSearchFocus() {
+        Task { isSearchFocused = true }
     }
 
     private func configureWindow(_ window: NSWindow?) {
@@ -215,6 +266,6 @@ struct GitBranchesPopupView: View {
         monitor.install(on: window)
         keyMonitor?.remove()
         keyMonitor = monitor
-        DispatchQueue.main.async { isSearchFocused = true }
+        requestSearchFocus()
     }
 }

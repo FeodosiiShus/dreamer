@@ -4,7 +4,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct SearchEverywhereViewModelTests {
     private func makeWorkspace(_ dir: URL) throws -> WorkspaceDocument {
         try FileManager.default.createDirectory(at: dir.appending(path: "Sources/Helpers"), withIntermediateDirectories: true)

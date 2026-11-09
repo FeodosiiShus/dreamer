@@ -19,22 +19,30 @@ final class ProjectNavigatorMenu: NSMenu {
 
     /// The  `ProjectNavigatorViewController` is being called from.
     /// By sending it, we can access it's variables and functions.
-    var sender: ProjectNavigatorViewController
+    weak var sender: ProjectNavigatorViewController?
+
+    var confirmsDeletion = true
+
+    var opensExternally: @MainActor (CEWorkspaceFile) -> Bool
+
+    var blameRetry: Task<Void, Never>?
 
     init(_ sender: ProjectNavigatorViewController) {
         self.sender = sender
+        self.opensExternally = { $0.openWithExternalEditor() }
         super.init(title: "Options")
+        autoenablesItems = false
     }
 
     @available(*, unavailable)
     nonisolated override init(title: String) {
-        self.sender = MainActor.assumeIsolated { ProjectNavigatorViewController() }
+        opensExternally = { _ in false }
         super.init(title: title)
     }
 
     @available(*, unavailable)
     nonisolated required init(coder: NSCoder) {
-        self.sender = MainActor.assumeIsolated { ProjectNavigatorViewController() }
+        opensExternally = { _ in false }
         super.init(coder: coder)
     }
 
@@ -42,6 +50,7 @@ final class ProjectNavigatorMenu: NSMenu {
     func rebuild() {
         removeAllItems()
         setupMenu()
+        disableInactiveItems(in: self)
     }
 
     /// Creates a `NSMenuItem` depending on the given arguments
@@ -49,59 +58,82 @@ final class ProjectNavigatorMenu: NSMenu {
     ///   - title: The title of the menu item
     ///   - action: A `Selector` or `nil` of the action to perform.
     ///   - key: A `keyEquivalent` of the menu item. Defaults to an empty `String`
+    ///   - enabled: Whether the item can be performed.
     /// - Returns: A `NSMenuItem` which has the target `self`
-    private func menuItem(_ title: String, action: Selector?, key: String = "") -> NSMenuItem {
+    private func menuItem(
+        _ title: String,
+        action: Selector?,
+        key: String = "",
+        enabled: Bool = true
+    ) -> NSMenuItem {
         let mItem = NSMenuItem(title: title, action: action, keyEquivalent: key)
         mItem.target = self
+        mItem.isEnabled = enabled
 
         return mItem
+    }
+
+    private func disableInactiveItems(in menu: NSMenu) {
+        for entry in menu.items where !entry.isSeparatorItem {
+            if let submenu = entry.submenu {
+                disableInactiveItems(in: submenu)
+            } else if entry.action == nil {
+                entry.isEnabled = false
+            }
+        }
     }
 
     /// Configures the menu based on the current selection in the outline view.
     /// - Menu items get added depending on the amount of selected items.
     private func setupMenu() { // swiftlint:disable:this function_body_length
         guard let item else { return }
+        let selection = selectedItems()
+        let isRootItem = item.url == workspace?.workspaceFileManager?.folderUrl
+        let sortMode = sender?.sortModes.mode(for: item.url) ?? .name
+
         let showInFinder = menuItem("Show in Finder", action: #selector(showInFinder))
 
         let openInTab = menuItem("Open in Tab", action: #selector(openInTab))
-        let openInNewWindow = menuItem("Open in New Window", action: nil)
+        let openInNewWindow = menuItem(
+            "Open in New Window",
+            action: #selector(openInNewWindow),
+            enabled: !selection.isEmpty && selection.allSatisfy { !$0.isFolder }
+        )
         let openExternalEditor = menuItem("Open with External Editor", action: #selector(openWithExternalEditor))
         let openAs = menuItem("Open As", action: nil)
+
+        let cut = menuItem(
+            "Cut",
+            action: #selector(cutFiles),
+            key: "x",
+            enabled: !selection.contains { $0.isRoot }
+        )
+        let copy = menuItem("Copy", action: #selector(copyFiles), key: "c")
+        let paste = menuItem("Paste", action: #selector(pasteFiles), key: "v", enabled: sender?.canPaste == true)
 
         let copyPath = menuItem("Copy Path", action: #selector(copyPath))
         let copyRelativePath = menuItem("Copy Relative Path", action: #selector(copyRelativePath))
 
-        let showFileInspector = menuItem("Show File Inspector", action: nil)
-
         let newFile = menuItem("New File...", action: #selector(newFile))
-        let newFileFromClipboard = menuItem(
-            "New File from Clipboard",
-            action: #selector(newFileFromClipboard),
-            key: "v"
-        )
-        newFileFromClipboard.keyEquivalentModifierMask = [.command]
+        let newFileFromClipboard = menuItem("New File from Clipboard", action: #selector(newFileFromClipboard))
         let newFolder = menuItem("New Folder", action: #selector(newFolder))
 
         let rename = menuItem("Rename", action: #selector(renameFile))
 
-        let trash = menuItem("Move to Trash", action:
-                                item.url != workspace?.workspaceFileManager?.folderUrl
-                              ? #selector(trash) : nil)
+        let trash = menuItem("Move to Trash", action: isRootItem ? nil : #selector(trash), enabled: !isRootItem)
 
         // trash has to be the previous menu item for delete.isAlternate to work correctly
-        let delete = menuItem("Delete Immediately...", action:
-                                item.url != workspace?.workspaceFileManager?.folderUrl
-                              ? #selector(delete) : nil)
+        let delete = menuItem("Delete Immediately...", action: isRootItem ? nil : #selector(delete), enabled: !isRootItem)
         delete.keyEquivalentModifierMask = .option
         delete.isAlternate = true
 
         let duplicate = menuItem("Duplicate \(item.isFolder ? "Folder" : "File")", action: #selector(duplicate))
 
-        let sortByName = menuItem("Sort by Name", action: nil)
-        sortByName.isEnabled = item.isFolder
+        let sortByName = menuItem("Sort by Name", action: #selector(sortByName), enabled: item.isFolder)
+        sortByName.state = item.isFolder && sortMode == .name ? .on : .off
 
-        let sortByType = menuItem("Sort by Type", action: nil)
-        sortByType.isEnabled = item.isFolder
+        let sortByType = menuItem("Sort by Type", action: #selector(sortByType), enabled: item.isFolder)
+        sortByType.state = item.isFolder && sortMode == .type ? .on : .off
 
         let sourceControl = menuItem("Source Control", action: nil)
 
@@ -113,10 +145,12 @@ final class ProjectNavigatorMenu: NSMenu {
             openExternalEditor,
             openAs,
             NSMenuItem.separator(),
+            cut,
+            copy,
+            paste,
+            NSMenuItem.separator(),
             copyPath,
             copyRelativePath,
-            NSMenuItem.separator(),
-            showFileInspector,
             NSMenuItem.separator(),
             newFile,
             newFileFromClipboard,
@@ -127,7 +161,7 @@ final class ProjectNavigatorMenu: NSMenu {
             items.append(menuItem("New Folder from Selection", action: #selector(newFolderFromSelection)))
         }
         items.append(NSMenuItem.separator())
-        if selectedItems().count == 1 {
+        if selection.count == 1 {
             items.append(rename)
         }
 
@@ -187,7 +221,6 @@ final class ProjectNavigatorMenu: NSMenu {
                 secondaryItems.append(.hex())
             }
 
-            // FIXME: Update the quickLook condition
             if type.conforms(to: .data) {
                 secondaryItems.append(.quickLook())
             }
@@ -209,17 +242,23 @@ final class ProjectNavigatorMenu: NSMenu {
 
     /// Submenu for **Source Control** menu item.
     private func sourceControlMenu(item: CEWorkspaceFile) -> NSMenu {
+        let isRepository = workspace?.sourceControlManager?.isGitRepository == true
         let sourceControlMenu = NSMenu(title: "Source Control")
-        sourceControlMenu.addItem(
-            withTitle: "Commit \"\(String(describing: item.fileName()))\"...",
-            action: nil,
-            keyEquivalent: ""
+        sourceControlMenu.autoenablesItems = false
+
+        sourceControlMenu.addItem(menuItem("Show History", action: #selector(showHistory), enabled: isRepository))
+
+        let annotate = menuItem(
+            "Annotate with Git Blame",
+            action: #selector(annotate),
+            enabled: isRepository && !item.isFolder
         )
-        sourceControlMenu.addItem(.separator())
-        sourceControlMenu.addItem(withTitle: "Discard Changes...", action: nil, keyEquivalent: "")
-        sourceControlMenu.addItem(.separator())
-        sourceControlMenu.addItem(withTitle: "Add Selected Files", action: nil, keyEquivalent: "")
-        sourceControlMenu.addItem(withTitle: "Mark Selected Files as Resolved", action: nil, keyEquivalent: "")
+        annotate.state = isAnnotating(item) ? .on : .off
+        sourceControlMenu.addItem(annotate)
+
+        sourceControlMenu.addItem(
+            menuItem("Rollback…", action: #selector(rollback), enabled: isRepository && !item.isFolder)
+        )
 
         return sourceControlMenu
     }
@@ -239,7 +278,7 @@ final class ProjectNavigatorMenu: NSMenu {
     private func markExcluded() {
         guard let item else { return }
         workspace?.excludedDirectories?.exclude(item.url)
-        sender.outlineView.reloadItem(item, reloadChildren: false)
+        sender?.outlineView.reloadItem(item, reloadChildren: true)
         workspace?.searchState?.addProjectToIndex()
     }
 
@@ -247,7 +286,7 @@ final class ProjectNavigatorMenu: NSMenu {
     private func cancelExclusion() {
         guard let item else { return }
         workspace?.excludedDirectories?.cancelExclusion(item.url)
-        sender.outlineView.reloadItem(item, reloadChildren: false)
+        sender?.outlineView.reloadItem(item, reloadChildren: true)
         workspace?.searchState?.addProjectToIndex()
     }
 }

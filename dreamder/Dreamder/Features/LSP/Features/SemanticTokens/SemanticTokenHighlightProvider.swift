@@ -13,7 +13,7 @@ import CodeEditLanguages
 import OSLog
 
 private let semanticTokenLogger = Logger(
-    subsystem: Bundle.main.bundleIdentifier ?? "",
+    subsystem: "dev.dreamder.Dreamder",
     category: "SemanticTokenHighlightProvider"
 )
 
@@ -43,9 +43,11 @@ final class SemanticTokenHighlightProvider<
     weak var languageServer: LanguageServer<DocumentType>?
     private weak var textView: TextView?
 
-    private var lastEditCallback: EditCallback?
-    private var pendingHighlightCallbacks: [HighlightCallback] = []
+    private var pendingEdit: CheckedContinuation<IndexSet, Never>?
+    private var pendingHighlights: [CheckedContinuation<[HighlightRange], any Error>] = []
     private var storage: Storage
+
+    private(set) var latestRefresh: Task<Void, Never>?
 
     var documentRange: NSRange {
         textView?.documentRange ?? .zero
@@ -67,9 +69,13 @@ final class SemanticTokenHighlightProvider<
         documentURI = document.languageServerURI
         tokenMap = server.highlightMap
         guard textView != nil else { return }
-        Task {
+        refreshTokens()
+    }
+
+    private func refreshTokens() {
+        latestRefresh = Task {
             do {
-                try await self.documentDidChange()
+                try await documentDidChange()
             } catch {
                 semanticTokenLogger.debug("Semantic token refresh failed: \(error)")
             }
@@ -89,16 +95,15 @@ final class SemanticTokenHighlightProvider<
         guard let languageServer, let textView else {
             return
         }
+        guard languageServer.supportsSemanticTokens else {
+            resolvePendingHighlights(.success([]))
+            return
+        }
 
         guard storage.hasReceivedData else {
             // We have no semantic token info, request it!
             try await requestTokens(languageServer: languageServer, textView: textView)
-            await MainActor.run {
-                for callback in pendingHighlightCallbacks {
-                    callback(.failure(HighlightProvidingError.operationCancelled))
-                }
-                pendingHighlightCallbacks.removeAll()
-            }
+            resolvePendingHighlights(.failure(HighlightProvidingError.operationCancelled))
             return
         }
 
@@ -122,82 +127,99 @@ final class SemanticTokenHighlightProvider<
         guard let documentURI,
               let response = try await languageServer.requestSemanticTokens(
             for: documentURI,
-            previousResultId: lastResultId
+            previousResultId: lastResultId,
+            flushingPendingEdits: false
         ) else {
             return
         }
         switch response {
         case let .optionA(tokenData):
-            await applyEntireResponse(tokenData, callback: lastEditCallback)
+            applyEntireResponse(tokenData)
         case let .optionB(deltaData):
-            await applyDeltaResponse(deltaData, callback: lastEditCallback, textView: textView)
+            applyDeltaResponse(deltaData, textView: textView)
         }
     }
 
     /// Requests and applies tokens for an entire document. This does not require a previous response id, and should be
     /// used in place of `requestDeltaTokens` when that's the case.
     private func requestTokens(languageServer: LanguageServer<DocumentType>, textView: TextView) async throws {
-        guard let documentURI, let response = try await languageServer.requestSemanticTokens(for: documentURI) else {
+        guard let documentURI,
+              let response = try await languageServer.requestSemanticTokens(
+                for: documentURI,
+                flushingPendingEdits: false
+              ) else {
             return
         }
-        await applyEntireResponse(response, callback: lastEditCallback)
+        applyEntireResponse(response)
     }
 
     // MARK: - Apply LSP Response
 
     /// Applies a delta response from the LSP to our storage.
-    private func applyDeltaResponse(_ data: SemanticTokensDelta, callback: EditCallback?, textView: TextView?) async {
+    private func applyDeltaResponse(_ data: SemanticTokensDelta, textView: TextView?) {
         let lspRanges = storage.applyDelta(data)
-        lastEditCallback = nil // Don't use this callback again.
-        await MainActor.run {
-            let ranges = lspRanges.compactMap { textView?.nsRangeFrom($0) }
-            callback?(.success(IndexSet(ranges: ranges)))
-        }
+        let ranges = lspRanges.compactMap { textView?.nsRangeFrom($0) }
+        takePendingEdit()?.resume(returning: IndexSet(ranges: ranges))
     }
 
-    private func applyEntireResponse(_ data: SemanticTokens, callback: EditCallback?) async {
+    private func applyEntireResponse(_ data: SemanticTokens) {
         storage.setData(data)
-        lastEditCallback = nil // Don't use this callback again.
-        callback?(.success(IndexSet(integersIn: documentRange)))
+        takePendingEdit()?.resume(returning: IndexSet(integersIn: documentRange))
     }
 
     // MARK: - Highlight Provider Conformance
 
     func setUp(textView: TextView, codeLanguage: CodeLanguage) {
-        // Send off a request to get the initial token data
         self.textView = textView
+        refreshTokens()
+    }
+
+    func applyEdit(textView: TextView, range: NSRange, delta: Int, completion: @escaping EditCallback) {
+        Task {
+            completion(.success(await invalidatedIndicesAfterEdit()))
+        }
+    }
+
+    func queryHighlightsFor(textView: TextView, range: NSRange, completion: @escaping HighlightCallback) {
         Task {
             do {
-                try await self.documentDidChange()
+                completion(.success(try await highlights(in: range, textView: textView)))
             } catch {
-                semanticTokenLogger.debug("Initial semantic token request failed: \(error)")
+                completion(.failure(error))
             }
         }
     }
 
-    func applyEdit(textView: TextView, range: NSRange, delta: Int, completion: @escaping EditCallback) {
-        if let lastEditCallback {
-            lastEditCallback(.success(IndexSet())) // Don't throw a cancellation error
-        }
-        lastEditCallback = completion
+    var pendingHighlightCount: Int {
+        pendingHighlights.count
     }
 
-    func queryHighlightsFor(textView: TextView, range: NSRange, completion: @escaping HighlightCallback) {
-        guard languageServer != nil else {
-            completion(.success([]))
-            return
+    var hasPendingEdit: Bool {
+        pendingEdit != nil
+    }
+
+    func invalidatedIndicesAfterEdit() async -> IndexSet {
+        pendingEdit?.resume(returning: IndexSet())
+        return await withCheckedContinuation { continuation in
+            pendingEdit = continuation
+        }
+    }
+
+    func highlights(in range: NSRange, textView: TextView) async throws -> [HighlightRange] {
+        guard let languageServer, languageServer.supportsSemanticTokens else {
+            return []
         }
         guard storage.hasReceivedData else {
-            pendingHighlightCallbacks.append(completion)
-            return
+            return try await withCheckedThrowingContinuation { continuation in
+                pendingHighlights.append(continuation)
+            }
         }
 
         guard let lspRange = textView.lspRangeFrom(nsRange: range), let tokenMap else {
-            completion(.failure(HighlightError.lspRangeFailure))
-            return
+            throw HighlightError.lspRangeFailure
         }
         let rawTokens = storage.getTokensFor(range: lspRange)
-        let highlights = tokenMap
+        return tokenMap
             .decode(tokens: rawTokens, using: textView)
             .compactMap { highlightRange -> HighlightRange? in
                 // Filter out empty ranges
@@ -213,6 +235,18 @@ final class SemanticTokenHighlightProvider<
                     modifiers: highlightRange.modifiers
                 )
             }
-        completion(.success(highlights))
+    }
+
+    private func resolvePendingHighlights(_ outcome: Result<[HighlightRange], any Error>) {
+        let continuations = pendingHighlights
+        pendingHighlights.removeAll()
+        for continuation in continuations {
+            continuation.resume(with: outcome)
+        }
+    }
+
+    private func takePendingEdit() -> CheckedContinuation<IndexSet, Never>? {
+        defer { pendingEdit = nil }
+        return pendingEdit
     }
 }

@@ -44,26 +44,10 @@ nonisolated extension GitClient {
             .split(separator: "\0")
             .map { line -> GitCommit in
                 let parameters = String(line).components(separatedBy: "¦")
-                let infoRef = Self.field(at: 9, in: parameters)
-                var refs: [String] = []
-                var tag = ""
-                if let infoRef = infoRef {
-                    if infoRef.contains("tag:") {
-                        tag = infoRef.components(separatedBy: "tag:")[1].trimmingCharacters(in: .whitespaces)
-                    } else {
-                        refs = infoRef.split(separator: ",").compactMap {
-                            var element = String($0)
-                            if element.contains("origin/HEAD") { return nil }
-                            if element.contains("HEAD -> ") {
-                                element = element.replacingOccurrences(of: "HEAD -> ", with: "")
-                            }
-                            return element.trimmingCharacters(in: .whitespaces)
-                        }
-                    }
-                }
+                let decoration = Self.commitHistoryDecoration(Self.field(at: 9, in: parameters) ?? "")
 
                 return GitCommit(
-                    hash: Self.field(at: 0, in: parameters) ?? "",
+                    hash: String(line.prefix { $0 != "¦" }),
                     commitHash: Self.field(at: 1, in: parameters) ?? "",
                     message: Self.field(at: 2, in: parameters) ?? "",
                     author: Self.field(at: 3, in: parameters) ?? "",
@@ -71,12 +55,25 @@ nonisolated extension GitClient {
                     committer: Self.field(at: 5, in: parameters) ?? "",
                     committerEmail: Self.field(at: 6, in: parameters) ?? "",
                     body: Self.field(at: 8, in: parameters) ?? "",
-                    refs: refs,
-                    tag: tag,
+                    refs: decoration.refs,
+                    tag: decoration.tag,
                     remoteURL: remoteURL,
                     date: Self.field(at: 7, in: parameters).flatMap { TimeInterval($0) }
                         .map { Date(timeIntervalSince1970: $0) } ?? Date()
                 )
             }
+    }
+
+    static func commitHistoryDecoration(_ decoration: String) -> (refs: [String], tag: String) {
+        var refs: [String] = []
+        var tags: [String] = []
+        for entry in decoration.split(separator: ",").map({ $0.trimmingCharacters(in: .whitespaces) }) {
+            if entry.hasPrefix("tag:") {
+                tags.append(String(entry.dropFirst("tag:".count)).trimmingCharacters(in: .whitespaces))
+            } else if !entry.isEmpty, !entry.contains("origin/HEAD") {
+                refs.append(entry.replacingOccurrences(of: "HEAD -> ", with: ""))
+            }
+        }
+        return (refs, tags.joined(separator: ", "))
     }
 }

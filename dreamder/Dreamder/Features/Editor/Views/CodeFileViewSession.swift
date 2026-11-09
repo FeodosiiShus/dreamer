@@ -56,6 +56,11 @@ final class CodeFileViewSession {
             GitGutterCoordinator(codeFile: codeFile),
             DiagnosticHighlightCoordinator(codeFile: codeFile),
             InlayHintCoordinator(codeFile: codeFile),
+            OnTypeFormattingCoordinator(codeFile: codeFile),
+            SelectionRangeCoordinator(editorInstance: editorInstance, codeFile: codeFile),
+            FoldingCoordinator(editorInstance: editorInstance, codeFile: codeFile),
+            SignatureHelpCoordinator(editorInstance: editorInstance, codeFile: codeFile),
+            RecentLocationsCoordinator(editorInstance: editorInstance, codeFile: codeFile),
             IndentGuideCoordinator(),
             EditorBackgroundCoordinator(),
             controllerReference

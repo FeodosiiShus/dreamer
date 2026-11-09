@@ -59,7 +59,7 @@ nonisolated enum MarkdownHeaderOutline {
             titles: scan.headers.map { title(for: $0, units: units) },
             lineStarts: lineStarts(in: units)
         )
-        return process(root.items[...], restriction: nil, context: context)
+        return process(ArraySlice(root.items), restriction: nil, context: context)
     }
 
     private static func process(
@@ -73,7 +73,7 @@ nonisolated enum MarkdownHeaderOutline {
             switch items[index] {
             case .container(let scope):
                 if maxLevel == nil {
-                    result.append(contentsOf: process(scope.items[...], restriction: nil, context: context))
+                    result.append(contentsOf: process(ArraySlice(scope.items), restriction: nil, context: context))
                 }
             case .header(let headerIndex):
                 let header = context.headers[headerIndex]

@@ -23,141 +23,178 @@ struct EditorTabBarContextMenu: ViewModifier {
         self.isTemporary = isTemporary
     }
 
+    private var item: CEWorkspaceFile
+    private var isTemporary: Bool
+
+    func body(content: Content) -> some View {
+        content.contextMenu(menuItems: {
+            EditorTabBarContextMenuItems(item: item, isTemporary: isTemporary)
+        })
+    }
+}
+
+struct EditorTabBarContextMenuItems: View {
     @Environment(WorkspaceDocument.self) private var workspace
 
     @Environment(Editor.self) private var tabs
 
     @Environment(EditorManager.self) private var editorManager
 
-    private var item: CEWorkspaceFile
-    private var isTemporary: Bool
+    let item: CEWorkspaceFile
+    static let pinTitle = "Pin Tab"
+    static let unpinTitle = "Unpin Tab"
+
+    static func pinToggleTitle(isPinned: Bool) -> String {
+        isPinned ? unpinTitle : pinTitle
+    }
+
+    let isTemporary: Bool
+
+    private var menuActions: EditorTabBarItemActions {
+        EditorTabBarItemActions(item: item, editor: tabs, editorManager: editorManager, workspace: workspace)
+    }
 
     // swiftlint:disable:next function_body_length
-    func body(content: Content) -> some View {
-        content.contextMenu(menuItems: {
-            Group {
-                Button("Close Tab") {
-                    withAnimation {
-                        tabs.closeTab(file: item)
-                    }
-                }
-                .keyboardShortcut("w", modifiers: [.command])
+    var body: some View {
+        let actions = menuActions
+        Group {
+            Button("Close Tab", action: actions.closeTab)
+                .keymapShortcut(.closeTab)
 
-                Button("Close Other Tabs") {
-                    withAnimation {
-                        tabs.tabs.map({ $0.file }).forEach { file in
-                            if file != item {
-                                tabs.closeTab(file: file)
-                            }
-                        }
-                    }
-                }
+            Button("Close Other Tabs", action: actions.closeOtherTabs)
 
-                Button("Close Tabs to the Right") {
-                    withAnimation {
-                        if let index = tabs.tabs.firstIndex(where: { $0.file == item }), index + 1 < tabs.tabs.count {
-                            tabs.tabs[(index + 1)...].forEach {
-                                tabs.closeTab(file: $0.file)
-                            }
-                        }
-                    }
-                }
-                // Disable this option when current tab is the last one.
-                .disabled(tabs.tabs.last?.file == item)
+            Button("Close Tabs to the Left", action: actions.closeTabsToTheLeft)
+            .disabled(tabs.tabs.first?.file == item)
 
-                Button("Close All") {
-                    withAnimation {
-                        tabs.tabs.forEach {
-                            tabs.closeTab(file: $0.file)
-                        }
-                    }
-                }
+            Button("Close Tabs to the Right", action: actions.closeTabsToTheRight)
+            // Disable this option when current tab is the last one.
+            .disabled(tabs.tabs.last?.file == item)
 
-                if isTemporary {
-                    Button("Keep Open") {
-                        tabs.temporaryTab = nil
-                    }
-                }
+            Button("Close Unmodified Tabs", action: actions.closeUnmodifiedTabs)
+
+            Button("Close All", action: actions.editorActions.closeAll)
+
+            Button(Self.pinToggleTitle(isPinned: tabs.isPinned(item)), action: actions.togglePinned)
+
+            if isTemporary {
+                Button("Keep Open", action: actions.keepOpen)
             }
+        }
 
+        Divider()
+
+        Group {
+            Button("Copy Path", action: actions.copyPath)
+
+            Button("Copy Relative Path", action: actions.copyRelativePath)
+        }
+
+        Divider()
+
+        Group {
+            Button("Show in Finder", action: actions.showInFinder)
+
+            Button("Reveal in Project Navigator", action: actions.revealInProjectNavigator)
+        }
+
+        Divider()
+
+        Button("Split Up", action: actions.moveToNewSplit(.top))
+        Button("Split Down", action: actions.moveToNewSplit(.bottom))
+        Button("Split Left", action: actions.moveToNewSplit(.leading))
+        Button("Split Right", action: actions.moveToNewSplit(.trailing))
+
+        if editorManager.isInSplitter(tabs) {
             Divider()
 
-            Group {
-                Button("Copy Path") {
-                    copyPath(item: item)
-                }
-
-                Button("Copy Relative Path") {
-                    copyRelativePath(item: item)
-                }
+            Button("Unsplit", action: actions.editorActions.unsplit)
+            if editorManager.flattenedEditors.count > 2 {
+                Button("Unsplit All", action: actions.editorActions.unsplitAll)
             }
+            Button("Change Splitter Orientation", action: actions.editorActions.changeSplitterOrientation)
+        }
+    }
+}
 
-            Divider()
+struct EditorTabBarItemActions {
+    let item: CEWorkspaceFile
+    let editor: Editor
+    let editorManager: EditorManager
+    let workspace: WorkspaceDocument
+    var pasteboard: any PasteboardAccess = SystemPasteboard()
+    var revealInFinder: @MainActor ([URL]) -> Void = { NSWorkspace.shared.activateFileViewerSelecting($0) }
 
-            Group {
-                Button("Show in Finder") {
-                    item.showInFinder()
-                }
+    var editorActions: EditorTabBarEditorActions {
+        EditorTabBarEditorActions(editor: editor, editorManager: editorManager, workspace: workspace)
+    }
 
-                Button("Reveal in Project Navigator") {
-                    workspace.listenerModel.highlightedFileItem = item
-                }
+    func closeTab() {
+        withAnimation {
+            editor.closeTab(file: item)
+        }
+    }
 
-                Button("Open in New Window") {
+    func closeOtherTabs() {
+        withAnimation {
+            editor.closeUnpinnedTabs { $0 != item }
+        }
+    }
 
-                }
-                .disabled(true)
-            }
+    func closeTabsToTheLeft() {
+        guard let index = editor.tabs.firstIndex(where: { $0.file == item }) else { return }
+        let candidates = Set(editor.tabs[..<index].map(\.file.id))
+        withAnimation {
+            editor.closeUnpinnedTabs { candidates.contains($0.id) }
+        }
+    }
 
-            Divider()
+    func closeTabsToTheRight() {
+        guard let index = editor.tabs.firstIndex(where: { $0.file == item }), index + 1 < editor.tabs.count else {
+            return
+        }
+        let candidates = Set(editor.tabs[(index + 1)...].map(\.file.id))
+        withAnimation {
+            editor.closeUnpinnedTabs { candidates.contains($0.id) }
+        }
+    }
 
-            Button("Split Up") {
-                moveToNewSplit(.top)
-            }
-            Button("Split Down") {
-                moveToNewSplit(.bottom)
-            }
-            Button("Split Left") {
-                moveToNewSplit(.leading)
-            }
-            Button("Split Right") {
-                moveToNewSplit(.trailing)
-            }
+    func closeUnmodifiedTabs() {
+        withAnimation {
+            editor.closeUnpinnedTabs { $0.fileDocument?.isDocumentEdited != true }
+        }
+    }
 
-            if editorManager.isInSplitter(tabs) {
-                Divider()
+    func togglePinned() {
+        editor.togglePinned(file: item)
+    }
 
-                Button("Unsplit") {
-                    editorManager.unsplit(tabs)
-                }
-                if editorManager.flattenedEditors.count > 2 {
-                    Button("Unsplit All") {
-                        editorManager.unsplitAll()
-                    }
-                }
-                Button("Change Splitter Orientation") {
-                    editorManager.changeSplitterOrientation(of: tabs)
-                }
-            }
-        })
+    func keepOpen() {
+        editor.temporaryTab = nil
+    }
+
+    func showInFinder() {
+        revealInFinder([item.url])
+    }
+
+    func revealInProjectNavigator() {
+        workspace.listenerModel.highlightedFileItem = item
+    }
+
+    func moveToNewSplit(_ edge: Edge) -> @MainActor () -> Void {
+        { editorManager.moveTabToNewSplit(item, from: editor, edge: edge, workspace: workspace) }
     }
 
     // MARK: - Actions
 
     /// Copies the absolute path of the given `FileItem`
     /// - Parameter item: The `FileItem` to use.
-    private func copyPath(item: CEWorkspaceFile) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(item.url.standardizedFileURL.path, forType: .string)
-    }
-
-    func moveToNewSplit(_ edge: Edge) {
-        editorManager.moveTabToNewSplit(item, from: tabs, edge: edge, workspace: workspace)
+    func copyPath() {
+        pasteboard.replaceContents(withText: item.url.standardizedFileURL.path)
     }
 
     /// Copies the relative path from the workspace folder to the given file item to the pasteboard.
     /// - Parameter item: The `FileItem` to use.
-    private func copyRelativePath(item: CEWorkspaceFile) {
+    func copyRelativePath() {
         guard let rootPath = workspace.workspaceFileManager?.folderUrl else {
             return
         }
@@ -175,7 +212,6 @@ struct EditorTabBarContextMenu: ViewModifier {
         let downPath = destinationComponents[prefixCount...].joined(separator: "/")
 
         // Copy it to the clipboard
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(upPath + downPath, forType: .string)
+        pasteboard.replaceContents(withText: upPath + downPath)
     }
 }

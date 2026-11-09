@@ -13,7 +13,7 @@ struct ProjectNavigatorOutlineView: NSViewControllerRepresentable {
     @Environment(WorkspaceDocument.self) private var workspace
     @Environment(EditorManager.self) private var editorManager
 
-    private let prefs = Settings.shared
+    @Environment(\.settingsStore) private var prefs
 
     var controllerReference: ProjectNavigatorControllerReference?
 
@@ -22,6 +22,7 @@ struct ProjectNavigatorOutlineView: NSViewControllerRepresentable {
     func makeNSViewController(context: Context) -> ProjectNavigatorViewController {
         let controller = ProjectNavigatorViewController()
         controller.workspace = workspace
+        controller.settings = prefs
         controller.iconColor = prefs.preferences.general.fileIconStyle
         controller.editor = editorManager.activeEditor
         workspace.workspaceFileManager?.addObserver(context.coordinator)
@@ -128,6 +129,7 @@ struct ProjectNavigatorOutlineView: NSViewControllerRepresentable {
             controller?.shouldSendSelectionUpdate = false
             outlineView.selectRowIndexes(IndexSet(selectedIndexes), byExtendingSelection: false)
             controller?.shouldSendSelectionUpdate = true
+            controller?.revealPendingItem()
         }
 
         isolated deinit {

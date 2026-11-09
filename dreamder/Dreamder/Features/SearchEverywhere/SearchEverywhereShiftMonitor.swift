@@ -9,6 +9,16 @@ final class SearchEverywhereShiftMonitor {
     private var pressedAt: TimeInterval?
     private var releasedAt: TimeInterval?
     private let interval: TimeInterval = 0.5
+    private let keymap: Keymap
+    private let open: @MainActor () -> Void
+
+    init(
+        keymap: Keymap = .shared,
+        open: @escaping @MainActor () -> Void = SearchEverywhereShiftMonitor.openActiveController
+    ) {
+        self.keymap = keymap
+        self.open = open
+    }
 
     func install() {
         guard monitor == nil else { return }
@@ -20,8 +30,13 @@ final class SearchEverywhereShiftMonitor {
         }
     }
 
-    private func handle(_ event: NSEvent) {
+    func handle(_ event: NSEvent) {
         if event.type == .keyDown {
+            reset()
+            return
+        }
+
+        guard keymap.shortcuts(for: .searchEverywhere).contains(.doubleModifier(.shift)) else {
             reset()
             return
         }
@@ -39,7 +54,7 @@ final class SearchEverywhereShiftMonitor {
             shiftDown = true
             if let releasedAt, event.timestamp - releasedAt <= interval {
                 reset()
-                openPopover()
+                open()
                 return
             }
             pressedAt = event.timestamp
@@ -58,22 +73,32 @@ final class SearchEverywhereShiftMonitor {
         releasedAt = nil
     }
 
-    private func openPopover() {
-        guard let controller = Self.activeController() else { return }
+    static func openActiveController() {
+        openController(keyWindow: NSApp.keyWindow, mainWindow: NSApp.mainWindow, windows: NSApp.windows)
+    }
+
+    static func openController(keyWindow: NSWindow?, mainWindow: NSWindow?, windows: [NSWindow]) {
+        guard let controller = activeController(keyWindow: keyWindow, mainWindow: mainWindow, windows: windows) else {
+            return
+        }
         controller.openSearchEverywhere(nil)
     }
 
-    private static func activeController() -> DreamderWindowController? {
-        if let controller = NSApp.keyWindow?.windowController as? DreamderWindowController {
+    static func activeController(
+        keyWindow: NSWindow?,
+        mainWindow: NSWindow?,
+        windows: [NSWindow]
+    ) -> DreamderWindowController? {
+        if let controller = keyWindow?.windowController as? DreamderWindowController {
             return controller
         }
-        if let parent = NSApp.keyWindow?.parent,
+        if let parent = keyWindow?.parent,
            let controller = parent.windowController as? DreamderWindowController {
             return controller
         }
-        if let controller = NSApp.mainWindow?.windowController as? DreamderWindowController {
+        if let controller = mainWindow?.windowController as? DreamderWindowController {
             return controller
         }
-        return NSApp.windows.compactMap { $0.windowController as? DreamderWindowController }.first
+        return windows.compactMap { $0.windowController as? DreamderWindowController }.first
     }
 }

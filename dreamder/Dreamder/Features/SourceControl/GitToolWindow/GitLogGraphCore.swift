@@ -271,10 +271,9 @@ nonisolated enum GitLogPermanentGraphBuilder {
     ) {
         let end = nodeToEdgeIndex[upNodeIndex + 1]
         let parents = commits[upNodeIndex].parents
-        guard let parentIndex = parents.firstIndex(of: downCommitId) else { return }
-        let edgeIndex = end - (parents.count - parentIndex)
-        guard edgeIndex >= 0, edgeIndex < longEdges.count, longEdges[edgeIndex] == -1 else { return }
-        longEdges[edgeIndex] = downNodeIndex
+        for (slot, parent) in zip((end - parents.count)..<end, parents) where parent == downCommitId {
+            longEdges[slot] = downNodeIndex
+        }
     }
 
     private static func fixUnderdoneEdges(
@@ -284,23 +283,22 @@ nonisolated enum GitLogPermanentGraphBuilder {
         upAdjacentNodes: [String: [Int]],
         notLoadedCommitId: ((String) -> Int)?
     ) -> [Int: String] {
-        func order(_ id: String) -> (Int, Int) {
-            let minUp = upAdjacentNodes[id]?.min() ?? 0
-            let position = commits.indices.contains(minUp) ? (commits[minUp].parents.firstIndex(of: id) ?? 0) : 0
-            return (minUp, position)
+        func order(_ entry: (key: String, value: [Int])) -> (Int, Int) {
+            let minUp = entry.value.reduce(Int.max, min)
+            return (minUp, commits[minUp].parents.prefix(while: { $0 != entry.key }).count)
         }
 
-        let sortedIds = upAdjacentNodes.keys.sorted { left, right in
+        let sortedEntries = upAdjacentNodes.sorted { left, right in
             let l = order(left)
             let r = order(right)
             return l.0 != r.0 ? l.0 < r.0 : l.1 < r.1
         }
 
         var notLoaded: [Int: String] = [:]
-        for notLoadedCommit in sortedIds {
+        for (notLoadedCommit, upNodes) in sortedEntries {
             let notLoadedId = notLoadedCommitId?(notLoadedCommit) ?? -(notLoaded.count + 2)
             notLoaded[notLoadedId] = notLoadedCommit
-            for upNodeIndex in upAdjacentNodes[notLoadedCommit] ?? [] {
+            for upNodeIndex in upNodes {
                 for edgeIndex in nodeToEdgeIndex[upNodeIndex]..<nodeToEdgeIndex[upNodeIndex + 1]
                 where longEdges[edgeIndex] == -1 {
                     longEdges[edgeIndex] = notLoadedId

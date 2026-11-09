@@ -23,13 +23,20 @@ final class DiffViewerViewModel {
 
     private let repository: DiffRepository
     private let mode: DiffViewerMode
+    private let maximumRows: Int
     private var loadToken = 0
     private var scrollToken = 0
 
-    init(repository: DiffRepository, mode: DiffViewerMode, files: [DiffFileRequest]) {
+    init(
+        repository: DiffRepository,
+        mode: DiffViewerMode,
+        files: [DiffFileRequest],
+        maximumRows: Int = DiffViewerViewModel.maximumDisplayedRows
+    ) {
         self.repository = repository
         self.mode = mode
         self.files = files
+        self.maximumRows = maximumRows
         let first = files.first
         self.selectedID = first?.id
         self.title = first.map { Self.windowTitle(for: $0, mode: mode) } ?? "Diff"
@@ -105,17 +112,16 @@ final class DiffViewerViewModel {
     func nextDifference() {
         guard let diff, !diff.hunks.isEmpty else { return }
         let index = min((currentHunkIndex ?? -1) + 1, diff.hunks.count - 1)
-        showHunk(at: index)
+        showHunk(at: index, in: diff)
     }
 
     func previousDifference() {
         guard let diff, !diff.hunks.isEmpty else { return }
         let index = max((currentHunkIndex ?? diff.hunks.count) - 1, 0)
-        showHunk(at: index)
+        showHunk(at: index, in: diff)
     }
 
-    private func showHunk(at index: Int) {
-        guard let diff, diff.hunks.indices.contains(index) else { return }
+    private func showHunk(at index: Int, in diff: TextDiff) {
         currentHunkIndex = index
         scrollToken += 1
         scrollRequest = DiffScrollRequest(row: diff.hunks[index].rows.lowerBound, token: scrollToken)
@@ -135,7 +141,7 @@ final class DiffViewerViewModel {
         }
 
         let diff = TextDiff(left: leftText, right: rightText)
-        guard diff.rows.count <= Self.maximumDisplayedRows else {
+        guard diff.rows.count <= maximumRows else {
             message = "Diff is too large to display (\(diff.differenceCount) differences)"
             return
         }

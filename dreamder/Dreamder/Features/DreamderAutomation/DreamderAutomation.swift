@@ -11,45 +11,38 @@ enum DreamderAutomation {
     static let annotateNotification = Notification.Name("dev.dreamder.annotate")
     static let menuItemNotification = Notification.Name("dev.dreamder.menuitem")
 
-    static func install() {
-        guard DreamderHeadless.isEnabled else { return }
-        let center = DistributedNotificationCenter.default()
-        center.addObserver(forName: snapshotNotification, object: nil, queue: .main) { note in
-            let path = note.object as? String
-            MainActor.assumeIsolated { snapshot(to: path) }
+    static func install(
+        center: NotificationCenter = DistributedNotificationCenter.default(),
+        enabled: Bool = DreamderHeadless.isEnabled,
+        queue: OperationQueue? = .main
+    ) {
+        guard enabled else { return }
+        let commands: [(name: Notification.Name, run: @MainActor (String?) -> Void)] = [
+            (snapshotNotification, { snapshot(to: $0) }),
+            (actionNotification, { perform(actionNamed: $0) }),
+            (openNotification, { open(path: $0) }),
+            (toolWindowNotification, { showToolWindow(named: $0) }),
+            (contextMenuNotification, { writeContextMenu(to: $0) }),
+            (annotateNotification, { toggleAnnotate(to: $0) }),
+            (menuItemNotification, { performMenuItem(named: $0) })
+        ]
+        for command in commands {
+            center.addObserver(forName: command.name, object: nil, queue: queue) { note in
+                let argument = note.object as? String
+                MainActor.assumeIsolated { command.run(argument) }
+            }
         }
-        center.addObserver(forName: actionNotification, object: nil, queue: .main) { note in
-            let name = note.object as? String
-            MainActor.assumeIsolated { perform(actionNamed: name) }
-        }
-        center.addObserver(forName: openNotification, object: nil, queue: .main) { note in
-            let path = note.object as? String
-            MainActor.assumeIsolated { open(path: path) }
-        }
-        center.addObserver(forName: toolWindowNotification, object: nil, queue: .main) { note in
-            let name = note.object as? String
-            MainActor.assumeIsolated { showToolWindow(named: name) }
-        }
-        center.addObserver(forName: contextMenuNotification, object: nil, queue: .main) { note in
-            let path = note.object as? String
-            MainActor.assumeIsolated { writeContextMenu(to: path) }
-        }
-        center.addObserver(forName: annotateNotification, object: nil, queue: .main) { note in
-            let path = note.object as? String
-            MainActor.assumeIsolated { toggleAnnotate(to: path) }
-        }
-        center.addObserver(forName: menuItemNotification, object: nil, queue: .main) { note in
-            let name = note.object as? String
-            MainActor.assumeIsolated { performMenuItem(named: name) }
-        }
-        MergeAutomation.install()
+        MergeAutomation.install(center: center)
     }
 
-    private static func activeWindowController() -> DreamderWindowController? {
-        if let controller = NSApp.keyWindow?.windowController as? DreamderWindowController {
+    static func activeWindowController(
+        keyWindow: NSWindow? = NSApp.keyWindow,
+        orderedWindows: [NSWindow] = NSApp.orderedWindows
+    ) -> DreamderWindowController? {
+        if let controller = keyWindow?.windowController as? DreamderWindowController {
             return controller
         }
-        return NSApp.orderedWindows.lazy.compactMap { $0.windowController as? DreamderWindowController }.first
+        return orderedWindows.lazy.compactMap { $0.windowController as? DreamderWindowController }.first
     }
 
     private static func editorTextView() -> TextView? {
@@ -79,7 +72,7 @@ enum DreamderAutomation {
         return (textView, textView.menu(for: event))
     }
 
-    private static func writeContextMenu(to path: String?) {
+    static func writeContextMenu(to path: String?) {
         let directory = URL(fileURLWithPath: path ?? NSTemporaryDirectory())
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let output = directory.appendingPathComponent("contextmenu.txt")
@@ -143,13 +136,9 @@ enum DreamderAutomation {
     }
 
     private static func selectionStates(textView: TextView) -> String? {
-        guard let line = textView.layoutManager?.textLineForOffset(caretOffset(textView: textView)),
-              let layoutManager = textView.layoutManager else { return nil }
+        guard let line = textView.layoutManager?.textLineForOffset(caretOffset(textView: textView)) else { return nil }
         let previous = textView.selectionManager?.textSelections.map(\.range) ?? []
-        var range = NSRange(location: line.range.location, length: line.range.upperBound - line.range.location)
-        if range.length == 0, let nextLine = layoutManager.textLineForIndex(line.index + 1) {
-            range = NSRange(location: nextLine.range.location, length: nextLine.range.length)
-        }
+        let range = NSRange(location: line.range.location, length: line.range.upperBound - line.range.location)
         textView.selectionManager?.setSelectedRange(range)
         let applied = textView.selectionManager?.textSelections.map(\.range) ?? []
         let menu = editorMenu()?.menu
@@ -166,7 +155,7 @@ enum DreamderAutomation {
         return "\(prefix) \(states.joined(separator: " "))"
     }
 
-    private static func performMenuItem(named name: String?) {
+    static func performMenuItem(named name: String?) {
         guard let name else { return }
         let parts = name.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
         let directory = URL(fileURLWithPath: parts.count == 2 ? String(parts[0]) : NSTemporaryDirectory())
@@ -207,7 +196,7 @@ enum DreamderAutomation {
         try? lines.joined(separator: "\n").appending("\n").write(to: output, atomically: true, encoding: .utf8)
     }
 
-    private static func findItem(in menu: NSMenu, title: String) -> NSMenuItem? {
+    static func findItem(in menu: NSMenu, title: String) -> NSMenuItem? {
         for item in menu.items {
             if item.title == title {
                 return item
@@ -244,7 +233,7 @@ enum DreamderAutomation {
         )
     }
 
-    private static func describe(menu: NSMenu, level: Int) -> [String] {
+    static func describe(menu: NSMenu, level: Int) -> [String] {
         let indent = String(repeating: "  ", count: level)
         var lines: [String] = []
         for item in menu.items {
@@ -296,7 +285,7 @@ enum DreamderAutomation {
         return result
     }
 
-    private static func toggleAnnotate(to path: String?) {
+    static func toggleAnnotate(to path: String?) {
         let directory = URL(fileURLWithPath: path ?? NSTemporaryDirectory())
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let output = directory.appendingPathComponent("annotate.txt")
@@ -322,13 +311,15 @@ enum DreamderAutomation {
         try? lines.joined(separator: "\n").appending("\n").write(to: output, atomically: true, encoding: .utf8)
     }
 
-    private static func showToolWindow(named name: String?) {
+    static func showToolWindow(
+        named name: String?,
+        in controller: DreamderWindowController? = activeWindowController()
+    ) {
         guard let name, let id = ToolWindowID(rawValue: name) else { return }
-        let controller = NSApp.orderedWindows.lazy.compactMap { $0.windowController as? DreamderWindowController }.first
         controller?.workspace?.toolWindowManager.show(id)
     }
 
-    private static func open(path: String?) {
+    static func open(path: String?) {
         guard let path else { return }
         let parts = path.split(separator: ":", omittingEmptySubsequences: false)
         let location = parts.count >= 3 ? (Int(parts[parts.count - 2]), Int(parts[parts.count - 1])) : (nil, nil)
@@ -356,7 +347,7 @@ enum DreamderAutomation {
         }
     }
 
-    private static func perform(actionNamed name: String?) {
+    static func perform(actionNamed name: String?) {
         guard let name else { return }
         NSApp.activate(ignoringOtherApps: true)
         let selector = NSSelectorFromString(name)
@@ -372,12 +363,15 @@ enum DreamderAutomation {
         }
     }
 
-    private static func snapshot(to path: String?) {
+    static func snapshot(
+        to path: String?,
+        windowImage: @MainActor (NSWindow) -> CGImage? = DreamderAutomation.windowServerImage(of:)
+    ) {
         let directory = URL(fileURLWithPath: path ?? NSTemporaryDirectory())
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let windows = NSApp.orderedWindows.filter { $0.isVisible && $0.frame.width > 300 && $0.parent == nil }
         for (index, window) in windows.enumerated() {
-            guard let image = capture(window) else { continue }
+            guard let image = capture(window, windowImage: windowImage) else { continue }
             let rep = NSBitmapImageRep(cgImage: image)
             let url = directory.appendingPathComponent("window-\(index).png")
             try? rep.representation(using: .png, properties: [:])?.write(to: url)
@@ -393,8 +387,8 @@ enum DreamderAutomation {
         )
     }
 
-    private static func capture(_ window: NSWindow) -> CGImage? {
-        guard let base = render(window), window.frame.width > 0 else { return nil }
+    private static func capture(_ window: NSWindow, windowImage: @MainActor (NSWindow) -> CGImage?) -> CGImage? {
+        guard let base = render(window, windowImage: windowImage), window.frame.width > 0 else { return nil }
         let layers = [window] + descendants(of: window)
         let union = layers.map(\.frame).reduce(window.frame) { $0.union($1) }
         let scale = CGFloat(base.width) / window.frame.width
@@ -408,7 +402,7 @@ enum DreamderAutomation {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return base }
         for layer in layers {
-            let image = layer === window ? base : render(layer)
+            let image = layer === window ? base : render(layer, windowImage: windowImage)
             guard let image else { continue }
             context.draw(
                 image,
@@ -433,13 +427,17 @@ enum DreamderAutomation {
         return unsafeBitCast(symbol, to: WindowListCreateImage.self)
     }()
 
-    private static func render(_ window: NSWindow) -> CGImage? {
-        if let image = windowListCreateImage?(
+    static func windowServerImage(of window: NSWindow) -> CGImage? {
+        windowListCreateImage?(
             .null,
             .optionIncludingWindow,
             CGWindowID(window.windowNumber),
             [.bestResolution, .boundsIgnoreFraming]
-        )?.takeRetainedValue() {
+        )?.takeRetainedValue()
+    }
+
+    private static func render(_ window: NSWindow, windowImage: @MainActor (NSWindow) -> CGImage?) -> CGImage? {
+        if let image = windowImage(window) {
             return image
         }
         guard let view = window.contentView?.superview ?? window.contentView,

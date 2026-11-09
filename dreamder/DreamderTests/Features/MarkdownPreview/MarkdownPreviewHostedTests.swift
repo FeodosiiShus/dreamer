@@ -6,7 +6,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct MarkdownPreviewHostedTests {
     private static let document = "# Title\n\nbody\n"
 

@@ -1,14 +1,16 @@
 import SwiftUI
 
 struct EditorEmptyStateView: View {
+    let sendAction: @MainActor (Selector) -> Void
+
+    init(sendAction: @escaping @MainActor (Selector) -> Void) {
+        self.sendAction = sendAction
+    }
+
     var body: some View {
         VStack(spacing: 8) {
-            hint(title: "Search Everywhere", keys: "Double ⇧") {
-                NSApp.sendAction(#selector(DreamderWindowController.openSearchEverywhere(_:)), to: nil, from: nil)
-            }
-            hint(title: "Go to File", keys: "⇧⌘O") {
-                NSApp.sendAction(#selector(DreamderWindowController.openQuickly(_:)), to: nil, from: nil)
-            }
+            hint(title: "Search Everywhere", keys: "Double ⇧", action: openSearchEverywhere)
+            hint(title: "Go to File", keys: "⇧⌘O", action: openQuickly)
             Text("Drop files here to open them")
                 .font(Islands.uiFont)
                 .foregroundStyle(Islands.secondaryForeground)
@@ -17,7 +19,15 @@ struct EditorEmptyStateView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func hint(title: String, keys: String, action: @escaping () -> Void) -> some View {
+    func openSearchEverywhere() {
+        sendAction(#selector(DreamderWindowController.openSearchEverywhere(_:)))
+    }
+
+    func openQuickly() {
+        sendAction(#selector(DreamderWindowController.openQuickly(_:)))
+    }
+
+    private func hint(title: String, keys: String, action: @escaping @MainActor () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Text(title)

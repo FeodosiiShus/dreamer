@@ -5,13 +5,36 @@
 //  Created by Axel Martinez on 2/4/24.
 //
 
+import CryptoKit
 import Foundation
 import Observation
 
 /// Dreamder task that will be executed by the task manager.
 @Observable
 class CETask: Identifiable, Hashable, Codable {
-    var id = UUID()
+    static let workspaceSource = "workspace"
+    static let defaultTarget = "My Mac"
+
+    var source: String = CETask.workspaceSource
+    @ObservationIgnored private var pinnedID: UUID?
+
+    var id: UUID {
+        if let pinnedID { return pinnedID }
+        let resolved = name.isEmpty ? UUID() : Self.stableID(source: source, name: name)
+        pinnedID = resolved
+        return resolved
+    }
+
+    nonisolated static func stableID(source: String, name: String) -> UUID {
+        var bytes = Array(SHA256.hash(data: Data("\(source)\u{0}\(name)".utf8)).prefix(16))
+        bytes[6] = (bytes[6] & 0x0F) | 0x50
+        bytes[8] = (bytes[8] & 0x3F) | 0x80
+        return UUID(uuid: (
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+        ))
+    }
+
     var name: String = ""
     var target: String = ""
     var workingDirectory: String = ""
@@ -23,13 +46,15 @@ class CETask: Identifiable, Hashable, Codable {
         target: String = "",
         workingDirectory: String = "",
         command: String = "",
-        environmentVariables: [CETask.EnvironmentVariable] = []
+        environmentVariables: [CETask.EnvironmentVariable] = [],
+        source: String = CETask.workspaceSource
     ) {
         self.name = name
         self.target = target
         self.workingDirectory = workingDirectory
         self.command = command
         self.environmentVariables = environmentVariables
+        self.source = source
     }
 
     init(target: String) {
@@ -98,11 +123,10 @@ class CETask: Identifiable, Hashable, Codable {
         if !name.isEmpty {
             try container.encode(name, forKey: .name)
         }
-        if !target.isEmpty && target != "My Mac" {
+        if !target.isEmpty && target != CETask.defaultTarget {
             try container.encode(target, forKey: .target)
         }
 
-        // TODO: Only save if it isn't the workspaces default directory
         if !workingDirectory.isEmpty {
             try container.encode(workingDirectory, forKey: .workingDirectory)
         }
@@ -125,18 +149,22 @@ extension CETask {
     static func == (lhs: CETask, rhs: CETask) -> Bool {
         return lhs.id == rhs.id &&
         lhs.name == rhs.name &&
-        lhs.target == rhs.target &&
+        lhs.persistedTarget == rhs.persistedTarget &&
         lhs.workingDirectory == rhs.workingDirectory &&
         lhs.command == rhs.command &&
-        lhs.environmentVariables == rhs.environmentVariables
+        lhs.environmentVariablesDictionary == rhs.environmentVariablesDictionary
+    }
+
+    private var persistedTarget: String {
+        target == CETask.defaultTarget ? "" : target
     }
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
         hasher.combine(name)
-        hasher.combine(target)
+        hasher.combine(persistedTarget)
         hasher.combine(workingDirectory)
         hasher.combine(command)
-        hasher.combine(environmentVariables)
+        hasher.combine(environmentVariablesDictionary)
     }
 }

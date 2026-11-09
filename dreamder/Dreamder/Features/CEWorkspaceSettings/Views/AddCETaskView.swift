@@ -15,35 +15,44 @@ struct AddCETaskView: View {
     @State private var newTask = CETask(target: "My Mac")
 
     var body: some View {
+        AddCETaskContent(
+            task: newTask,
+            settings: workspaceSettingsManager,
+            dismiss: dismiss.callAsFunction
+        )
+    }
+}
+
+struct AddCETaskContent: View {
+    let task: CETask
+    let settings: CEWorkspaceSettings
+    let dismiss: @MainActor () -> Void
+
+    var body: some View {
         VStack(spacing: 0) {
-            CETaskFormView(task: newTask)
+            CETaskFormView(task: task)
             Divider()
             HStack {
-                Button {
-                    dismiss()
-                } label: {
+                Button(action: dismiss) {
                     Text("Cancel")
                         .frame(minWidth: 56)
                 }
                 Spacer()
-                Button {
-                    workspaceSettingsManager.settings.tasks.append(newTask)
-                    try? workspaceSettingsManager.savePreferences()
-                    dismiss()
-                } label: {
+                Button(action: save) {
                     Text("Save")
                         .frame(minWidth: 56)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(newTask.isInvalid)
+                .disabled(task.isInvalid)
             }
             .padding()
         }
         .accessibilityIdentifier("AddTaskView")
     }
 
-}
-
-#Preview {
-    AddCETaskView()
+    func save() {
+        settings.settings.tasks.append(task)
+        try? settings.savePreferences()
+        dismiss()
+    }
 }

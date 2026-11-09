@@ -7,7 +7,6 @@
 
 import Foundation
 
-// TODO: DOCS (Ziyuan Zhao)
 struct SearchModeModel: Hashable {
     let title: String
     let children: [SearchModeModel]

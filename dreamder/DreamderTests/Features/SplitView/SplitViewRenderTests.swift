@@ -96,7 +96,7 @@ private struct RecordedShiftingPane: View {
 }
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct SplitViewRenderTests {
     private struct Harness {
         let window: NSWindow
@@ -124,10 +124,10 @@ struct SplitViewRenderTests {
         return Harness(window: window, host: host)
     }
 
-    private func settle(_ harness: Harness) {
+    private func settle(_ harness: Harness) async throws {
         for _ in 0..<6 {
             harness.host.layoutSubtreeIfNeeded()
-            RunLoop.main.run(until: Date().addingTimeInterval(0.03))
+            try await Task.sleep(for: .milliseconds(30))
         }
     }
 
@@ -150,7 +150,7 @@ struct SplitViewRenderTests {
     }
 
     @Test
-    func twoPanesHorizontalSplitEvenly() {
+    func twoPanesHorizontalSplitEvenly() async throws {
         let recorder = PaneFrameRecorder()
         let harness = makeHarness(size: CGSize(width: 407, height: 300)) {
             SplitView(axis: .horizontal, dividerStyle: .system(.thin)) {
@@ -158,14 +158,14 @@ struct SplitViewRenderTests {
                 RecordedPane(index: 1, recorder: recorder)
             }
         }
-        settle(harness)
+        try await settle(harness)
 
         expectFrame(recorder.frames[0], x: 0, y: 0, width: 203, height: 300)
         expectFrame(recorder.frames[1], x: 204, y: 0, width: 203, height: 300)
     }
 
     @Test
-    func twoPanesVerticalSplitEvenly() {
+    func twoPanesVerticalSplitEvenly() async throws {
         let recorder = PaneFrameRecorder()
         let harness = makeHarness(size: CGSize(width: 300, height: 407)) {
             SplitView(axis: .vertical, dividerStyle: .system(.thin)) {
@@ -173,14 +173,14 @@ struct SplitViewRenderTests {
                 RecordedPane(index: 1, recorder: recorder)
             }
         }
-        settle(harness)
+        try await settle(harness)
 
         expectFrame(recorder.frames[0], x: 0, y: 0, width: 300, height: 203)
         expectFrame(recorder.frames[1], x: 0, y: 204, width: 300, height: 203)
     }
 
     @Test
-    func threePanesHorizontalUseEditorDividerThickness() {
+    func threePanesHorizontalUseEditorDividerThickness() async throws {
         let recorder = PaneFrameRecorder()
         let harness = makeHarness(size: CGSize(width: 306, height: 200)) {
             SplitView(axis: .horizontal, dividerStyle: .editorDivider) {
@@ -189,7 +189,7 @@ struct SplitViewRenderTests {
                 RecordedPane(index: 2, recorder: recorder)
             }
         }
-        settle(harness)
+        try await settle(harness)
 
         expectFrame(recorder.frames[0], x: 0, y: 0, width: 100, height: 200)
         expectFrame(recorder.frames[1], x: 103, y: 0, width: 100, height: 200)
@@ -197,7 +197,7 @@ struct SplitViewRenderTests {
     }
 
     @Test
-    func threePanesVerticalFollowWeights() {
+    func threePanesVerticalFollowWeights() async throws {
         let recorder = PaneFrameRecorder()
         let model = WeightsModel([0.5, 0.25, 0.25])
         let harness = makeHarness(size: CGSize(width: 200, height: 402)) {
@@ -207,7 +207,7 @@ struct SplitViewRenderTests {
                 RecordedPane(index: 2, recorder: recorder)
             }
         }
-        settle(harness)
+        try await settle(harness)
 
         expectFrame(recorder.frames[0], x: 0, y: 0, width: 200, height: 200)
         expectFrame(recorder.frames[1], x: 0, y: 201, width: 200, height: 100)
@@ -216,7 +216,7 @@ struct SplitViewRenderTests {
     }
 
     @Test
-    func collapsedPaneTakesNoSpaceAndLosesItsDivider() {
+    func collapsedPaneTakesNoSpaceAndLosesItsDivider() async throws {
         let recorder = PaneFrameRecorder()
         let harness = makeHarness(size: CGSize(width: 201, height: 100)) {
             SplitView(axis: .horizontal, dividerStyle: .system(.thin)) {
@@ -227,7 +227,7 @@ struct SplitViewRenderTests {
                 RecordedPane(index: 2, recorder: recorder)
             }
         }
-        settle(harness)
+        try await settle(harness)
 
         expectFrame(recorder.frames[0], x: 0, y: 0, width: 100, height: 100)
         expectFrame(recorder.frames[1], x: 101, y: 0, width: 0, height: 100)
@@ -235,7 +235,7 @@ struct SplitViewRenderTests {
     }
 
     @Test
-    func collapsedFlagIsIgnoredWithoutCollapsable() {
+    func collapsedFlagIsIgnoredWithoutCollapsable() async throws {
         let recorder = PaneFrameRecorder()
         let harness = makeHarness(size: CGSize(width: 201, height: 100)) {
             SplitView(axis: .horizontal, dividerStyle: .system(.thin)) {
@@ -244,14 +244,14 @@ struct SplitViewRenderTests {
                     .collapsed(.constant(true))
             }
         }
-        settle(harness)
+        try await settle(harness)
 
         expectFrame(recorder.frames[0], x: 0, y: 0, width: 100, height: 100)
         expectFrame(recorder.frames[1], x: 101, y: 0, width: 100, height: 100)
     }
 
     @Test
-    func explicitMinimumAndMaximumAreHonoured() {
+    func explicitMinimumAndMaximumAreHonoured() async throws {
         let recorder = PaneFrameRecorder()
         let model = WeightsModel([0.1, 0.9])
         let harness = makeHarness(size: CGSize(width: 401, height: 100)) {
@@ -261,7 +261,7 @@ struct SplitViewRenderTests {
                 RecordedPane(index: 1, recorder: recorder)
             }
         }
-        settle(harness)
+        try await settle(harness)
 
         expectFrame(recorder.frames[0], x: 0, y: 0, width: 150, height: 100)
         expectFrame(recorder.frames[1], x: 151, y: 0, width: 250, height: 100)
@@ -274,14 +274,14 @@ struct SplitViewRenderTests {
                 RecordedPane(index: 1, recorder: capped)
             }
         }
-        settle(cappedHarness)
+        try await settle(cappedHarness)
 
         expectFrame(capped.frames[0], x: 0, y: 0, width: 100, height: 100)
         expectFrame(capped.frames[1], x: 101, y: 0, width: 300, height: 100)
     }
 
     @Test
-    func weightsBindingDrivesLayoutAndRoundTrips() {
+    func weightsBindingDrivesLayoutAndRoundTrips() async throws {
         let recorder = PaneFrameRecorder()
         let model = WeightsModel([0.75, 0.25])
         let harness = makeHarness(size: CGSize(width: 401, height: 100)) {
@@ -290,14 +290,14 @@ struct SplitViewRenderTests {
                 RecordedPane(index: 1, recorder: recorder)
             }
         }
-        settle(harness)
+        try await settle(harness)
 
         expectFrame(recorder.frames[0], x: 0, y: 0, width: 300, height: 100)
         expectFrame(recorder.frames[1], x: 301, y: 0, width: 100, height: 100)
         #expect(model.weights == [0.75, 0.25])
 
         model.weights = [0.25, 0.75]
-        settle(harness)
+        try await settle(harness)
 
         expectFrame(recorder.frames[0], x: 0, y: 0, width: 100, height: 100)
         expectFrame(recorder.frames[1], x: 101, y: 0, width: 300, height: 100)
@@ -305,7 +305,7 @@ struct SplitViewRenderTests {
     }
 
     @Test
-    func mismatchedWeightsAreReplacedByNormalizedEqualWeights() {
+    func mismatchedWeightsAreReplacedByNormalizedEqualWeights() async throws {
         let recorder = PaneFrameRecorder()
         let model = WeightsModel([1])
         let harness = makeHarness(size: CGSize(width: 301, height: 100)) {
@@ -315,7 +315,7 @@ struct SplitViewRenderTests {
                 RecordedPane(index: 2, recorder: recorder)
             }
         }
-        settle(harness)
+        try await settle(harness)
 
         #expect(model.weights.count == 3)
         #expect(model.weights.allSatisfy { abs($0 - 1.0 / 3) < 1e-9 })
@@ -325,20 +325,20 @@ struct SplitViewRenderTests {
     }
 
     @Test
-    func structureChangeRewritesWeightsAndLayout() {
+    func structureChangeRewritesWeightsAndLayout() async throws {
         let recorder = PaneFrameRecorder()
         let model = WeightsModel([0.5, 0.5], paneCount: 2)
         let harness = makeHarness(size: CGSize(width: 301, height: 100)) {
             CountedSplit(model: model, recorder: recorder)
         }
-        settle(harness)
+        try await settle(harness)
 
         #expect(model.weights == [0.5, 0.5])
         expectFrame(recorder.frames[0], x: 0, y: 0, width: 150, height: 100)
         expectFrame(recorder.frames[1], x: 151, y: 0, width: 150, height: 100)
 
         model.paneCount = 3
-        settle(harness)
+        try await settle(harness)
 
         #expect(model.weights.count == 3)
         #expect(model.weights.allSatisfy { abs($0 - 1.0 / 3) < 1e-9 })
@@ -348,7 +348,7 @@ struct SplitViewRenderTests {
     }
 
     @Test
-    func layoutIsStableAcrossRepeatedPasses() {
+    func layoutIsStableAcrossRepeatedPasses() async throws {
         let recorder = PaneFrameRecorder()
         let model = WeightsModel([0.3, 0.3, 0.4])
         let harness = makeHarness(size: CGSize(width: 613, height: 377)) {
@@ -359,12 +359,12 @@ struct SplitViewRenderTests {
                 RecordedPane(index: 2, recorder: recorder)
             }
         }
-        settle(harness)
+        try await settle(harness)
         let before = recorder.frames
 
         harness.host.layoutSubtreeIfNeeded()
         harness.host.layoutSubtreeIfNeeded()
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        try await Task.sleep(for: .milliseconds(50))
         harness.host.layoutSubtreeIfNeeded()
 
         #expect(before.count == 3)
@@ -374,7 +374,7 @@ struct SplitViewRenderTests {
     }
 
     @Test
-    func paneWithChangingFittingSizeDoesNotDisturbFrames() {
+    func paneWithChangingFittingSizeDoesNotDisturbFrames() async throws {
         let recorder = PaneFrameRecorder()
         let model = WeightsModel([0.5, 0.5])
         let harness = makeHarness(size: CGSize(width: 401, height: 100)) {
@@ -383,7 +383,7 @@ struct SplitViewRenderTests {
                 RecordedPane(index: 1, recorder: recorder)
             }
         }
-        settle(harness)
+        try await settle(harness)
 
         expectFrame(recorder.frames[0], x: 0, y: 0, width: 200, height: 100)
         expectFrame(recorder.frames[1], x: 201, y: 0, width: 200, height: 100)
@@ -391,11 +391,46 @@ struct SplitViewRenderTests {
 
         for _ in 0..<5 {
             harness.host.layoutSubtreeIfNeeded()
-            RunLoop.main.run(until: Date().addingTimeInterval(0.03))
+            try await Task.sleep(for: .milliseconds(30))
             #expect(recorder.frames == before)
         }
         #expect(model.weights == [0.5, 0.5])
         #expect(!harness.host.needsLayout)
         #expect(!harness.host.needsUpdateConstraints)
+    }
+
+    @Test
+    func unspecifiedProposalMeasuresTheMinimumPaneLengthsWithoutCrossExtent() async throws {
+        let row = PaneFrameRecorder()
+        let rowHarness = makeHarness(size: CGSize(width: 301, height: 100)) {
+            SplitView(axis: .horizontal, dividerStyle: .system(.thin)) {
+                Color.clear.splitPaneMinLength(40)
+                Color.clear.splitPaneMinLength(40)
+            }
+            .fixedSize()
+            .onGeometryChange(for: CGRect.self) { proxy in
+                proxy.frame(in: .named("split"))
+            } action: { frame in
+                row.frames[0] = frame
+            }
+        }
+        let column = PaneFrameRecorder()
+        let columnHarness = makeHarness(size: CGSize(width: 100, height: 301)) {
+            SplitView(axis: .vertical, dividerStyle: .system(.thin)) {
+                Color.clear.splitPaneMinLength(40)
+                Color.clear.splitPaneMinLength(40)
+            }
+            .fixedSize()
+            .onGeometryChange(for: CGRect.self) { proxy in
+                proxy.frame(in: .named("split"))
+            } action: { frame in
+                column.frames[0] = frame
+            }
+        }
+        try await settle(rowHarness)
+        try await settle(columnHarness)
+
+        #expect(row.frames[0]?.size == CGSize(width: 81, height: 0))
+        #expect(column.frames[0]?.size == CGSize(width: 0, height: 81))
     }
 }

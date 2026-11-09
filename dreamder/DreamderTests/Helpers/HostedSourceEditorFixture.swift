@@ -118,6 +118,11 @@ struct HostedSourceEditorFixture {
             GitGutterCoordinator(codeFile: document),
             DiagnosticHighlightCoordinator(codeFile: document),
             InlayHintCoordinator(codeFile: document),
+            OnTypeFormattingCoordinator(codeFile: document),
+            SelectionRangeCoordinator(editorInstance: editorInstance, codeFile: document),
+            FoldingCoordinator(editorInstance: editorInstance, codeFile: document),
+            SignatureHelpCoordinator(editorInstance: editorInstance, codeFile: document),
+            RecentLocationsCoordinator(editorInstance: editorInstance, codeFile: document),
             IndentGuideCoordinator(),
             EditorBackgroundCoordinator()
         ]

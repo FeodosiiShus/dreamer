@@ -23,6 +23,8 @@ final class GitBlameCoordinator: TextViewCoordinator {
 
     private weak var editorInstance: EditorInstance?
     private let codeFile: CodeFileDocument
+    private let reloadDebounce: TimeInterval
+    private let documentEditedChanges: AsyncStream<Bool>?
     private weak var controller: TextViewController?
     private weak var textView: TextView?
     private weak var workspace: WorkspaceDocument?
@@ -32,6 +34,7 @@ final class GitBlameCoordinator: TextViewCoordinator {
     private var displayedInlineText: String?
     private var cancellables = Set<AnyCancellable>()
     private var repositoryObservation: Task<Void, Never>?
+    private var documentEditedObservation: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
     private var isObservingScroll = false
     private var blameLines: [Int: GitBlameLine] = [:]
@@ -45,15 +48,23 @@ final class GitBlameCoordinator: TextViewCoordinator {
 
     private(set) var isAnnotating = false
 
-    init(editorInstance: EditorInstance, codeFile: CodeFileDocument) {
+    init(
+        editorInstance: EditorInstance,
+        codeFile: CodeFileDocument,
+        reloadDebounce: TimeInterval = 2.5,
+        documentEditedChanges: AsyncStream<Bool>? = nil
+    ) {
         self.editorInstance = editorInstance
         self.codeFile = codeFile
+        self.reloadDebounce = reloadDebounce
+        self.documentEditedChanges = documentEditedChanges
         register()
     }
 
     isolated deinit {
         observers.forEach { NotificationCenter.default.removeObserver($0) }
         repositoryObservation?.cancel()
+        documentEditedObservation?.cancel()
     }
 
     func prepareCoordinator(controller: TextViewController) {
@@ -90,6 +101,8 @@ final class GitBlameCoordinator: TextViewCoordinator {
         generation += 1
         isSubscribed = false
         cancellables.removeAll()
+        documentEditedObservation?.cancel()
+        documentEditedObservation = nil
         repositoryObservation?.cancel()
         repositoryObservation = nil
         observers.forEach { NotificationCenter.default.removeObserver($0) }
@@ -213,19 +226,18 @@ final class GitBlameCoordinator: TextViewCoordinator {
         isSubscribed = true
 
         codeFile.contentCoordinator.textUpdatePublisher
-            .debounce(for: .seconds(2.5), scheduler: RunLoop.main)
+            .debounce(for: .seconds(reloadDebounce), scheduler: RunLoop.main)
             .sink { [weak self] _ in
                 self?.reload()
             }
             .store(in: &cancellables)
 
-        codeFile.isDocumentEditedPublisher
-            .filter { !$0 }
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
+        let editedChanges = documentEditedChanges ?? Self.editedChanges(of: codeFile)
+        documentEditedObservation = Task { [weak self] in
+            for await isEdited in editedChanges where !isEdited {
                 self?.reload()
             }
-            .store(in: &cancellables)
+        }
 
         if let sourceControlManager = workspace?.sourceControlManager {
             repositoryObservation = Task { [weak self, weak sourceControlManager] in
@@ -241,6 +253,22 @@ final class GitBlameCoordinator: TextViewCoordinator {
                     }
                 }
             }
+        }
+    }
+
+    private static func editedChanges(of codeFile: CodeFileDocument) -> AsyncStream<Bool> {
+        AsyncStream { continuation in
+            let observation = Task { @MainActor in
+                var isFirst = true
+                for await isEdited in Observations({ codeFile.isEdited }) {
+                    if isFirst {
+                        isFirst = false
+                        continue
+                    }
+                    continuation.yield(isEdited)
+                }
+            }
+            continuation.onTermination = { _ in observation.cancel() }
         }
     }
 

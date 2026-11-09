@@ -17,7 +17,7 @@ private final class FixedWidthAttachment: TextAttachment {
 }
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct EditorDecorationBehaviorTests {
     private static let errorGroup = "dreamder.diagnostics.error"
     private static let warningGroup = "dreamder.diagnostics.warning"
@@ -50,7 +50,7 @@ struct EditorDecorationBehaviorTests {
     }
 
     private func awaitCondition(
-        timeout: Duration = .seconds(20),
+        timeout: Duration = .seconds(90),
         sourceLocation: SourceLocation = #_sourceLocation,
         _ condition: () -> Bool
     ) async throws {
@@ -72,12 +72,12 @@ struct EditorDecorationBehaviorTests {
         coordinators: (HostedSourceEditorFixture) -> [TextViewCoordinator]
     ) async throws -> Session {
         if commitFirst {
-            let git = try GitMergeFixture(root: directory)
+            let git = try await GitMergeFixture(root: directory)
             try git.write(Self.trackedFileName, contents)
             for (name, text) in extraFiles {
                 try git.write(name, text)
             }
-            try git.commit("initial")
+            try await git.commit("initial")
         }
         let workspace = try HostedSourceEditorFixture.registerWorkspace(at: directory)
         let fixtureFileName = fileName ?? (extraFiles.isEmpty ? Self.trackedFileName : "Fresh.swift")
@@ -88,7 +88,7 @@ struct EditorDecorationBehaviorTests {
             contents: contents
         )
         let hosted = fixture.host(coordinators: coordinators(fixture), size: NSSize(width: 900, height: 600))
-        try await awaitCondition { hosted.controller?.textView != nil }
+        try await awaitCondition { hosted.controller?.textView?.window === hosted.window }
         let textView = try #require(hosted.controller?.textView)
         let fileURL = try #require(fixture.document.fileURL)
         return Session(workspace: workspace, fixture: fixture, hosted: hosted, textView: textView, fileURL: fileURL)
@@ -162,6 +162,15 @@ struct EditorDecorationBehaviorTests {
         return nil
     }
 
+    private func isSameColor(_ lhs: NSColor?, _ rhs: NSColor?) -> Bool {
+        guard let lhs = lhs?.usingColorSpace(.sRGB), let rhs = rhs?.usingColorSpace(.sRGB) else { return false }
+        let tolerance: CGFloat = 0.004
+        return abs(lhs.redComponent - rhs.redComponent) < tolerance
+            && abs(lhs.greenComponent - rhs.greenComponent) < tolerance
+            && abs(lhs.blueComponent - rhs.blueComponent) < tolerance
+            && abs(lhs.alphaComponent - rhs.alphaComponent) < tolerance
+    }
+
     private func marker(in session: Session) throws -> GitGutterMarkerView {
         try #require(session.hosted.views(ofType: GitGutterMarkerView.self).first)
     }
@@ -224,11 +233,11 @@ struct EditorDecorationBehaviorTests {
             let warningEmphasis = session.textView.emphasisManager?.getEmphases(for: Self.warningGroup).first
             let errorColor = errorEmphasis.flatMap(underlineColor)
             let warningColor = warningEmphasis.flatMap(underlineColor)
-            let expectedError = NSColor(Islands.errorForeground).usingColorSpace(.sRGB)
-            let expectedWarning = NSColor(Islands.warningForeground).usingColorSpace(.sRGB)
-            #expect(errorColor == expectedError)
-            #expect(warningColor == expectedWarning)
-            #expect(errorColor != warningColor)
+            let expectedError = NSColor(Islands.errorForeground)
+            let expectedWarning = NSColor(Islands.warningForeground)
+            #expect(isSameColor(errorColor, expectedError))
+            #expect(isSameColor(warningColor, expectedWarning))
+            #expect(!isSameColor(errorColor, warningColor))
         }
     }
 

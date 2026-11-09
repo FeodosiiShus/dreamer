@@ -25,10 +25,6 @@ extension NSApplication {
         }
     }
 
-    func findWindow(_ id: SceneID) -> NSWindow? {
-        windows.first { $0.identifier?.rawValue == id.rawValue }
-    }
-
     var openSwiftUIWindows: Int {
         NSApp
             .windows

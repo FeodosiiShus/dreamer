@@ -4,7 +4,7 @@ import Testing
 
 extension NotificationSuites {
     @MainActor
-    @Suite
+    @Suite(.uiGate)
     struct NotificationPanelViewModelTests {
         private let manager = NotificationManager.shared
 

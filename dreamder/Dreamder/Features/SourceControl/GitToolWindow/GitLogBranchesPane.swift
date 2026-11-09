@@ -21,10 +21,9 @@ struct GitLogBranchesPane: View {
                     title: "HEAD",
                     subtitle: sourceControlManager.currentBranch?.name,
                     icon: "vcs/currentBranchLabel",
-                    isSelected: viewModel.filters.branch == nil
-                ) {
-                    select(nil)
-                }
+                    isSelected: viewModel.filters.branch == nil,
+                    action: selectionAction(nil)
+                )
 
                 if !localBranches.isEmpty {
                     groupHeader("Local")
@@ -33,10 +32,9 @@ struct GitLogBranchesPane: View {
                             title: branch.name,
                             subtitle: branch.upstream,
                             icon: "vcs/branch",
-                            isSelected: viewModel.filters.branch == .fromBranch(branch.logFilterName)
-                        ) {
-                            select(.fromBranch(branch.logFilterName))
-                        }
+                            isSelected: viewModel.filters.branch == .fromBranch(branch.logFilterName),
+                            action: selectionAction(.fromBranch(branch.logFilterName))
+                        )
                     }
                 }
 
@@ -47,10 +45,9 @@ struct GitLogBranchesPane: View {
                             title: branch.name,
                             subtitle: nil,
                             icon: "vcs/branch",
-                            isSelected: viewModel.filters.branch == .fromBranch(branch.logFilterName)
-                        ) {
-                            select(.fromBranch(branch.logFilterName))
-                        }
+                            isSelected: viewModel.filters.branch == .fromBranch(branch.logFilterName),
+                            action: selectionAction(.fromBranch(branch.logFilterName))
+                        )
                     }
                 }
             }
@@ -67,9 +64,11 @@ struct GitLogBranchesPane: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func select(_ filter: GitLogBranchFilter?) {
-        Task {
-            await viewModel.setBranchFilter(filter)
+    func selectionAction(_ filter: GitLogBranchFilter?) -> () -> Void {
+        {
+            Task {
+                await viewModel.setBranchFilter(filter)
+            }
         }
     }
 }
@@ -106,12 +105,21 @@ struct GitLogBranchRow: View {
         .frame(height: Islands.listRowHeight)
         .background(
             RoundedRectangle(cornerRadius: Islands.rowRadius)
-                .fill(isSelected ? Islands.actionHover : (isHovering ? Islands.hover : Color.clear))
+                .fill(Self.background(isSelected: isSelected, isHovering: isHovering))
                 .padding(.horizontal, 4)
         )
         .contentShape(Rectangle())
         .onTapGesture(perform: action)
-        .onHover { isHovering = $0 }
+        .onHover(perform: setHovering)
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
+    }
+
+    static func background(isSelected: Bool, isHovering: Bool) -> Color {
+        if isSelected { return Islands.actionHover }
+        return isHovering ? Islands.hover : Color.clear
     }
 }
 

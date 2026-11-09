@@ -95,6 +95,7 @@ nonisolated struct StructureNode: Identifiable, Equatable, Sendable {
     var children: [StructureNode]
     var rangeStartLine: Int?
     var rangeEndLine: Int?
+    var isGroup = false
 
     func contains(line target: Int) -> Bool {
         guard let rangeEndLine else { return false }
@@ -156,7 +157,7 @@ nonisolated enum StructureTreeBuilder {
 
     static func nodes(from extracted: [ExtractedSymbol], text: String) -> [StructureNode] {
         let lines = text
-            .split(separator: "\n", omittingEmptySubsequences: false)
+            .split(omittingEmptySubsequences: false) { $0 == "\n" || $0 == "\r\n" }
             .map { String($0).replacingOccurrences(of: "\r", with: "") }
         let items: [IndentedSymbol] = extracted.enumerated().map { index, symbol in
             let lineIndex = min(max(symbol.line - 1, 0), max(lines.count - 1, 0))
@@ -186,12 +187,12 @@ nonisolated enum StructureTreeBuilder {
         return build(ranged, index: &index, parentIndent: -1)
     }
 
-    static func rows(nodes: [StructureNode], collapsed: Set<String>) -> [StructureRow] {
+    static func rows(nodes: [StructureNode], collapsed: Set<String>, expandsAll: Bool = false) -> [StructureRow] {
         var result: [StructureRow] = []
         func append(_ nodes: [StructureNode], depth: Int) {
             for node in nodes {
                 result.append(StructureRow(node: node, depth: depth))
-                if !collapsed.contains(node.id), !node.children.isEmpty {
+                if expandsAll || !collapsed.contains(node.id), !node.children.isEmpty {
                     append(node.children, depth: depth + 1)
                 }
             }

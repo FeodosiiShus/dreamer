@@ -21,10 +21,6 @@ struct CodeFileView: View {
     /// Any coordinators passed to the view.
     private var textViewCoordinators: [TextViewCoordinator]
 
-    @AppSettings(\.textEditing.defaultTabWidth)
-    var defaultTabWidth
-    @AppSettings(\.textEditing.indentOption)
-    var indentOption
     @AppSettings(\.textEditing.lineHeightMultiple)
     var lineHeightMultiple
     @AppSettings(\.textEditing.wrapLinesToEditorWidth)
@@ -60,7 +56,7 @@ struct CodeFileView: View {
 
     @Environment(UndoManagerRegistration.self) private var undoRegistration
 
-    private let themeModel: ThemeModel = .shared
+    private let themeModel: ThemeModel
 
     private let isEditable: Bool
 
@@ -68,13 +64,15 @@ struct CodeFileView: View {
         editorInstance: EditorInstance,
         codeFile: CodeFileDocument,
         textViewCoordinators: [TextViewCoordinator] = [],
-        isEditable: Bool = true
+        isEditable: Bool = true,
+        themeModel: ThemeModel = .shared
     ) {
         self.editorInstance = editorInstance
         self.codeFile = codeFile
 
         self.textViewCoordinators = textViewCoordinators
         self.isEditable = isEditable
+        self.themeModel = themeModel
 
         if let openOptions = codeFile.openOptions {
             codeFile.openOptions = nil
@@ -104,19 +102,37 @@ struct CodeFileView: View {
 
     var body: some View {
         if let theme = currentTheme {
-            sourceEditor(
-                theme: theme,
-                session: sessionStore.session(editorInstance: editorInstance, codeFile: codeFile)
-            )
+            VStack(spacing: 0) {
+                if let error = codeFile.readError {
+                    CodeFileReadErrorView(error: error)
+                } else {
+                    if let notice = codeFile.notice {
+                        CodeFileNoticeBanner(notice: notice)
+                    }
+                    sourceEditor(
+                        theme: theme,
+                        session: sessionStore.session(editorInstance: editorInstance, codeFile: codeFile)
+                    )
+                }
+            }
         } else {
             Color.clear
         }
+    }
+
+    private var isIntelligenceDisabled: Bool {
+        codeFile.isTooLargeForIntelligence || codeFile.isBinary
+    }
+
+    private var editorLanguage: CodeLanguage {
+        isIntelligenceDisabled ? .default : codeFile.getLanguage()
     }
 
     private func coordinators(for session: CodeFileViewSession) -> [TextViewCoordinator] {
         var coordinators = textViewCoordinators
         coordinators.append(editorInstance.rangeTranslator)
         coordinators.append(codeFile.contentCoordinator)
+        coordinators.append(codeFile.textViewBinder)
         coordinators.append(codeFile.languageServerObjects.textCoordinator)
         coordinators.append(contentsOf: session.coordinators)
         return coordinators
@@ -127,10 +143,11 @@ struct CodeFileView: View {
     }
 
     private var wrapsLines: Bool {
-        isMarkdown ? (codeFile.wrapLines ?? true) : wrapLinesToEditorWidth
+        editorInstance.wrapLinesOverride ?? (isMarkdown ? (codeFile.wrapLines ?? true) : wrapLinesToEditorWidth)
     }
 
     private func highlightProviders(for session: CodeFileViewSession) -> [HighlightProviding] {
+        guard !isIntelligenceDisabled else { return [] }
         var providers: [HighlightProviding] = [
             codeFile.languageServerObjects.highlightProvider,
             session.treeSitterClient
@@ -159,14 +176,21 @@ struct CodeFileView: View {
         }
     }
 
+    private var textStorage: NSTextStorage {
+        if let content = codeFile.content {
+            return content
+        }
+        return CodeTextStorage()
+    }
+
     private func sourceEditor(theme: Theme, session: CodeFileViewSession) -> some View {
         _ = editorState
         let triggerCharacters = session.completionTriggerCharacters(
             requested: codeFile.languageServerObjects.completionDelegate?.completionTriggerCharacters() ?? []
         )
         return SourceEditor(
-            codeFile.content ?? CodeTextStorage(),
-            language: codeFile.getLanguage(),
+            textStorage,
+            language: editorLanguage,
             configuration: SourceEditorConfiguration(
                 appearance: .init(
                     theme: editorTheme(for: theme),
@@ -176,12 +200,12 @@ struct CodeFileView: View {
                     letterSpacing: letterSpacing,
                     wrapLines: wrapsLines,
                     useSystemCursor: useSystemCursor,
-                    tabWidth: defaultTabWidth,
+                    tabWidth: codeFile.effectiveTabWidth,
                     bracketPairEmphasis: getBracketPairEmphasis(for: theme)
                 ),
                 behavior: .init(
-                    isEditable: isEditable,
-                    indentOption: indentOption.textViewOption(),
+                    isEditable: isEditable && !codeFile.isReadOnly,
+                    indentOption: codeFile.effectiveIndentOption.textViewOption(),
                     reformatAtColumn: reformatAtColumn
                 ),
                 layout: .init(
@@ -201,27 +225,15 @@ struct CodeFileView: View {
             ),
             state: Binding(
                 get: { editorState },
-                set: { newState in
-                    let cursorPositions = newState.cursorPositions ?? []
-                    if editorInstance.cursorPositions != cursorPositions {
-                        editorInstance.cursorPositions = cursorPositions
-                    }
-                    if editorInstance.scrollPosition != newState.scrollPosition {
-                        editorInstance.scrollPosition = newState.scrollPosition
-                    }
-                    if editorInstance.findText != newState.findText {
-                        editorInstance.findText = newState.findText
-                    }
-                    if editorInstance.replaceText != newState.replaceText {
-                        editorInstance.replaceText = newState.replaceText
-                    }
-                }
+                set: { Self.adopt($0, into: editorInstance) }
             ),
             highlightProviders: highlightProviders(for: session),
             undoManager: undoRegistration.manager(forFile: editorInstance.file),
             coordinators: coordinators(for: session),
-            completionDelegate: codeFile.languageServerObjects.completionDelegate,
-            jumpToDefinitionDelegate: codeFile.languageServerObjects.jumpToDefinitionDelegate
+            completionDelegate: isIntelligenceDisabled ? nil : codeFile.languageServerObjects.completionDelegate,
+            jumpToDefinitionDelegate: isIntelligenceDisabled
+                ? nil
+                : codeFile.languageServerObjects.jumpToDefinitionDelegate
         )
         // This view needs to refresh when the codefile changes. The file URL is too stable.
         .id(session.identity)
@@ -231,21 +243,42 @@ struct CodeFileView: View {
         .onChange(of: editorInstance.requestedScrollPosition, initial: true) { _, request in
             consumeScrollRequest(request)
         }
-        .onChange(of: settingsFont) { _, newFontSetting in
+        .onChange(of: settingsFont, initial: true) { _, newFontSetting in
             font = newFontSetting.current
         }
     }
 
-    /// Determines the style of bracket emphasis based on the `bracketEmphasis` setting and the current theme.
-    /// - Returns: The emphasis style to use for bracket pair emphasis.
+    static func adopt(_ newState: SourceEditorState, into editorInstance: EditorInstance) {
+        let cursorPositions = newState.cursorPositions ?? []
+        if editorInstance.cursorPositions != cursorPositions {
+            editorInstance.cursorPositions = cursorPositions
+        }
+        if editorInstance.scrollPosition != newState.scrollPosition {
+            editorInstance.scrollPosition = newState.scrollPosition
+        }
+        if editorInstance.findText != newState.findText {
+            editorInstance.findText = newState.findText
+        }
+        if editorInstance.replaceText != newState.replaceText {
+            editorInstance.replaceText = newState.replaceText
+        }
+    }
+
     private func getBracketPairEmphasis(for theme: Theme) -> BracketPairEmphasis? {
-        let color = if Settings[\.textEditing].bracketEmphasis.useCustomColor {
-            Settings[\.textEditing].bracketEmphasis.color.nsColor
+        Self.bracketPairEmphasis(for: Settings[\.textEditing].bracketEmphasis, theme: theme)
+    }
+
+    static func bracketPairEmphasis(
+        for settings: SettingsData.TextEditingSettings.BracketPairEmphasis,
+        theme: Theme
+    ) -> BracketPairEmphasis? {
+        let color = if settings.useCustomColor {
+            settings.color.nsColor
         } else {
             theme.editor.text.nsColor.withAlphaComponent(0.8)
         }
 
-        switch Settings[\.textEditing].bracketEmphasis.highlightType {
+        switch settings.highlightType {
         case .disabled:
             return nil
         case .flash:
@@ -258,9 +291,41 @@ struct CodeFileView: View {
     }
 }
 
+struct CodeFileNoticeBanner: View {
+    let notice: CodeFileNotice
+
+    var body: some View {
+        Text(notice.message)
+            .font(Islands.smallFont)
+            .foregroundStyle(Islands.foreground)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Islands.islandRaised)
+    }
+}
+
+struct CodeFileReadErrorView: View {
+    let error: CodeFileReadError
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(error.title)
+                .font(Islands.headerTitleFont)
+                .foregroundStyle(Islands.errorForeground)
+            Text(error.detail)
+                .font(Islands.uiFont)
+                .foregroundStyle(Islands.secondaryForeground)
+                .multilineTextAlignment(.center)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 // This extension is kept here because it should not be used elsewhere in the app and may cause confusion
 // due to the similar type name from the CETV module.
-private extension SettingsData.TextEditingSettings.IndentOption {
+extension SettingsData.TextEditingSettings.IndentOption {
     func textViewOption() -> IndentOption {
         switch self.indentType {
         case .spaces:
@@ -271,7 +336,7 @@ private extension SettingsData.TextEditingSettings.IndentOption {
     }
 }
 
-private extension SettingsData.TextEditingSettings.InvisibleCharactersConfig {
+extension SettingsData.TextEditingSettings.InvisibleCharactersConfig {
     func textViewOption() -> InvisibleCharactersConfiguration {
         guard self.enabled else { return .empty }
         var config = InvisibleCharactersConfiguration(

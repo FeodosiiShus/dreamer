@@ -53,7 +53,7 @@ nonisolated struct ExtractedSymbol: Equatable, Sendable {
     var nestingLevel: Int?
 }
 
-struct SearchEverywhereSymbol: Hashable {
+nonisolated struct SearchEverywhereSymbol: Hashable, Sendable {
     let name: String
     let kind: SearchEverywhereSymbolKind
     let url: URL
@@ -73,6 +73,7 @@ nonisolated enum SymbolExtractor {
 
     static func symbols(in text: String, fileExtension: String) -> [ExtractedSymbol] {
         let lines = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map { String($0).replacingOccurrences(of: "\r", with: "") }
         let ext = fileExtension.lowercased()
@@ -115,7 +116,7 @@ nonisolated enum SymbolExtractor {
         let propertyRegex = regex(
             "^[ \\t]*(?:@[A-Za-z_][\\w.]*(?:\\([^)\\n]*\\))?[ \\t]+)*"
             + "(?:(?:public|internal|package|private|fileprivate|open|final|static|weak|unowned|lazy|"
-            + "nonisolated|dynamic|override|class)[ \\t]+)*(var|let)[ \\t]+([A-Za-z_][A-Za-z0-9_]*)"
+            + "nonisolated|dynamic|override|class)(?:\\([a-z]+\\))?[ \\t]+)*(var|let)[ \\t]+([A-Za-z_][A-Za-z0-9_]*)"
         )
         let extensionRegex = regex(
             "^[ \\t]*(?:@[A-Za-z_][\\w.]*[ \\t]+)*"
@@ -171,11 +172,11 @@ nonisolated enum SymbolExtractor {
             + "(class|interface|enum)[ \\t]+([A-Za-z_$][\\w$]*)"
         )
         let typeAliasRegex = regex(
-            "^[ \\t]*(?:export[ \\t]+)?(?:declare[ \\t]+)?type[ \\t]+([A-Za-z_$][\\w$]*)[ \\t]*="
+            "^[ \\t]*(?:export[ \\t]+)?(?:declare[ \\t]+)?type[ \\t]+([A-Za-z_$][\\w$]*)(?:<.*?>)?[ \\t]*="
         )
         let functionRegex = regex(
             "^[ \\t]*(?:export[ \\t]+)?(?:default[ \\t]+)?(?:declare[ \\t]+)?(?:async[ \\t]+)?"
-            + "function[ \\t]*\\*?[ \\t]*([A-Za-z_$][\\w$]*)"
+            + "function(?:[ \\t]*\\*[ \\t]*|[ \\t]+)([A-Za-z_$][\\w$]*)"
         )
         let variableRegex = regex(
             "^[ \\t]*(?:export[ \\t]+)?(?:declare[ \\t]+)?(?:const|let|var)[ \\t]+([A-Za-z_$][\\w$]*)[ \\t]*[:=]"
@@ -224,7 +225,7 @@ nonisolated enum SymbolExtractor {
         let typeRegex = regex(
             "^[ \\t]*(?:@[\\w.]+(?:\\([^)]*\\))?[ \\t]+)*"
             + "(?:(?:public|private|protected|abstract|final|static|sealed|non-sealed|strictfp)[ \\t]+)*"
-            + "(class|interface|enum|record)[ \\t]+([A-Za-z_][A-Za-z0-9_]*)"
+            + "@?(class|interface|enum|record)[ \\t]+([A-Za-z_][A-Za-z0-9_]*)"
         )
 
         var symbols: [ExtractedSymbol] = []
@@ -245,11 +246,12 @@ nonisolated enum SymbolExtractor {
     private static func kotlinSymbols(in lines: [String]) -> [ExtractedSymbol] {
         let typeRegex = regex(
             "^[ \\t]*(?:(?:public|private|protected|internal|abstract|final|open|sealed|data|annotation|"
-            + "companion|inner|value|inline|enum|suspend)[ \\t]+)*(class|interface|object)[ \\t]+([A-Za-z_][\\w]*)"
+            + "companion|inner|value|inline|enum|suspend|fun)[ \\t]+)*(class|interface|object)[ \\t]+([A-Za-z_][\\w]*)"
         )
         let functionRegex = regex(
             "^[ \\t]*(?:(?:public|private|protected|internal|open|override|abstract|inline|suspend|"
-            + "operator|infix|tailrec|external|expect|actual)[ \\t]+)*fun[ \\t]+(?:<[^>]+>[ \\t]+)?([A-Za-z_][\\w]*)"
+            + "operator|infix|tailrec|external|expect|actual)[ \\t]+)*fun[ \\t]+(?!interface\\b)(?:<[^>]+>[ \\t]+)?"
+            + "(?:[A-Za-z_][\\w.]*(?:<[^()]*>)?\\??\\.)?([A-Za-z_][\\w]*)"
         )
 
         var symbols: [ExtractedSymbol] = []

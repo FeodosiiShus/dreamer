@@ -29,6 +29,12 @@ struct SearchEverywhereRecentFileList {
 final class SearchEverywhereRecentFilesStore {
     static let shared = SearchEverywhereRecentFilesStore()
 
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
     private final class Entry {
         weak var workspace: WorkspaceDocument?
         var list: SearchEverywhereRecentFileList
@@ -61,7 +67,7 @@ final class SearchEverywhereRecentFilesStore {
             return entry
         }
 
-        let entry = Entry(workspace: workspace, list: Self.storedList(for: key))
+        let entry = Entry(workspace: workspace, list: storedList(for: key))
         entries[key] = entry
         attachTracking(entry, key: key, workspace: workspace)
         return entry
@@ -98,14 +104,14 @@ final class SearchEverywhereRecentFilesStore {
             list.record(url)
         }
         entry.list = list
-        Self.store(list.urls, for: key)
+        store(list.urls, for: key)
     }
 
     private func record(_ url: URL, key: String, entry: Entry) {
         let previous = entry.list.urls.first
         entry.list.record(url)
         guard entry.list.urls.first != previous else { return }
-        Self.store(entry.list.urls, for: key)
+        store(entry.list.urls, for: key)
     }
 
     private static func key(for workspace: WorkspaceDocument) -> String {
@@ -116,15 +122,15 @@ final class SearchEverywhereRecentFilesStore {
         "dreamder.recentFiles.\(key)"
     }
 
-    private static func storedList(for key: String) -> SearchEverywhereRecentFileList {
-        let paths = UserDefaults.standard.stringArray(forKey: defaultsKey(key)) ?? []
+    private func storedList(for key: String) -> SearchEverywhereRecentFileList {
+        let paths = defaults.stringArray(forKey: Self.defaultsKey(key)) ?? []
         let urls = paths
             .map { URL(fileURLWithPath: $0) }
             .filter { FileManager.default.fileExists(atPath: $0.path) }
         return SearchEverywhereRecentFileList(urls: urls)
     }
 
-    private static func store(_ urls: [URL], for key: String) {
-        UserDefaults.standard.set(urls.map { $0.path }, forKey: defaultsKey(key))
+    private func store(_ urls: [URL], for key: String) {
+        defaults.set(urls.map { $0.path }, forKey: Self.defaultsKey(key))
     }
 }

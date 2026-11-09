@@ -82,10 +82,6 @@ final class QuickDocumentationPanelHost {
         present(QuickDocumentationViewModel(message: message), tab: nil, in: controller)
     }
 
-    func close(in controller: DreamderWindowController) {
-        entries[ObjectIdentifier(controller)]?.panel?.close()
-    }
-
     private func present(
         _ model: QuickDocumentationViewModel,
         tab: EditorInstance?,
@@ -108,26 +104,24 @@ final class QuickDocumentationPanelHost {
         }
 
         var entry = Entry(panel: panel, escapeMonitor: nil, cursorObservation: nil)
-        entry.escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) {
-            [weak self, weak panel, weak controller] event in
+        entry.escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak panel] event in
             guard event.keyCode == 53 else { return event }
             guard let panel, panel.isVisible else {
                 self?.removeEntry(for: key)
                 return event
             }
-            guard let controller else { return event }
-            self?.close(in: controller)
+            panel.close()
             return nil
         }
         if let tab {
-            entry.cursorObservation = Task { [weak self, weak panel, weak controller] in
+            entry.cursorObservation = Task { [weak panel] in
                 var previous: [CursorPosition]?
                 for await positions in Observations({ tab.cursorPositions }) {
                     let changed = previous.map { $0 != positions } ?? false
                     previous = positions
                     guard changed else { continue }
-                    guard let panel, panel.isVisible, let controller else { return }
-                    self?.close(in: controller)
+                    guard let panel, panel.isVisible else { return }
+                    panel.close()
                 }
             }
         }

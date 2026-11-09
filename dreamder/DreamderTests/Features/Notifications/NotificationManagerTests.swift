@@ -4,7 +4,7 @@ import Testing
 
 extension NotificationSuites {
     @MainActor
-    @Suite
+    @Suite(.uiGate)
     struct NotificationManagerTests {
         private let manager = NotificationManager.shared
 
@@ -237,7 +237,7 @@ extension NotificationSuites {
 }
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct CENotificationTests {
     @Test
     func equalityIsByIdentifierOnly() {

@@ -3,7 +3,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct DreamderDocumentControllerRoutingTests {
     private func makeWorkspace(at directory: URL) throws -> WorkspaceDocument {
         try WorkspaceDocument(for: directory, withContentsOf: directory, ofType: "")
@@ -23,15 +23,19 @@ struct DreamderDocumentControllerRoutingTests {
             defer { workspace.close() }
             let controller = DreamderDocumentController()
             controller.addDocument(workspace)
-            var completionCalls = 0
+            var handled: [(document: NSDocument?, alreadyOpen: Bool, error: Error?)] = []
 
-            controller.openDocument(withContentsOf: fileURL, display: true) { _, _, _ in
-                completionCalls += 1
+            controller.openDocument(withContentsOf: fileURL, display: true) { document, alreadyOpen, error in
+                handled.append((document, alreadyOpen, error))
             }
 
+            let handledCall = try #require(handled.first)
+            #expect(handled.count == 1)
+            #expect(handledCall.document === workspace)
+            #expect(handledCall.alreadyOpen)
+            #expect(handledCall.error == nil)
             #expect(openFileNames(in: workspace) == ["Notes.txt"])
             #expect(workspace.editorManager?.activeEditor.selectedTab?.file.name == "Notes.txt")
-            #expect(completionCalls == 0)
         }
     }
 

@@ -60,12 +60,23 @@ final class PackageManagerInstallOperation: Identifiable {
     var accumulatedOutput: [OutputItem] = []
     var currentStepIdx: Int = 0
     var error: Error?
-    var progress: Progress
+
+    var totalSteps: Int { steps.count }
+
+    var completedSteps: Int {
+        let failedStep = error == nil ? 0 : 1
+        return max(0, min(currentStepIdx - failedStep, steps.count))
+    }
+
+    var fractionCompleted: Double? {
+        guard !steps.isEmpty else { return nil }
+        return Double(completedSteps) / Double(steps.count)
+    }
 
     /// If non-nil, indicates that this operation has halted and requires confirmation.
     public private(set) var waitingForConfirmation: String?
 
-    private let shellClient: ShellClient = .live()
+    private let shellClient: ShellClient
     @ObservationIgnored
     private var operationTask: Task<Void, Error>?
     @ObservationIgnored
@@ -78,10 +89,10 @@ final class PackageManagerInstallOperation: Identifiable {
     /// - Parameters:
     ///   - package: The package to install.
     ///   - steps: The steps that make up the operation.
-    init(package: RegistryItem, steps: [PackageManagerInstallStep]) {
+    init(package: RegistryItem, steps: [PackageManagerInstallStep], shellClient: ShellClient = .live()) {
         self.package = package
         self.steps = steps
-        self.progress = Progress(totalUnitCount: Int64(steps.count))
+        self.shellClient = shellClient
     }
 
     func run() async throws {
@@ -96,6 +107,7 @@ final class PackageManagerInstallOperation: Identifiable {
     func cancel() {
         operationTask?.cancel()
         operationTask = nil
+        confirmCurrentStep()
     }
 
     /// Called by UI to confirm continuing to the next step
@@ -127,7 +139,6 @@ final class PackageManagerInstallOperation: Identifiable {
         }
 
         let model = PackageManagerProgressModel(shellClient: shellClient)
-        progress.addChild(model.progress, withPendingUnitCount: 1)
 
         try Task.checkCancellation()
         accumulatedOutput.append(OutputItem(isStepDivider: true, contents: "Step \(currentStepIdx + 1): \(task.name)"))
@@ -165,7 +176,6 @@ final class PackageManagerInstallOperation: Identifiable {
 
         try Task.checkCancellation()
         if let error {
-            progress.cancel()
             throw error
         }
         try await runNext()

@@ -26,9 +26,6 @@ struct SettingsData: Codable, Hashable {
     /// The general global settings
     var general: GeneralSettings = .init()
 
-    /// The global settings for accounts
-    var accounts: AccountsSettings = .init()
-
     /// The global settings for themes
     var navigation: NavigationSettings = .init()
 
@@ -43,9 +40,6 @@ struct SettingsData: Codable, Hashable {
 
     /// The global settings for source control
     var sourceControl: SourceControlSettings = .init()
-
-    /// The global settings for keybindings
-    var keybindings: KeybindingsSettings = .init()
 
     /// Search Settings
     var search: SearchSettings = .init()
@@ -65,7 +59,6 @@ struct SettingsData: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.general = try container.decodeIfPresent(GeneralSettings.self, forKey: .general) ?? .init()
-        self.accounts = try container.decodeIfPresent(AccountsSettings.self, forKey: .accounts) ?? .init()
         self.navigation = try container.decodeIfPresent(NavigationSettings.self, forKey: .navigation) ?? .init()
         self.theme = try container.decodeIfPresent(ThemeSettings.self, forKey: .theme) ?? .init()
         self.terminal = try container.decodeIfPresent(TerminalSettings.self, forKey: .terminal) ?? .init()
@@ -74,10 +67,6 @@ struct SettingsData: Codable, Hashable {
         self.sourceControl = try container.decodeIfPresent(
             SourceControlSettings.self,
             forKey: .sourceControl
-        ) ?? .init()
-        self.keybindings = try container.decodeIfPresent(
-            KeybindingsSettings.self,
-            forKey: .keybindings
         ) ?? .init()
         self.languageServers = try container.decodeIfPresent(
             LanguageServerSettings.self, forKey: .languageServers
@@ -101,8 +90,6 @@ struct SettingsData: Codable, Hashable {
             AppearanceSettingsView.searchKeys.forEach {
                 settings.append(.init(name, isSetting: true, settingName: $0))
             }
-        case .accounts:
-            accounts.searchKeys.forEach { settings.append(.init(name, isSetting: true, settingName: $0)) }
         case .navigation:
             navigation.searchKeys.forEach { settings.append(.init(name, isSetting: true, settingName: $0)) }
         case .theme:

@@ -27,39 +27,13 @@ struct GlobPatternList: View {
                     focusedField: $focusedField,
                     isLast: patterns.count == index + 1
                 )
-                .onAppear {
-                    if pattern.value.isEmpty {
-                        focusedField = pattern.id.uuidString
-                    }
-                }
+                .onAppear { focusIfEmpty(pattern) }
             }
-            .onMove { fromOffsets, toOffset in
-                patterns.move(fromOffsets: fromOffsets, toOffset: toOffset)
-            }
-            .onDelete { indexSet in
-                let patternIDs = indexSet.compactMap { patterns[$0].id }
-                    removePatterns(Set(patternIDs))
-            }
+            .onMove(perform: movePatterns)
+            .onDelete(perform: deletePatterns)
         }
         .frame(minHeight: 96)
-        .contextMenu(forSelectionType: UUID.self, menu: { selection in
-            if let patternID = selection.first, let pattern = patterns.first(where: { $0.id == patternID }) {
-                Button("Edit") {
-                    focusedField = pattern.id.uuidString
-                }
-                Button("Add") {
-                    addPattern()
-                }
-                Divider()
-                Button("Remove") {
-                    removePatterns(selection)
-                }
-            }
-        }, primaryAction: { selection in
-            if let patternID = selection.first, let pattern = patterns.first(where: { $0.id == patternID }) {
-                focusedField = pattern.id.uuidString
-            }
-        })
+        .contextMenu(forSelectionType: UUID.self, menu: menuContent(for:), primaryAction: focus)
         .overlay {
             if patterns.isEmpty {
                 Text(emptyMessage)
@@ -71,16 +45,46 @@ struct GlobPatternList: View {
                 Image(systemName: "plus")
             }
             Divider()
-            Button {
-                removePatterns(selection)
-            } label: {
+            Button(action: removeSelected) {
                 Image(systemName: "minus")
                     .opacity(selection.isEmpty ? 0.5 : 1)
             }
             .disabled(selection.isEmpty)
         }
-        .onDeleteCommand {
-            removePatterns(selection)
+        .onDeleteCommand(perform: removeSelected)
+    }
+
+    func focusIfEmpty(_ pattern: GlobPattern) {
+        if pattern.value.isEmpty {
+            focusedField = pattern.id.uuidString
+        }
+    }
+
+    func movePatterns(from offsets: IndexSet, to destination: Int) {
+        patterns.move(fromOffsets: offsets, toOffset: destination)
+    }
+
+    func deletePatterns(at offsets: IndexSet) {
+        removePatterns(Set(offsets.map { patterns[$0].id }))
+    }
+
+    func focus(_ selection: Set<UUID>) {
+        if let patternID = selection.first, let pattern = patterns.first(where: { $0.id == patternID }) {
+            focusedField = pattern.id.uuidString
+        }
+    }
+
+    func removeSelected() {
+        removePatterns(selection)
+    }
+
+    @ViewBuilder
+    func menuContent(for selection: Set<UUID>) -> some View {
+        if let patternID = selection.first, patterns.contains(where: { $0.id == patternID }) {
+            Button("Edit") { focus(selection) }
+            Button("Add", action: addPattern)
+            Divider()
+            Button("Remove") { removePatterns(selection) }
         }
     }
 }

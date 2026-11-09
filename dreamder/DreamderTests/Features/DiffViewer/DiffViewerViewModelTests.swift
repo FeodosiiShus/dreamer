@@ -3,7 +3,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct DiffViewerViewModelTests {
     private func repository(_ root: URL) throws -> DiffRepository {
         let document = WorkspaceDocument()
@@ -11,12 +11,12 @@ struct DiffViewerViewModelTests {
         return try #require(DiffRepository(workspace: document))
     }
 
-    private func makeFixture(_ dir: URL) throws -> GitMergeFixture {
-        let fixture = try GitMergeFixture(root: dir)
+    private func makeFixture(_ dir: URL) async throws -> GitMergeFixture {
+        let fixture = try await GitMergeFixture(root: dir)
         let lines = (1...30).map { "line \($0)" }.joined(separator: "\n") + "\n"
         try fixture.write("two-hunks.txt", lines)
         try fixture.write("same.txt", "same\n")
-        try fixture.commit("base")
+        try await fixture.commit("base")
         let edited = lines
             .replacingOccurrences(of: "line 2\n", with: "line two\n")
             .replacingOccurrences(of: "line 25\n", with: "line twenty-five\n")
@@ -35,7 +35,7 @@ struct DiffViewerViewModelTests {
     @Test
     func loadsFirstFileAndNavigatesBetweenHunks() async throws {
         try await withTempDir { dir in
-            _ = try makeFixture(dir)
+            _ = try await makeFixture(dir)
             let model = try await model(dir)
 
             #expect(model.title == "two-hunks.txt (HEAD vs Local)")
@@ -69,7 +69,7 @@ struct DiffViewerViewModelTests {
     @Test
     func previousFromNothingJumpsToTheLastHunk() async throws {
         try await withTempDir { dir in
-            _ = try makeFixture(dir)
+            _ = try await makeFixture(dir)
             let model = try await model(dir)
             model.previousDifference()
             #expect(model.currentHunkIndex == 1)
@@ -79,7 +79,7 @@ struct DiffViewerViewModelTests {
     @Test
     func switchingFilesKeepsSelectionWhenStillPresent() async throws {
         try await withTempDir { dir in
-            let fixture = try makeFixture(dir)
+            let fixture = try await makeFixture(dir)
             try fixture.write("same.txt", "changed\n")
             let model = try await model(dir)
             #expect(model.showsFileList)
@@ -92,7 +92,7 @@ struct DiffViewerViewModelTests {
             await model.updateFiles(try await repo.workingTreeRequests(against: "HEAD"))
             #expect(model.selectedID == "same.txt")
 
-            try fixture.run("checkout", "--", "same.txt")
+            try await fixture.run("checkout", "--", "same.txt")
             await model.updateFiles(try await repo.workingTreeRequests(against: "HEAD"))
             #expect(model.selectedID == "two-hunks.txt")
 
@@ -106,7 +106,7 @@ struct DiffViewerViewModelTests {
     @Test
     func binaryAndEmptySidesShowAMessageInsteadOfADiff() async throws {
         try await withTempDir { dir in
-            let fixture = try makeFixture(dir)
+            let fixture = try await makeFixture(dir)
             try Data([0x50, 0x00, 0x01]).write(to: dir.appending(path: "blob.bin"))
             try fixture.write("empty.txt", "")
             let repo = try repository(dir)
@@ -133,7 +133,7 @@ struct DiffViewerViewModelTests {
     @Test
     func commitModeTitlesUseShortHashes() async throws {
         try await withTempDir { dir in
-            _ = try makeFixture(dir)
+            _ = try await makeFixture(dir)
             let repo = try repository(dir)
             let request = repo.commitRequest(path: "same.txt", status: .added, commit: "abcdef0123456789", parent: nil)
             let rootCommit = DiffViewerViewModel(

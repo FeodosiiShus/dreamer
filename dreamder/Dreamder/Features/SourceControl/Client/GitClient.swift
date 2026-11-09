@@ -34,7 +34,7 @@ nonisolated final class GitClient: Sendable {
         }
     }
 
-    let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "GitClient")
+    let logger = Logger(subsystem: "dev.dreamder.Dreamder", category: "GitClient")
 
     internal let directoryURL: URL
     internal let scopePath: String?

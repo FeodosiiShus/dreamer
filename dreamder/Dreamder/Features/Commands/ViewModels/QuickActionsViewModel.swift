@@ -5,18 +5,12 @@
 //  Created by Alex on 25.05.2022.
 //
 
-import SwiftUI
+import AppKit
+import Observation
 
-/// Simple state class for command palette view. Contains currently selected command,
-/// query text and list of filtered commands
 @Observable
 final class QuickActionsViewModel {
-
     var commandQuery: String = ""
-
-    var selected: Command?
-
-    var isShowingCommandsList: Bool = true
 
     var filteredCommands: [Command] = []
 
@@ -24,29 +18,33 @@ final class QuickActionsViewModel {
 
     func reset() {
         commandQuery = ""
-        selected = nil
+        showAllCommands()
+    }
+
+    func showAllCommands() {
         filteredCommands = CommandManager.shared.commands
     }
 
     func fetchMatchingCommands(val: String) {
-        if val == "" {
-            self.filteredCommands = CommandManager.shared.commands
+        guard !val.isEmpty else {
+            showAllCommands()
             return
         }
-        self.filteredCommands = CommandManager.shared.commands.filter { $0.title.localizedCaseInsensitiveContains(val) }
-        self.selected = self.filteredCommands.first
+        filteredCommands = CommandManager.shared.commands.filter { $0.title.localizedCaseInsensitiveContains(val) }
+    }
+
+    func run(_ command: Command) {
+        command.closureWrapper()
+        commandQuery = ""
+        filteredCommands = []
     }
 
     func highlight(_ commandTitle: String) -> NSAttributedString {
         let attribText = NSMutableAttributedString(string: commandTitle)
-        let range: NSRange = attribText.mutableString.range(
-            of: self.commandQuery,
-            options: NSString.CompareOptions.caseInsensitive
-        )
-        attribText.addAttribute(.foregroundColor, value: NSColor(Color(.labelColor)), range: range)
+        let range = attribText.mutableString.range(of: commandQuery, options: .caseInsensitive)
+        guard range.location != NSNotFound else { return attribText }
+        attribText.addAttribute(.foregroundColor, value: NSColor.labelColor, range: range)
         attribText.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize), range: range)
-
         return attribText
     }
-
 }

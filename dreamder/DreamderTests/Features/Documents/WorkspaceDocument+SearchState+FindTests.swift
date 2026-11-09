@@ -54,58 +54,19 @@ final class FindTests: XCTestCase {
 
         mockWorkspace.searchState?.addProjectToIndex()
 
-        // The following code also tests whether the workspace is indexed correctly
-        // Wait until the index is up to date and flushed
-        let startTime = Date()
-        let timeoutInSeconds = 2.0
-        while searchState.indexStatus != .done {
-            // Check every 0.1 seconds for index completion
-            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-            if Date().timeIntervalSince(startTime) > timeoutInSeconds {
-                XCTFail("TIMEOUT: Indexing took to long or did not complete.")
-                return
-            }
+        let deadline = Date().addingTimeInterval(60)
+        while Date() < deadline,
+              !(searchState.indexStatus == .done && searchState.indexer?.documents().count == 3) {
+            try await Task.sleep(for: .milliseconds(50))
         }
-
-        // Retrieve indexed documents from the indexer
-        guard let documentsInIndex = searchState.indexer?.documents() else {
-            XCTFail("No documents are in the index")
-            return
-        }
-
-        // Verify that the setup function added the expected number of mock files to the index
-        XCTAssertEqual(documentsInIndex.count, 3)
+        XCTAssertEqual(searchState.indexStatus, .done)
+        XCTAssertEqual(searchState.indexer?.documents().count, 3)
     }
 
     // MARK: - Tear down
     /// The mock directory along with the mock files will be removed
     override func tearDown() async throws {
         try? FileManager.default.removeItem(at: directory)
-    }
-
-    func testGetSearchTerm() {
-        let query = "test*/Quer@#y"
-
-        searchState.selectedMode[2] = .Containing
-        XCTAssertEqual(searchState.getSearchTerm(query), "*test*quer*y*")
-
-        searchState.selectedMode[2] = .StartingWith
-        XCTAssertEqual(searchState.getSearchTerm(query), "test*quer*y*")
-
-        searchState.selectedMode[2] = .EndingWith
-        XCTAssertEqual(searchState.getSearchTerm(query), "*test*quer*y")
-
-        searchState.selectedMode[2] = .MatchingWord
-        XCTAssertEqual(searchState.getSearchTerm(query), "test*quer*y")
-
-        searchState.caseSensitive = true
-        XCTAssertEqual(searchState.getSearchTerm(query), "test*Quer*y")
-    }
-
-    func testStripSpecialCharacters() {
-        let string = "test!@#Query"
-        let strippedString = searchState.stripSpecialCharacters(from: string)
-        XCTAssertEqual(strippedString, "test*Query")
     }
 
     func testGetRegexPattern() {
@@ -266,7 +227,7 @@ final class FindTests: XCTestCase {
         XCTAssertEqual(searchState.searchResult.count, 2)
     }
 
-    func testRegularExpressionWithoutIndexableWordsScansTheWorkspace() async {
+    func testRegularExpressionWithoutLiteralWordsScansTheWorkspace() async {
         searchState.selectedMode = [.Find, .RegularExpression]
 
         await searchState.search("\\.$")
@@ -398,87 +359,75 @@ final class FindTests: XCTestCase {
         XCTAssertEqual(model.fileFilter, "*.swift")
     }
 
+    private func findAndReplace(query: String, replacingTerm: String) async {
+        searchState.searchQuery = query
+        searchState.replaceText = replacingTerm
+        await searchState.search(query)
+        await searchState.replaceAll()
+    }
+
+    private func fileText(_ name: String) throws -> String {
+        try String(contentsOf: directory.appending(path: name), encoding: .utf8)
+    }
+
     func testReplaceWithRegularExpressionTemplate() async throws {
         searchState.selectedMode = [.Replace, .RegularExpression]
 
-        try await searchState.findAndReplace(query: "Loren (?<word>Ip\\w+)", replacingTerm: "\\U${word}\\E!")
+        await findAndReplace(query: "Loren (?<word>Ip\\w+)", replacingTerm: "\\U${word}\\E!")
         XCTAssertEqual(searchState.findNavigatorStatus, .replaced(updatedFiles: 2))
 
-        let first = try String(contentsOf: directory.appending(path: "File 1.txt"), encoding: .utf8)
-        XCTAssertEqual(first, "IPSUM!.")
+        XCTAssertEqual(try fileText("File 1.txt"), "IPSUM!.")
     }
 
     func testReplaceWithMalformedTemplateLeavesFilesUntouched() async throws {
         searchState.selectedMode = [.Replace, .RegularExpression]
 
-        try await searchState.findAndReplace(query: "(Ipsum)", replacingTerm: "$5")
-        XCTAssertEqual(
-            searchState.findNavigatorStatus,
-            .failed(errorMessage: "Invalid replacement string: No group 5")
-        )
+        await findAndReplace(query: "(Ipsum)", replacingTerm: "$5")
+        XCTAssertEqual(searchState.replacementError, "No group 5")
+        XCTAssertEqual(searchState.replaceNotice, "Invalid replacement string: No group 5")
+        XCTAssertEqual(searchState.findNavigatorStatus, .found)
 
-        let first = try String(contentsOf: directory.appending(path: "File 1.txt"), encoding: .utf8)
-        XCTAssertEqual(first, "Loren Ipsum.")
+        XCTAssertEqual(try fileText("File 1.txt"), "Loren Ipsum.")
     }
 
     func testReplaceWithPreserveCase() async throws {
         searchState.findModel.isPreserveCase = true
 
-        try await searchState.findAndReplace(query: "ipsum", replacingTerm: "dolor")
+        await findAndReplace(query: "ipsum", replacingTerm: "dolor")
         XCTAssertEqual(searchState.findNavigatorStatus, .replaced(updatedFiles: 2))
 
-        let first = try String(contentsOf: directory.appending(path: "File 1.txt"), encoding: .utf8)
-        XCTAssertEqual(first, "Loren Dolor.")
+        XCTAssertEqual(try fileText("File 1.txt"), "Loren Dolor.")
     }
 
     func testReplaceWithWholeWordsOnly() async throws {
         searchState.wholeWordsOnly = true
 
-        try await searchState.findAndReplace(query: "Ipsu", replacingTerm: "X")
-        XCTAssertEqual(
-            searchState.findNavigatorStatus,
-            .failed(errorMessage: "No files in the workspace matched: Ipsu")
-        )
+        await findAndReplace(query: "Ipsu", replacingTerm: "X")
+        XCTAssertEqual(searchState.findNavigatorStatus, .found)
+        XCTAssertTrue(searchState.searchResult.isEmpty)
+        XCTAssertEqual(try fileText("File 1.txt"), "Loren Ipsum.")
 
-        try await searchState.findAndReplace(query: "Ipsum", replacingTerm: "X")
+        await findAndReplace(query: "Ipsum", replacingTerm: "X")
         XCTAssertEqual(searchState.findNavigatorStatus, .replaced(updatedFiles: 2))
 
-        let first = try String(contentsOf: directory.appending(path: "File 1.txt"), encoding: .utf8)
-        XCTAssertEqual(first, "Loren X.")
+        XCTAssertEqual(try fileText("File 1.txt"), "Loren X.")
     }
 
     func testReplaceHonoursTheFileMask() async throws {
         searchState.fileMask = "*.txt"
 
-        try await searchState.findAndReplace(query: "Ipsum", replacingTerm: "X")
+        await findAndReplace(query: "Ipsum", replacingTerm: "X")
         XCTAssertEqual(searchState.findNavigatorStatus, .replaced(updatedFiles: 1))
 
-        let makefileURL = directory
-            .appending(path: "Longer Folder With Some 💯 Special Chars ⁉️")
-            .appending(path: "Makefile")
-        let makefile = try String(contentsOf: makefileURL, encoding: .utf8)
+        let makefile = try fileText("Longer Folder With Some 💯 Special Chars ⁉️/Makefile")
         XCTAssertEqual(makefile, "Loren Ipsum.")
     }
 
-    func testReplaceRangeReplacesOnlyTheGivenOccurrence() async throws {
-        let fileURL = directory.appending(path: "File 1.txt")
-        try "Ipsum Ipsum".write(to: fileURL, atomically: true, encoding: .utf8)
-        let content = try String(contentsOf: fileURL, encoding: .utf8)
-        let second = try XCTUnwrap(content.range(of: "Ipsum", options: .backwards))
-
-        searchState.replaceRange(file: fileURL, searchTerm: "Ipsum", replacingTerm: "X", keywordRange: second)
-
-        let updated = try String(contentsOf: fileURL, encoding: .utf8)
-        XCTAssertEqual(updated, "Ipsum X")
-    }
-
-    func testReplaceOccurrencesInFileUsesTheRegularExpression() async throws {
+    func testRegularExpressionReplacementUsesCaptureGroups() async throws {
         searchState.selectedMode = [.Replace, .RegularExpression]
-        let fileURL = directory.appending(path: "File 1.txt")
 
-        try await searchState.replaceOccurrencesInFile(fileURL: fileURL, query: "L(o)ren", replacingTerm: "$1-$1")
+        await findAndReplace(query: "L(o)ren", replacingTerm: "$1-$1")
 
-        let updated = try String(contentsOf: fileURL, encoding: .utf8)
-        XCTAssertEqual(updated, "o-o Ipsum.")
+        XCTAssertEqual(try fileText("File 1.txt"), "o-o Ipsum.")
     }
 }

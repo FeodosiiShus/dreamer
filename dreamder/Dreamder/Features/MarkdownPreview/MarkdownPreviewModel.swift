@@ -88,11 +88,16 @@ final class MarkdownPreviewModel {
         let text = readText()
         let render = render
         renderTask?.cancel()
-        renderTask = Task.detached(priority: .userInitiated) { [weak self] in
-            let html = render(text)
+        renderTask = Task(priority: .userInitiated) { [weak self] in
+            let html = await Self.renderOffMain(text, using: render)
             guard !Task.isCancelled else { return }
-            await self?.apply(html, generation: generation)
+            self?.apply(html, generation: generation)
         }
+    }
+
+    @concurrent
+    private static func renderOffMain(_ text: String, using render: @Sendable (String) -> String) async -> String {
+        render(text)
     }
 
     private func apply(_ html: String, generation: Int) {

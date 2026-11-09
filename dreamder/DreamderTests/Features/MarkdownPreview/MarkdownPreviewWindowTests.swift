@@ -4,7 +4,7 @@ import WebKit
 @testable import Dreamder
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct MarkdownPreviewWindowTests {
     @MainActor
     private struct Harness {

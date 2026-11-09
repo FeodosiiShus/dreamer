@@ -11,9 +11,8 @@ import SwiftUI
 struct LanguageServerInstallView: View {
     @Environment(\.dismiss)
     var dismiss
-    @Environment(RegistryManager.self) private var registryManager
-
     let operation: PackageManagerInstallOperation
+    let registryManager: RegistryManager
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,18 +23,20 @@ struct LanguageServerInstallView: View {
         .constrainHeightToWindow()
         .alert(
             "Confirm Step",
-            isPresented: Binding(get: { operation.waitingForConfirmation != nil }, set: { _ in }),
-            presenting: operation.waitingForConfirmation
-        ) { _ in
-            Button("Cancel") {
-                registryManager.cancelInstallation()
-            }
-            Button("Continue") {
-                operation.confirmCurrentStep()
-            }
-        } message: { confirmationMessage in
-            Text(confirmationMessage)
-        }
+            isPresented: .constant(operation.waitingForConfirmation != nil),
+            presenting: operation.waitingForConfirmation,
+            actions: confirmationActions,
+            message: confirmationMessage
+        )
+    }
+
+    @ViewBuilder func confirmationActions(_ message: String) -> some View {
+        Button("Cancel", action: registryManager.cancelInstallation)
+        Button("Continue", action: operation.confirmCurrentStep)
+    }
+
+    @ViewBuilder func confirmationMessage(_ message: String) -> some View {
+        Text(message)
     }
 
     @ViewBuilder private var formContent: some View {
@@ -52,41 +53,27 @@ struct LanguageServerInstallView: View {
         .formStyle(.grouped)
     }
 
-    @ViewBuilder private var footer: some View {
+    @ViewBuilder var footer: some View {
         HStack {
             Spacer()
             switch operation.runningState {
             case .none:
-                Button {
-                    dismiss()
-                } label: {
+                Button(action: cancel) {
                     Text("Cancel")
                 }
                 .buttonStyle(.bordered)
-                Button {
-                    do {
-                        try registryManager.startInstallation(operation: operation)
-                    } catch {
-                        // Display the error
-                        NSAlert(error: error).runModal()
-                    }
-                } label: {
+                Button(action: startInstallation) {
                     Text("Install")
                 }
                 .buttonStyle(.borderedProminent)
             case .running:
-                Button {
-                    registryManager.cancelInstallation()
-                    dismiss()
-                } label: {
+                Button(action: cancelInstallationAndDismiss) {
                     Text("Cancel")
                         .frame(minWidth: 56)
                 }
                 .buttonStyle(.bordered)
             case .complete:
-                Button {
-                    dismiss()
-                } label: {
+                Button(action: cancel) {
                     Text("Continue")
                         .frame(minWidth: 56)
                 }
@@ -94,6 +81,24 @@ struct LanguageServerInstallView: View {
             }
         }
         .padding()
+    }
+
+    func cancel() {
+        dismiss()
+    }
+
+    func cancelInstallationAndDismiss() {
+        registryManager.cancelInstallation()
+        dismiss()
+    }
+
+    func startInstallation() {
+        do {
+            try registryManager.startInstallation(operation: operation)
+        } catch {
+            // Display the error
+            NSAlert(error: error).runModal()
+        }
     }
 
     @ViewBuilder private var packageInfoSection: some View {
@@ -126,23 +131,16 @@ struct LanguageServerInstallView: View {
         }
     }
 
-    @ViewBuilder private var sourceButton: some View {
-        if #available(macOS 14.0, *) {
-            Button(operation.package.homepagePretty) {
-                guard let homepage = operation.package.homepageURL else { return }
-                NSWorkspace.shared.open(homepage)
-            }
+    @ViewBuilder var sourceButton: some View {
+        Button(operation.package.homepagePretty, action: openHomepage)
             .buttonStyle(.plain)
             .foregroundColor(Color(NSColor.linkColor))
             .focusEffectDisabled()
-        } else {
-            Button(operation.package.homepagePretty) {
-                guard let homepage = operation.package.homepageURL else { return }
-                NSWorkspace.shared.open(homepage)
-            }
-            .buttonStyle(.plain)
-            .foregroundColor(Color(NSColor.linkColor))
-        }
+    }
+
+    func openHomepage() {
+        guard let homepage = operation.package.homepageURL else { return }
+        NSWorkspace.shared.open(homepage)
     }
 
     @ViewBuilder private var progressSection: some View {
@@ -161,7 +159,7 @@ struct LanguageServerInstallView: View {
                     Text(operation.currentStep?.name ?? "")
                 }
             }
-            ProgressView(operation.progress)
+            ProgressView(value: operation.fractionCompleted ?? 1)
                 .progressViewStyle(.linear)
         }
     }
@@ -201,7 +199,7 @@ struct LanguageServerInstallView: View {
                     }
                 }
                 .onChange(of: operation.accumulatedOutput) { _, output in
-                    DispatchQueue.main.async {
+                    Task {
                         withAnimation(.linear(duration: 0.1)) {
                             proxy.scrollTo(output.last?.id)
                         }

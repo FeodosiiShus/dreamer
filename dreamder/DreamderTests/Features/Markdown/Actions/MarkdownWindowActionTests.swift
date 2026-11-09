@@ -17,7 +17,7 @@ nonisolated final class ClipboardReadCounter: Sendable {
 }
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct MarkdownWindowActionTests {
     @MainActor
     private struct Harness {
@@ -272,10 +272,9 @@ struct MarkdownWindowActionTests {
     }
 
     @Test
-    func emphasisAndTableStylePreferencesComeFromDefaults() {
-        let name = "dreamder.tests.markdown.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: name) else { return }
-        defer { defaults.removePersistentDomain(forName: name) }
+    func emphasisAndTableStylePreferencesComeFromDefaults() throws {
+        let (defaults, suiteName) = try makeIsolatedDefaults()
+        defer { removeIsolatedDefaults(defaults, suiteName: suiteName) }
 
         #expect(MarkdownEditorPreferences.emphasisStyle(defaults: defaults) == .asterisks)
         #expect(MarkdownEditorPreferences.tableStyle(defaults: defaults) == .aligned)

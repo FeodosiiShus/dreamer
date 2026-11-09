@@ -9,43 +9,38 @@ import Foundation
 import AppKit
 
 extension CEWorkspaceFileManager {
-    /// This function allows creation of folders in the main directory or sub-folders
-    /// - Parameters:
-    ///   - folderName: The name of the new folder
-    ///   - file: The file to add the new folder to.
-    /// - Returns: The ``CEWorkspaceFile`` representing the folder in the file manager's cache.
-    /// - Authors: Mattijs Eikelenboom, KaiTheRedNinja. *Moved from 7c27b1e*
-    func addFolder(folderName: String, toFile file: CEWorkspaceFile) throws -> CEWorkspaceFile {
-        // Check if folder, if it is create folder under self, else create on same level.
-        var folderUrl = (
-            file.isFolder ? file.url.appending(path: folderName)
-            : file.url.deletingLastPathComponent().appending(path: folderName)
-        )
-
-        // If a file/folder with the same name exists, add a number to the end.
-        var fileNumber = 0
-        while fileManager.fileExists(atPath: folderUrl.path) {
-            fileNumber += 1
-            folderUrl = folderUrl.deletingLastPathComponent().appending(path: "\(folderName)\(fileNumber)")
-        }
-
-        // Create the folder
+    @discardableResult
+    func create(_ plan: NewItemPlan, contents: Data? = nil) throws -> CEWorkspaceFile {
         do {
-            try fileManager.createDirectory(
-                at: folderUrl,
-                withIntermediateDirectories: true,
-                attributes: [:]
-            )
-
-            try rebuildFiles(fromItem: file.isFolder ? file : file.parent ?? file)
-            notifyObservers(updatedItems: [file.isFolder ? file : file.parent ?? file])
-
-            guard let newFolder = getFile(folderUrl.path(), createIfNotFound: true) else {
-                throw FileManagerError.fileNotFound
+            guard !fileManager.fileExists(atPath: plan.target.path) else {
+                throw FileManagerError.destinationFileExists
             }
-            return newFolder
+            for directory in plan.directoriesToCreate {
+                try fileManager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [:])
+            }
+            switch plan.kind {
+            case .directory:
+                try fileManager.createDirectory(at: plan.target, withIntermediateDirectories: true, attributes: [:])
+            case .file:
+                guard fileManager.createFile(
+                    atPath: plan.target.path,
+                    contents: contents,
+                    attributes: [FileAttributeKey.creationDate: Date()]
+                ) else {
+                    throw CocoaError.error(.fileWriteUnknown, url: plan.target)
+                }
+            }
+
+            if let anchor = getFile(plan.anchor.path, createIfNotFound: true) {
+                try rebuildFiles(fromItem: anchor)
+                notifyObservers(updatedItems: [anchor])
+            }
+            guard let created = getFile(plan.target.path, createIfNotFound: true) else {
+                throw FileManagerError.fileNotIndexed
+            }
+            return created
         } catch {
-            logger.error("Failed to create folder: \(error, privacy: .auto)")
+            logger.error("Failed to create item: \(error, privacy: .auto)")
             throw error
         }
     }
@@ -57,7 +52,7 @@ extension CEWorkspaceFileManager {
     ///   - useExtension: The file extension to use. Leave `nil` to guess using relevant nearby files.
     /// - Authors: Mattijs Eikelenboom, KaiTheRedNinja. *Moved from 7c27b1e*
     /// - Throws: Throws a `CocoaError.fileWriteUnknown` with the file url if creating the file fails, and calls
-    ///           ``rebuildFiles(fromItem:deep:)`` which throws other `FileManager` errors.
+    ///           ``rebuildFiles(fromItem:)`` which throws other `FileManager` errors.
     /// - Returns: The ``CEWorkspaceFile`` representing the new file in the file manager's cache.
     func addFile(
         fileName: String,
@@ -122,7 +117,7 @@ extension CEWorkspaceFileManager {
     /// - Parameter file: The file to use to determine a common extension.
     /// - Returns: The suggested file extension.
     private func findCommonFileExtension(for file: CEWorkspaceFile) -> String {
-        var fileExtensions: [String: Int] = ["": 0]
+        var fileExtensions: [String: Int] = [:]
 
         for child in (
             file.isFolder ? file.flattenedSiblings(withHeight: 2, ignoringFolders: true, using: self)
@@ -139,7 +134,7 @@ extension CEWorkspaceFileManager {
             }
         }
 
-        return fileExtensions.max(by: { $0.value < $1.value })?.key ?? "txt"
+        return fileExtensions.max(by: { $0.value < $1.value })?.key ?? ""
     }
 
     /// This function deletes the item or folder from the current project by moving to Trash
@@ -207,9 +202,6 @@ extension CEWorkspaceFileManager {
     /// - Parameter url: The file URL to delete.
     private func deleteFile(at url: URL) throws {
         do {
-            guard fileManager.fileExists(atPath: url.path) else {
-                throw FileManagerError.fileNotFound
-            }
             try fileManager.removeItem(at: url)
         } catch {
             logger.error("Failed to delete file: \(error, privacy: .auto)")
@@ -263,6 +255,7 @@ extension CEWorkspaceFileManager {
             try createMissingParentDirectory(for: newLocation.deletingLastPathComponent())
 
             try fileManager.moveItem(at: file.url, to: newLocation)
+            LSPFileOperations.fileMoved(from: file.url, to: newLocation)
 
             // This function recursively creates missing directories if the file is moved to a directory that does
             // not exist
@@ -312,9 +305,16 @@ extension CEWorkspaceFileManager {
                 throw FileManagerError.originFileNotFound
             }
             try fileManager.copyItem(at: file.url, to: newLocation)
+            try refresh(directoryAt: newLocation.deletingLastPathComponent())
         } catch {
             logger.error("Failed to copy file: \(error, privacy: .auto)")
             throw error
         }
+    }
+
+    func refresh(directoryAt url: URL) throws {
+        guard let directory = getFile(url.path) else { return }
+        try rebuildFiles(fromItem: directory)
+        notifyObservers(updatedItems: [directory])
     }
 }

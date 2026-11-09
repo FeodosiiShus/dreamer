@@ -5,7 +5,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct EditorSplitsTests {
     private func file(_ name: String) -> CEWorkspaceFile {
         CEWorkspaceFile(url: URL(filePath: "/fake/\(name)"))

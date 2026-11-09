@@ -34,15 +34,11 @@ struct ShowUsagesRowView: View {
         .frame(height: Islands.isCompact ? 22 : 24)
         .background(
             RoundedRectangle(cornerRadius: Islands.rowRadius)
-                .fill(backgroundColor)
+                .fill(Self.backgroundColor(isSelected: isSelected, isHovering: isHovering))
         )
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) {
-            onOpen()
-        }
-        .onTapGesture {
-            onSelect()
-        }
+        .onTapGesture(count: 2, perform: onOpen)
+        .onTapGesture(perform: onSelect)
         .onHover { isHovering = $0 }
     }
 
@@ -83,7 +79,7 @@ struct ShowUsagesRowView: View {
         return result
     }
 
-    private var backgroundColor: Color {
+    static func backgroundColor(isSelected: Bool, isHovering: Bool) -> Color {
         if isSelected {
             return Islands.selection
         }

@@ -37,8 +37,8 @@ nonisolated enum MarkdownHTMLEntities {
             }
             guard cursor > digitsStart, cursor < characters.count, characters[cursor] == ";" else { return nil }
             let digits = String(characters[digitsStart..<cursor])
-            let code = UInt32(digits, radix: isHex ? 16 : 10) ?? 0
-            guard code != 0, let scalar = Unicode.Scalar(code) else { return ("\u{FFFD}", cursor + 1) }
+            guard let code = UInt32(digits, radix: isHex ? 16 : 10), code != 0,
+                  let scalar = Unicode.Scalar(code) else { return ("\u{FFFD}", cursor + 1) }
             return (String(Character(scalar)), cursor + 1)
         }
 
@@ -51,23 +51,6 @@ nonisolated enum MarkdownHTMLEntities {
         let name = String(characters[nameStart..<cursor])
         guard let value = named[name] else { return nil }
         return (value, cursor + 1)
-    }
-
-    static func decodeAll(_ text: String) -> String {
-        guard text.contains("&") else { return text }
-        let characters = Array(text)
-        var result = ""
-        var index = 0
-        while index < characters.count {
-            if characters[index] == "&", let entity = decode(characters, at: index) {
-                result += entity.text
-                index = entity.end
-            } else {
-                result.append(characters[index])
-                index += 1
-            }
-        }
-        return result
     }
 
     private static let rawTable = """

@@ -18,39 +18,50 @@ final class SearchEverywhereViewModel {
     private(set) var preview: SearchEverywherePreview?
     var showsPreview: Bool {
         didSet {
-            UserDefaults.standard.set(showsPreview, forKey: Self.previewDefaultsKey)
+            defaults.set(showsPreview, forKey: Self.previewDefaultsKey)
         }
     }
 
-    let symbolIndex = SearchEverywhereSymbolIndex()
+    var symbolIndex: SearchEverywhereSymbolIndex? { workspace?.symbolIndex }
     let mode: SearchEverywhereMode
     @ObservationIgnored weak var workspace: WorkspaceDocument?
+    private let defaults: UserDefaults
+    private let recentFiles: SearchEverywhereRecentFilesStore
+    private let actionsProvider: @MainActor () -> [SearchEverywhereAction]
     @ObservationIgnored var dismiss: (() -> Void)?
 
     private static let previewDefaultsKey = "dreamder.searchEverywhere.showPreview"
 
     @ObservationIgnored private var pools: [SearchEverywhereSectionKind: [SearchEverywhereItem]] = [:]
-    @ObservationIgnored private var fileURLs: [URL] = []
-    @ObservationIgnored private var filesRoot: URL?
-    @ObservationIgnored private var hasLoadedFiles = false
-    @ObservationIgnored private var loadFilesTask: Task<Void, Never>?
+    @ObservationIgnored private var indexTask: Task<Void, Never>?
+    @ObservationIgnored private var changesObservation: Task<Void, Never>?
+    @ObservationIgnored private var searchGeneration = 0
     @ObservationIgnored private var debounceTask: Task<Void, Never>?
     @ObservationIgnored private var textTask: Task<Void, Never>?
     @ObservationIgnored private var previewTask: Task<Void, Never>?
     @ObservationIgnored private var symbolsObservation: Task<Void, Never>?
     @ObservationIgnored private var currentText = ""
 
-    init(workspace: WorkspaceDocument?, mode: SearchEverywhereMode = .everywhere) {
+    init(
+        workspace: WorkspaceDocument?,
+        mode: SearchEverywhereMode = .everywhere,
+        defaults: UserDefaults = .standard,
+        recentFiles: SearchEverywhereRecentFilesStore = .shared,
+        actions: @escaping @MainActor () -> [SearchEverywhereAction] = SearchEverywhereActionProvider.actions
+    ) {
         self.workspace = workspace
         self.mode = mode
+        self.defaults = defaults
+        self.recentFiles = recentFiles
+        self.actionsProvider = actions
         self.tab = .all
-        self.showsPreview = (UserDefaults.standard.object(forKey: Self.previewDefaultsKey) as? Bool ?? true)
+        self.showsPreview = (defaults.object(forKey: Self.previewDefaultsKey) as? Bool ?? true)
             && mode == .everywhere
 
-        let symbolIndex = symbolIndex
+        let symbolIndex = workspace?.symbolIndex
         symbolsObservation = Task { [weak self] in
             var isInitialValue = true
-            for await _ in Observations({ symbolIndex.symbols }) {
+            for await _ in Observations({ symbolIndex?.symbols }) {
                 if isInitialValue {
                     isInitialValue = false
                     continue
@@ -58,10 +69,23 @@ final class SearchEverywhereViewModel {
                 self?.scheduleSearch()
             }
         }
+
+        if let changes = workspace?.fileScope?.changes() {
+            changesObservation = Task { [weak self] in
+                for await _ in changes {
+                    guard let self else { return }
+                    if !self.query.isEmpty {
+                        self.scheduleSearch()
+                    }
+                }
+            }
+        }
     }
 
     isolated deinit {
         symbolsObservation?.cancel()
+        changesObservation?.cancel()
+        indexTask?.cancel()
     }
 
     var flatItems: [SearchEverywhereItem] {
@@ -75,7 +99,7 @@ final class SearchEverywhereViewModel {
     }
 
     var isIndexing: Bool {
-        symbolIndex.isBuilding
+        symbolIndex?.isBuilding ?? false
     }
 
     var panelWidth: CGFloat {
@@ -92,7 +116,7 @@ final class SearchEverywhereViewModel {
         pools = [:]
         selection = 0
         if let workspace {
-            SearchEverywhereRecentFilesStore.shared.startTracking(for: workspace)
+            recentFiles.startTracking(for: workspace)
         }
         performSearch()
     }
@@ -209,6 +233,8 @@ final class SearchEverywhereViewModel {
         let text = parsed.text.trimmingCharacters(in: .whitespaces)
         currentText = text
         textTask?.cancel()
+        indexTask?.cancel()
+        searchGeneration += 1
 
         let kinds = tab.sections
         let kindSet = Set(kinds)
@@ -228,18 +254,8 @@ final class SearchEverywhereViewModel {
                 newPools[.actions] = buildActionItems(text: "", limit: kinds.count == 1 ? 300 : 8)
             }
         } else {
-            if kindSet.contains(.files) {
-                ensureFilesLoaded()
-                newPools[.files] = buildFileItems(text: text, line: parsed.line, column: parsed.column)
-            }
-            if kindSet.contains(.classes) || kindSet.contains(.symbols) {
-                ensureSymbolsLoaded()
-                if kindSet.contains(.classes) {
-                    newPools[.classes] = buildSymbolItems(text: text, classesOnly: true)
-                }
-                if kindSet.contains(.symbols) {
-                    newPools[.symbols] = buildSymbolItems(text: text, classesOnly: false)
-                }
+            for kind in [SearchEverywhereSectionKind.files, .classes, .symbols] where kindSet.contains(kind) {
+                newPools[kind] = pools[kind] ?? []
             }
             if kindSet.contains(.actions) {
                 newPools[.actions] = buildActionItems(text: text, limit: kinds.count == 1 ? 300 : 8)
@@ -248,105 +264,131 @@ final class SearchEverywhereViewModel {
                 newPools[.text] = []
                 startTextSearch(text)
             }
+            startIndexSearch(text: text, parsed: parsed, kinds: kindSet)
         }
 
         pools = newPools
         rebuildSections()
     }
 
-    private func ensureFilesLoaded() {
-        guard let root = workspace?.fileURL else { return }
-        if hasLoadedFiles, filesRoot == root { return }
-        guard loadFilesTask == nil else { return }
+    private func startIndexSearch(
+        text: String,
+        parsed: SearchEverywhereQuery,
+        kinds: Set<SearchEverywhereSectionKind>
+    ) {
+        guard let workspace, let root = workspace.fileURL else { return }
+        let wantsFiles = kinds.contains(.files)
+        let wantsClasses = kinds.contains(.classes)
+        let wantsSymbols = kinds.contains(.symbols)
+        guard wantsFiles || wantsClasses || wantsSymbols else { return }
 
-        filesRoot = root
-        loadFilesTask = Task { [weak self] in
-            let urls = await SearchEverywhereFileScanner.urls(in: root, maxFileSize: 2_000_000)
-            guard !Task.isCancelled else { return }
-            guard let self else { return }
-            self.fileURLs = urls
-            self.hasLoadedFiles = true
-            self.loadFilesTask = nil
-            self.performSearch()
+        let scope = workspace.fileScope
+        let index = workspace.symbolIndex
+        if wantsClasses || wantsSymbols {
+            index?.ensureIndexed()
         }
-    }
-
-    private func ensureSymbolsLoaded() {
-        guard let root = workspace?.fileURL else { return }
-        symbolIndex.ensureIndexed(root: root)
-    }
-
-    private func buildFileItems(text: String, line: Int?, column: Int?) -> [SearchEverywhereItem] {
-        guard let root = workspace?.fileURL, !fileURLs.isEmpty else { return [] }
-
-        var items: [SearchEverywhereItem] = []
-        for url in fileURLs {
-            guard let match = SearchEverywhereProjectSearch.matchFile(query: text, url: url, root: root) else {
-                continue
+        let symbols = index?.symbols ?? []
+        let generation = searchGeneration
+        indexTask = Task { [weak self] in
+            if wantsFiles, let scope {
+                let urls = await scope.enumerateFiles(limit: nil)
+                let hits = await SearchEverywhereProjectSearch.rankedFileHits(
+                    text: text,
+                    urls: urls,
+                    root: root,
+                    limit: 200
+                )
+                guard !Task.isCancelled else { return }
+                self?.publish(.files, generation: generation) { model in
+                    hits.map { model.fileItem($0, line: parsed.line, column: parsed.column) }
+                }
             }
-            let relative = SearchEverywhereFileScanner.relativePath(of: url, from: root)
-            let directory = (relative as NSString).deletingLastPathComponent
-            items.append(SearchEverywhereItem(
-                id: "file:\(relative)",
-                section: .files,
-                kind: .file,
-                title: url.lastPathComponent,
-                detail: directory,
-                iconName: IntelliJIcon.fileIcon(for: url.lastPathComponent),
-                ranges: match.ranges,
-                url: url,
-                line: line,
-                column: column,
-                action: nil,
-                weight: SearchEverywhereComposedWeight(match.score),
-                isExactMatch: SearchEverywhereRanking.isExactMatch(
-                    degree: match.score,
-                    presentableText: url.lastPathComponent,
-                    inputQuery: text,
-                    isFile: true
-                ),
-                equalityKey: "file:\(relative)"
-            ))
+            if wantsClasses {
+                let hits = await SearchEverywhereProjectSearch.rankedSymbolHits(
+                    text: text,
+                    symbols: symbols,
+                    root: root,
+                    classesOnly: true,
+                    limit: 300
+                )
+                guard !Task.isCancelled else { return }
+                self?.publish(.classes, generation: generation) { model in
+                    hits.map { model.symbolItem($0, classesOnly: true) }
+                }
+            }
+            if wantsSymbols {
+                let hits = await SearchEverywhereProjectSearch.rankedSymbolHits(
+                    text: text,
+                    symbols: symbols,
+                    root: root,
+                    classesOnly: false,
+                    limit: 300
+                )
+                guard !Task.isCancelled else { return }
+                self?.publish(.symbols, generation: generation) { model in
+                    hits.map { model.symbolItem($0, classesOnly: false) }
+                }
+            }
         }
-        return ranked(items, limit: 200)
     }
 
-    private func buildSymbolItems(text: String, classesOnly: Bool) -> [SearchEverywhereItem] {
-        guard let root = workspace?.fileURL else { return [] }
+    private func publish(
+        _ kind: SearchEverywhereSectionKind,
+        generation: Int,
+        items: (SearchEverywhereViewModel) -> [SearchEverywhereItem]
+    ) {
+        guard generation == searchGeneration, tab.sections.contains(kind) else { return }
+        pools[kind] = items(self)
+        rebuildSections()
+    }
 
-        var items: [SearchEverywhereItem] = []
-        for symbol in symbolIndex.symbols {
-            if classesOnly && !symbol.kind.isType { continue }
-            guard let match = SearchEverywhereMatcher.match(query: text, in: symbol.name) else { continue }
-            let relative = SearchEverywhereFileScanner.relativePath(of: symbol.url, from: root)
-            items.append(SearchEverywhereItem(
-                id: "\(classesOnly ? "class" : "symbol"):\(relative):\(symbol.line):\(symbol.name)",
-                section: classesOnly ? .classes : .symbols,
-                kind: classesOnly ? .classSymbol : .symbol,
-                title: symbol.name,
-                detail: "\(relative):\(symbol.line)",
-                iconName: symbol.kind.iconName,
-                ranges: match.ranges,
-                url: symbol.url,
-                line: symbol.line,
-                column: nil,
-                action: nil,
-                weight: SearchEverywhereComposedWeight(match.score),
-                isExactMatch: SearchEverywhereRanking.isExactMatch(
-                    degree: match.score,
-                    presentableText: symbol.name,
-                    inputQuery: text,
-                    isFile: false
-                ),
-                equalityKey: "symbol:\(relative):\(symbol.line):\(symbol.name)"
-            ))
-        }
-        return ranked(items, limit: 300)
+    private func fileItem(
+        _ hit: SearchEverywhereFileHit,
+        line: Int?,
+        column: Int?
+    ) -> SearchEverywhereItem {
+        let name = hit.url.lastPathComponent
+        return SearchEverywhereItem(
+            id: "file:\(hit.relative)",
+            section: .files,
+            kind: .file,
+            title: name,
+            detail: (hit.relative as NSString).deletingLastPathComponent,
+            iconName: IntelliJIcon.fileIcon(for: name),
+            ranges: hit.match.ranges,
+            url: hit.url,
+            line: line,
+            column: column,
+            action: nil,
+            weight: SearchEverywhereComposedWeight(hit.match.score),
+            isExactMatch: hit.isExactMatch,
+            equalityKey: "file:\(hit.relative)"
+        )
+    }
+
+    private func symbolItem(_ hit: SearchEverywhereSymbolHit, classesOnly: Bool) -> SearchEverywhereItem {
+        let symbol = hit.symbol
+        return SearchEverywhereItem(
+            id: "\(classesOnly ? "class" : "symbol"):\(hit.relative):\(symbol.line):\(symbol.name)",
+            section: classesOnly ? .classes : .symbols,
+            kind: classesOnly ? .classSymbol : .symbol,
+            title: symbol.name,
+            detail: "\(hit.relative):\(symbol.line)",
+            iconName: symbol.kind.iconName,
+            ranges: hit.match.ranges,
+            url: symbol.url,
+            line: symbol.line,
+            column: nil,
+            action: nil,
+            weight: SearchEverywhereComposedWeight(hit.match.score),
+            isExactMatch: hit.isExactMatch,
+            equalityKey: "symbol:\(hit.relative):\(symbol.line):\(symbol.name)"
+        )
     }
 
     private func buildActionItems(text: String, limit: Int) -> [SearchEverywhereItem] {
         var items: [SearchEverywhereItem] = []
-        for action in SearchEverywhereActionProvider.actions() {
+        for action in actionsProvider() {
             let candidate = action.menuPath.isEmpty
                 ? action.title
                 : "\(action.menuPath) | \(action.title)"
@@ -379,7 +421,7 @@ final class SearchEverywhereViewModel {
 
     private func buildRecentItems(text: String, limit: Int) -> [SearchEverywhereItem] {
         guard let workspace else { return [] }
-        let urls = SearchEverywhereRecentFilesStore.shared.recentFiles(for: workspace)
+        let urls = recentFiles.recentFiles(for: workspace)
         guard !urls.isEmpty else { return [] }
 
         let root = workspace.fileURL
@@ -424,7 +466,7 @@ final class SearchEverywhereViewModel {
     }
 
     private func startTextSearch(_ text: String) {
-        guard let root = workspace?.fileURL else { return }
+        guard let scope = workspace?.fileScope else { return }
         let searchState = workspace?.searchState
         let pattern = searchState?.getRegexPattern(text) ?? NSRegularExpression.escapedPattern(for: text)
         let caseSensitive = searchState?.caseSensitive ?? false
@@ -433,7 +475,7 @@ final class SearchEverywhereViewModel {
             let matches = await SearchEverywhereProjectSearch.textMatches(
                 pattern: pattern,
                 caseSensitive: caseSensitive,
-                root: root
+                scope: scope
             )
             guard !Task.isCancelled else { return }
             guard let self, self.currentText == query, self.tab.sections.contains(.text) else { return }

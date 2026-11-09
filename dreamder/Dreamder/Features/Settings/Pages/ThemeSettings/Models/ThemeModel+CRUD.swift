@@ -20,7 +20,7 @@ extension ThemeModel {
             let theme = try JSONDecoder().decode(Theme.self, from: json)
             return theme
         } catch {
-            print(error)
+            Self.logger.error("Error loading theme: \(error.localizedDescription, privacy: .public)")
             return nil
         }
     }
@@ -64,20 +64,15 @@ extension ThemeModel {
             // combine user theme URLs with bundled theme URLs
             let themeURLs = userDefinedThemeURLs + bundledThemeURLs
 
-            let prefs = Settings.shared.preferences
+            let prefs = preferencesStore.preferences
 
             // load each theme from disk and store in memory
             try themeURLs.forEach { fileURL in
                 if var theme = try load(from: fileURL) {
 
                     // get all properties of terminal and editor colors
-                    guard let terminalColors = try theme.terminal.allProperties() as? [String: Theme.Attributes],
-                          let editorColors = try theme.editor.allProperties() as? [String: Theme.Attributes]
-                    else {
-                        print("error")
-                        // TODO: Throw a proper error
-                        throw NSError() // swiftlint:disable:this discouraged_direct_init
-                    }
+                    let terminalColors = try theme.terminal.allProperties()
+                    let editorColors = try theme.editor.allProperties()
 
                     // check if there are any overrides in `settings.json`
                     if let overrides = prefs.theme.overrides[theme.name]?["terminal"] {
@@ -132,21 +127,12 @@ extension ThemeModel {
     }
 
     func importTheme() {
-        let openPanel = NSOpenPanel()
-        let allowedTypes = [UTType(filenameExtension: "cetheme") ?? .data]
-
-        openPanel.prompt = "Import"
-        openPanel.allowedContentTypes = allowedTypes
-        openPanel.canChooseFiles = true
-        openPanel.canChooseDirectories = false
-        openPanel.allowsMultipleSelection = false
-
-        openPanel.begin { result in
-            if result.rawValue == NSApplication.ModalResponse.OK.rawValue {
-                if let url = openPanel.urls.first {
-                    self.duplicate(url)
-                }
-            }
+        let request = OpenPanelRequest(
+            prompt: "Import",
+            allowedContentTypes: Self.themeFileTypes
+        )
+        if let url = filePanels.chooseFiles(request).first {
+            duplicate(url)
         }
     }
 
@@ -216,7 +202,7 @@ extension ThemeModel {
                 self.detailsIsPresented = true
             }
         } catch {
-            print("Error adding theme: \(error.localizedDescription)")
+            Self.logger.error("Error adding theme: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -247,7 +233,7 @@ extension ThemeModel {
 
             try self.loadThemes()
         } catch {
-            print("Error renaming theme: \(error.localizedDescription)")
+            Self.logger.error("Error renaming theme: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -263,7 +249,7 @@ extension ThemeModel {
                 try prettyJSON.write(to: fileURL, options: .atomic)
             }
         } catch {
-            print("Error saving theme: \(error.localizedDescription)")
+            Self.logger.error("Error saving theme: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -279,11 +265,11 @@ extension ThemeModel {
             do {
                 try filemanager.removeItem(at: url)
 
-                Settings.shared.preferences.theme.overrides.removeValue(forKey: theme.name)
+                preferencesStore.preferences.theme.overrides.removeValue(forKey: theme.name)
 
                 try self.loadThemes()
             } catch {
-                print(error)
+                Self.logger.error("Error deleting theme: \(error.localizedDescription, privacy: .public)")
             }
         }
     }

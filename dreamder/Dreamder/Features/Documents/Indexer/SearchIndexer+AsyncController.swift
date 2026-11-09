@@ -12,8 +12,6 @@ nonisolated extension SearchIndexer {
     nonisolated final class AsyncManager: Sendable {
         /// An instance of the SearchIndexer
         let index: SearchIndexer
-        private let addQueue = DispatchQueue(label: "dev.dreamder.Dreamder.AddFilesToIndex", attributes: .concurrent)
-        private let searchQueue = DispatchQueue(label: "dev.dreamder.Dreamder.SearchIndex", attributes: .concurrent)
 
         init(index: SearchIndexer) {
             self.index = index
@@ -145,58 +143,11 @@ nonisolated extension SearchIndexer {
                 }
             }
 
+            if flushWhenComplete {
+                index.flush()
+            }
+
             return addedURLs
-        }
-
-        /// Adds files from a folder specified by the given URL to the index asynchronously.
-        ///
-        /// - Parameters:
-        ///   - url: The URL of the folder containing files to be added to the index.
-        ///   - flushWhenComplete: A boolean flag indicating whether to flush 
-        ///   the index when the operation is complete. Default is `false`.
-        ///
-        /// This function uses asynchronous processing to add files from the specified folder to the index.
-        ///
-        /// - Note: Subfolders within the specified folder are also processed.
-        func addFolder(
-            url: URL,
-            flushWhenComplete: Bool = false
-        ) {
-            let dispatchGroup = DispatchGroup()
-
-            let fileManager = FileManager.default
-            let enumerator = fileManager.enumerator(
-                at: url,
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsHiddenFiles],
-                errorHandler: nil
-            )
-
-            if let enumerator {
-                for case let fileURL as URL in enumerator {
-                    dispatchGroup.enter()
-
-                    if FileHelper.urlIsFolder(url) {
-                        addQueue.async { [weak self] in
-                            guard let self = self else { return }
-                            self.addFolder(url: url)
-                            dispatchGroup.leave()
-                        }
-                    } else {
-                        addQueue.async { [weak self] in
-                            guard let self = self else { return }
-                            _ = self.index.addFile(fileURL: fileURL, canReplace: true)
-                            dispatchGroup.leave()
-                        }
-                    }
-                }
-            }
-
-            dispatchGroup.notify(queue: .main) {
-                if flushWhenComplete {
-                    self.index.flush()
-                }
-            }
         }
     }
 }

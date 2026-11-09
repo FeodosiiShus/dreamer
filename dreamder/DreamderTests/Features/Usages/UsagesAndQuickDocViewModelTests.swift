@@ -4,7 +4,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct UsagesAndQuickDocViewModelTests {
     private func row(_ line: Int) -> LSPUsageRow {
         LSPUsageRow(

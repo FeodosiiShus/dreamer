@@ -48,18 +48,8 @@ struct ShowUsagesView: View {
             ScrollView(.vertical) {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(model.rows.enumerated()), id: \.element.id) { index, row in
-                        ShowUsagesRowView(
-                            row: row,
-                            isSelected: index == model.selectedIndex,
-                            onSelect: {
-                                model.select(index)
-                            },
-                            onOpen: {
-                                model.select(index)
-                                model.activate()
-                            }
-                        )
-                        .id(row.id)
+                        rowView(at: index, row: row)
+                            .id(row.id)
                     }
                 }
                 .padding(.horizontal, 4)
@@ -70,5 +60,19 @@ struct ShowUsagesView: View {
                 proxy.scrollTo(id, anchor: .center)
             }
         }
+    }
+
+    func rowView(at index: Int, row: LSPUsageRow) -> ShowUsagesRowView {
+        ShowUsagesRowView(
+            row: row,
+            isSelected: index == model.selectedIndex,
+            onSelect: {
+                model.select(index)
+            },
+            onOpen: {
+                model.select(index)
+                model.activate()
+            }
+        )
     }
 }

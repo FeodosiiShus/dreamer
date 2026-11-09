@@ -21,23 +21,17 @@ enum BackgroundImageFill: String, CaseIterable, Identifiable {
 }
 
 enum BackgroundImageSettings {
-    static func apply(_ path: String) {
-        UserDefaults.standard.set(path, forKey: Islands.BackgroundImageKey.path)
+    static func apply(_ path: String, defaults: UserDefaults = .standard) {
+        defaults.set(path, forKey: Islands.BackgroundImageKey.path)
     }
 
-    static func chooseImage() -> String? {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        panel.showsHiddenFiles = false
-        panel.prompt = NSLocalizedString("Choose", comment: "")
-        panel.message = NSLocalizedString("Choose a background image", comment: "")
-        guard panel.runModal() == .OK, let url = panel.url else {
-            return nil
-        }
-        return url.path
+    static func chooseImage(panels: any FilePanelPresenting = SystemFilePanels()) -> String? {
+        let request = OpenPanelRequest(
+            prompt: NSLocalizedString("Choose", comment: ""),
+            message: NSLocalizedString("Choose a background image", comment: ""),
+            allowedContentTypes: [.image]
+        )
+        return panels.chooseFiles(request).first?.path
     }
 
     static func image(at path: String) -> NSImage? {

@@ -10,21 +10,19 @@ import SwiftUI
 /// The Search Settings View Model. Accessible via the singleton "``SearchSettings/shared``".
 @Observable
 final class SearchSettingsModel {
-    /// Reads settings file for Search Settings and updates the values in this model
-    /// correspondingly
-    private init() {
-        let value = Settings[\.search].ignoreGlobPatterns
-        self.ignoreGlobPatterns = value
+    private let persist: @MainActor ([GlobPattern]) -> Void
+
+    init(patterns: [GlobPattern], persist: @escaping @MainActor ([GlobPattern]) -> Void) {
+        self.persist = persist
+        self.ignoreGlobPatterns = patterns
     }
 
-    static let shared: SearchSettingsModel = .init()
+    static let shared = SearchSettingsModel(patterns: Settings[\.search].ignoreGlobPatterns) {
+        Settings[\.search].ignoreGlobPatterns = $0
+    }
 
-    /// Default instance of the `FileManager`
-    private let filemanager = FileManager.default
-
-    /// The base folder url `~/Library/Application Support/Dreamder/`
     private var baseURL: URL {
-        filemanager.homeDirectoryForCurrentUser.appending(path: "Library/Application Support/Dreamder")
+        Settings.defaultBaseURL()
     }
 
     /// The URL of the `search` folder
@@ -49,8 +47,8 @@ final class SearchSettingsModel {
     /// `ignoreGlobPatterns` is updated
     var ignoreGlobPatterns: [GlobPattern] {
         didSet {
-            DispatchQueue.main.async {
-                Settings[\.search].ignoreGlobPatterns = self.ignoreGlobPatterns
+            Task {
+                persist(ignoreGlobPatterns)
             }
         }
     }

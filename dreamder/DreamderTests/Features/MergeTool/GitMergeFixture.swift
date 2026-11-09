@@ -1,6 +1,7 @@
 import Foundation
+@testable import Dreamder
 
-struct GitMergeFixture {
+nonisolated struct GitMergeFixture: Sendable {
     enum FixtureError: Error {
         case gitFailed(String, String)
         case missingFile(String)
@@ -8,12 +9,12 @@ struct GitMergeFixture {
 
     let root: URL
 
-    init(root: URL) throws {
+    init(root: URL) async throws {
         self.root = root
-        try run("init", "-q", "-b", "main")
-        try run("config", "user.email", "merge@dreamder.test")
-        try run("config", "user.name", "Merge")
-        try run("config", "commit.gpgsign", "false")
+        try await run("init", "-q", "-b", "main")
+        try await run("config", "user.email", "merge@dreamder.test")
+        try await run("config", "user.name", "Merge")
+        try await run("config", "commit.gpgsign", "false")
     }
 
     init(existing root: URL) {
@@ -21,15 +22,23 @@ struct GitMergeFixture {
     }
 
     @discardableResult
-    func run(_ arguments: String...) throws -> String {
-        let output = try runAllowingFailure(arguments)
+    func run(_ arguments: String...) async throws -> String {
+        let output = try await runAllowingFailure(arguments)
         return output
     }
 
     @discardableResult
-    func runAllowingFailure(_ arguments: [String]) throws -> String {
+    func runAllowingFailure(_ arguments: [String]) async throws -> String {
+        let git = await GitExecutableLocator.shared.executableURL()
+        return try await ProcessSlotPool.shared.withSlot {
+            try await execute(arguments, git: git)
+        }
+    }
+
+    @concurrent
+    private func execute(_ arguments: [String], git: URL) async throws -> String {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.executableURL = git
         process.currentDirectoryURL = root
         process.arguments = arguments
         process.environment = [
@@ -51,9 +60,9 @@ struct GitMergeFixture {
         return output
     }
 
-    func runIgnoringFailure(_ arguments: String...) throws -> String {
+    func runIgnoringFailure(_ arguments: String...) async throws -> String {
         do {
-            return try runAllowingFailure(arguments)
+            return try await runAllowingFailure(arguments)
         } catch FixtureError.gitFailed(_, let output) {
             return output
         }
@@ -78,17 +87,17 @@ struct GitMergeFixture {
         FileManager.default.fileExists(atPath: root.appending(path: relativePath).path(percentEncoded: false))
     }
 
-    func commit(_ message: String) throws {
-        try run("add", "-A")
-        try run("commit", "-qm", message)
+    func commit(_ message: String) async throws {
+        try await run("add", "-A")
+        try await run("commit", "-qm", message)
     }
 
-    func status() throws -> String {
-        try runIgnoringFailure("status", "--porcelain=v2")
+    func status() async throws -> String {
+        try await runIgnoringFailure("status", "--porcelain=v2")
     }
 
-    func unmergedPaths() throws -> [String] {
-        try status()
+    func unmergedPaths() async throws -> [String] {
+        try await status()
             .split(separator: "\n")
             .filter { $0.hasPrefix("u ") }
             .compactMap { $0.split(separator: " ").last.map(String.init) }
@@ -99,8 +108,8 @@ struct GitMergeFixture {
         (try? read(relativePath))?.contains("<<<<<<<") ?? false
     }
 
-    func isFullyStaged(_ relativePath: String) throws -> Bool {
-        let entries = try run("ls-files", "--stage", "--", relativePath)
+    func isFullyStaged(_ relativePath: String) async throws -> Bool {
+        let entries = try await run("ls-files", "--stage", "--", relativePath)
             .split(separator: "\n")
             .map(String.init)
             .filter { !$0.isEmpty }
@@ -108,8 +117,8 @@ struct GitMergeFixture {
         return entry.contains(" 0\t")
     }
 
-    func stagedPaths() throws -> [String] {
-        try runIgnoringFailure("diff", "--cached", "--name-only")
+    func stagedPaths() async throws -> [String] {
+        try await runIgnoringFailure("diff", "--cached", "--name-only")
             .split(separator: "\n")
             .map(String.init)
             .sorted()
@@ -117,113 +126,105 @@ struct GitMergeFixture {
 }
 
 extension GitMergeFixture {
-    static func offMain(_ make: @escaping @Sendable () throws -> GitMergeFixture) async throws -> GitMergeFixture {
-        try await Task.detached(priority: .userInitiated) {
-            try make()
-        }.value
-    }
-}
-
-extension GitMergeFixture {
-    static func mergeConflict(in root: URL) throws -> GitMergeFixture {
-        let fixture = try GitMergeFixture(root: root)
+    static func mergeConflict(in root: URL) async throws -> GitMergeFixture {
+        let fixture = try await GitMergeFixture(root: root)
         try fixture.write(
             "app/config.txt",
             "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta\neta\ntheta\niota\nkappa\nlambda\n"
         )
         try fixture.write("docs/notes.txt", "one\ntwo\nthree\n")
-        try fixture.commit("base")
-        try fixture.run("checkout", "-q", "-b", "feature")
+        try await fixture.commit("base")
+        try await fixture.run("checkout", "-q", "-b", "feature")
         try fixture.write(
             "app/config.txt",
             "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta-feature\neta\ntheta\niota\nkappa\nfeature-added\nlambda\n"
         )
         try fixture.write("docs/notes.txt", "one\nnotes-feature\nthree\n")
-        try fixture.commit("feature changes")
-        try fixture.run("checkout", "-q", "main")
+        try await fixture.commit("feature changes")
+        try await fixture.run("checkout", "-q", "main")
         try fixture.write(
             "app/config.txt",
             "alpha\nbeta-main\ngamma\ndelta\nepsilon\nzeta-main\neta\ntheta\niota\nkappa\nlambda\n"
         )
         try fixture.write("docs/notes.txt", "one\nnotes-main\nthree\n")
-        try fixture.commit("main changes")
-        _ = try fixture.runIgnoringFailure("merge", "feature")
+        try await fixture.commit("main changes")
+        _ = try await fixture.runIgnoringFailure("merge", "feature")
         return fixture
     }
 
-    static func deleteModifyConflict(in root: URL) throws -> GitMergeFixture {
-        let fixture = try GitMergeFixture(root: root)
+    static func deleteModifyConflict(in root: URL) async throws -> GitMergeFixture {
+        let fixture = try await GitMergeFixture(root: root)
         try fixture.write("gone.txt", "keep me\nsecond line\n")
         try fixture.write("stable.txt", "stable\n")
-        try fixture.commit("base")
-        try fixture.run("checkout", "-q", "-b", "feature")
+        try await fixture.commit("base")
+        try await fixture.run("checkout", "-q", "-b", "feature")
         try fixture.write("gone.txt", "keep me\nmodified by feature\n")
-        try fixture.commit("feature modifies")
-        try fixture.run("checkout", "-q", "main")
-        try fixture.run("rm", "-q", "gone.txt")
-        try fixture.commit("main deletes")
-        _ = try fixture.runIgnoringFailure("merge", "feature")
+        try await fixture.commit("feature modifies")
+        try await fixture.run("checkout", "-q", "main")
+        try await fixture.run("rm", "-q", "gone.txt")
+        try await fixture.commit("main deletes")
+        _ = try await fixture.runIgnoringFailure("merge", "feature")
         return fixture
     }
 
-    static func rebaseConflict(in root: URL) throws -> GitMergeFixture {
-        let fixture = try GitMergeFixture(root: root)
+    static func rebaseConflict(in root: URL) async throws -> GitMergeFixture {
+        let fixture = try await GitMergeFixture(root: root)
         try fixture.write("src/main.swift", "line1\nline2\nline3\n")
-        try fixture.commit("base")
-        try fixture.run("checkout", "-q", "-b", "feature")
+        try await fixture.commit("base")
+        try await fixture.run("checkout", "-q", "-b", "feature")
         try fixture.write("src/main.swift", "line1\nfeature-line\nline3\n")
-        try fixture.commit("feature edit")
-        try fixture.run("checkout", "-q", "main")
+        try await fixture.commit("feature edit")
+        try await fixture.run("checkout", "-q", "main")
         try fixture.write("src/main.swift", "line1\nmain-line\nline3\n")
-        try fixture.commit("main edit")
-        try fixture.run("checkout", "-q", "feature")
-        _ = try fixture.runIgnoringFailure("rebase", "main")
+        try await fixture.commit("main edit")
+        try await fixture.run("checkout", "-q", "feature")
+        _ = try await fixture.runIgnoringFailure("rebase", "main")
         return fixture
     }
 
-    static func rebaseOntoDetachedCommitConflict(in root: URL) throws -> GitMergeFixture {
-        let fixture = try GitMergeFixture(root: root)
+    static func rebaseOntoDetachedCommitConflict(in root: URL) async throws -> GitMergeFixture {
+        let fixture = try await GitMergeFixture(root: root)
         try fixture.write("src/main.swift", "line1\nline2\nline3\n")
-        try fixture.commit("base")
-        try fixture.run("checkout", "-q", "-b", "feature")
+        try await fixture.commit("base")
+        try await fixture.run("checkout", "-q", "-b", "feature")
         try fixture.write("src/main.swift", "line1\nfeature-line\nline3\n")
-        try fixture.commit("feature edit")
-        try fixture.run("checkout", "-q", "main")
+        try await fixture.commit("feature edit")
+        try await fixture.run("checkout", "-q", "main")
         try fixture.write("src/main.swift", "line1\nmain-line\nline3\n")
-        try fixture.commit("main edit")
-        let onto = try fixture.run("rev-parse", "HEAD").trimmingCharacters(in: .whitespacesAndNewlines)
+        try await fixture.commit("main edit")
+        let onto = try await fixture.run("rev-parse", "HEAD").trimmingCharacters(in: .whitespacesAndNewlines)
         try fixture.write("src/other.swift", "other\n")
-        try fixture.commit("main tip")
-        try fixture.run("checkout", "-q", "feature")
-        _ = try fixture.runIgnoringFailure("rebase", onto)
+        try await fixture.commit("main tip")
+        try await fixture.run("checkout", "-q", "feature")
+        _ = try await fixture.runIgnoringFailure("rebase", onto)
         return fixture
     }
 
-    static func cherryPickConflict(in root: URL) throws -> GitMergeFixture {
-        let fixture = try GitMergeFixture(root: root)
+    static func cherryPickConflict(in root: URL) async throws -> GitMergeFixture {
+        let fixture = try await GitMergeFixture(root: root)
         try fixture.write("src/main.swift", "line1\nline2\nline3\n")
-        try fixture.commit("base")
-        try fixture.run("checkout", "-q", "-b", "feature")
+        try await fixture.commit("base")
+        try await fixture.run("checkout", "-q", "-b", "feature")
         try fixture.write("src/main.swift", "line1\nfeature-line\nline3\n")
-        try fixture.commit("feature edit")
-        try fixture.run("checkout", "-q", "main")
+        try await fixture.commit("feature edit")
+        try await fixture.run("checkout", "-q", "main")
         try fixture.write("src/main.swift", "line1\nmain-line\nline3\n")
-        try fixture.commit("main edit")
-        _ = try fixture.runIgnoringFailure("cherry-pick", "feature")
+        try await fixture.commit("main edit")
+        _ = try await fixture.runIgnoringFailure("cherry-pick", "feature")
         return fixture
     }
 
-    static func bothAddedConflict(in root: URL) throws -> GitMergeFixture {
-        let fixture = try GitMergeFixture(root: root)
+    static func bothAddedConflict(in root: URL) async throws -> GitMergeFixture {
+        let fixture = try await GitMergeFixture(root: root)
         try fixture.write("base.txt", "base\n")
-        try fixture.commit("base")
-        try fixture.run("checkout", "-q", "-b", "feature")
+        try await fixture.commit("base")
+        try await fixture.run("checkout", "-q", "-b", "feature")
         try fixture.write("new.txt", "feature version\n")
-        try fixture.commit("feature adds")
-        try fixture.run("checkout", "-q", "main")
+        try await fixture.commit("feature adds")
+        try await fixture.run("checkout", "-q", "main")
         try fixture.write("new.txt", "main version\n")
-        try fixture.commit("main adds")
-        _ = try fixture.runIgnoringFailure("merge", "feature")
+        try await fixture.commit("main adds")
+        _ = try await fixture.runIgnoringFailure("merge", "feature")
         return fixture
     }
 }

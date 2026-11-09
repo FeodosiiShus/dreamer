@@ -8,28 +8,54 @@
 import Foundation
 
 class LSPCache {
-    private var cache = NSCache<NSString, CacheEntry>()
+    static let capacity = 2048
+
+    private var entries: [String: CacheEntry] = [:]
+    private var insertionOrder: [String] = []
+    private var keysByURI: [String: Set<String>] = [:]
 
     func get<T: Codable & Sendable>(key: CacheKey, as type: T.Type) -> T? {
-        let cacheKey = key.description as NSString
-        guard let entry = cache.object(forKey: cacheKey) else {
-            return nil
-        }
-        return entry.getValue(as: type)
+        entries[key.description]?.getValue(as: type)
     }
 
     func set<T: Codable & Sendable>(key: CacheKey, value: T) {
-        let entry = CacheEntry(value)
-        let cacheKey = key.description as NSString
-        cache.setObject(entry, forKey: cacheKey)
+        let description = key.description
+        if entries.updateValue(CacheEntry(value), forKey: description) != nil {
+            insertionOrder.removeAll { $0 == description }
+        }
+        insertionOrder.append(description)
+        keysByURI[key.uri, default: []].insert(description)
+        evictOverflow()
     }
 
     func invalidate(key: CacheKey) {
-        let cacheKey = key.description as NSString
-        cache.removeObject(forKey: cacheKey)
+        let description = key.description
+        remove(description)
+        keysByURI[key.uri]?.remove(description)
     }
 
-    /// Represents a single cache entry with a generic type.
+    func invalidate(uri: String) {
+        guard let keys = keysByURI.removeValue(forKey: uri) else { return }
+        for key in keys {
+            remove(key)
+        }
+    }
+
+    private func remove(_ description: String) {
+        guard entries.removeValue(forKey: description) != nil else { return }
+        insertionOrder.removeAll { $0 == description }
+    }
+
+    private func evictOverflow() {
+        while insertionOrder.count > Self.capacity {
+            let oldest = insertionOrder.removeFirst()
+            entries.removeValue(forKey: oldest)
+            for uri in keysByURI.keys {
+                keysByURI[uri]?.remove(oldest)
+            }
+        }
+    }
+
     final class CacheEntry: NSObject {
         let value: Any
         let type: Any.Type
@@ -47,10 +73,16 @@ class LSPCache {
 
 extension CacheKey: CustomStringConvertible {
     var description: String {
-        if let extraData = extraData {
-            return "\(uri)-\(requestType)-\(extraData)"
-        } else {
-            return "\(uri)-\(requestType)"
+        var parts = [uri, requestType]
+        if let position {
+            parts.append("\(position.line):\(position.character)")
         }
+        if let documentVersion {
+            parts.append("v\(documentVersion)")
+        }
+        if let extraData {
+            parts.append("\(extraData)")
+        }
+        return parts.joined(separator: "|")
     }
 }

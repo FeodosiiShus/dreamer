@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Observation
+import OSLog
 
 @Observable
 final class AcknowledgementsViewModel {
@@ -17,8 +18,16 @@ final class AcknowledgementsViewModel {
       return Array(zip(acknowledgements.indices, acknowledgements))
     }
 
-    init(_ dependencies: [AcknowledgementDependency] = []) {
+    private static let logger = Logger(subsystem: "dev.dreamder.Dreamder", category: "AcknowledgementsViewModel")
+
+    private let packageResolvedPath: String?
+
+    init(
+        _ dependencies: [AcknowledgementDependency] = [],
+        packageResolvedPath: String? = Bundle.main.path(forResource: "Package", ofType: "resolved")
+    ) {
         self.acknowledgements = dependencies
+        self.packageResolvedPath = packageResolvedPath
 
         if acknowledgements.isEmpty {
             fetchDependencies()
@@ -28,7 +37,7 @@ final class AcknowledgementsViewModel {
     func fetchDependencies() {
         self.acknowledgements.removeAll()
         do {
-            if let bundlePath = Bundle.main.path(forResource: "Package", ofType: "resolved") {
+            if let bundlePath = packageResolvedPath {
                 let jsonData = Data(try String(contentsOfFile: bundlePath, encoding: .utf8).utf8)
                 let parsedJSON = try JSONDecoder().decode(AcknowledgementObject.self, from: jsonData)
                 for dependency in parsedJSON.pins.sorted(by: { $0.identity < $1.identity })
@@ -48,7 +57,7 @@ final class AcknowledgementsViewModel {
                 }
             }
         } catch {
-            print(error)
+            Self.logger.error("Failed to read package dependencies: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

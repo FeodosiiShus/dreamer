@@ -9,7 +9,6 @@ import SwiftUI
 
 struct OpenQuicklyPreviewView: View {
 
-    private let queue = DispatchQueue(label: "dev.dreamder.Dreamder.quickOpen.preview")
     private let item: CEWorkspaceFile
 
     @State private var editorInstance: EditorInstance

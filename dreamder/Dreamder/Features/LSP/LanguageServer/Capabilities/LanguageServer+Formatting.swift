@@ -9,10 +9,45 @@ import Foundation
 import LanguageServerProtocol
 
 extension LanguageServer {
+    static var documentFormattingMethod: String { "textDocument/formatting" }
+    static var rangeFormattingMethod: String { "textDocument/rangeFormatting" }
+    static var onTypeFormattingMethod: String { "textDocument/onTypeFormatting" }
+
+    var supportsDocumentFormatting: Bool {
+        switch serverCapabilities.documentFormattingProvider {
+        case .optionA(let enabled):
+            return enabled
+        case .optionB:
+            return true
+        case nil:
+            return dynamicCapabilities.hasCapability(Self.documentFormattingMethod)
+        }
+    }
+
+    var supportsRangeFormatting: Bool {
+        switch serverCapabilities.documentRangeFormattingProvider {
+        case .optionA(let enabled):
+            return enabled
+        case .optionB:
+            return true
+        case nil:
+            return dynamicCapabilities.hasCapability(Self.rangeFormattingMethod)
+        }
+    }
+
+    var onTypeFormattingOptions: DocumentOnTypeFormattingOptions? {
+        serverCapabilities.documentOnTypeFormattingProvider
+            ?? dynamicCapabilities.registerOptions(
+                for: Self.onTypeFormattingMethod,
+                as: DocumentOnTypeFormattingOptions.self
+            ).first
+    }
+
     func requestFormatting(
         for documentURI: String,
         withFormat formattingOptions: FormattingOptions
     ) async throws -> FormattingResult {
+        await flushPendingEdits(for: documentURI)
         do {
             let params = DocumentFormattingParams(
                 textDocument: TextDocumentIdentifier(uri: documentURI),
@@ -30,6 +65,7 @@ extension LanguageServer {
         _ range: LSPRange,
         withFormat formattingOptions: FormattingOptions
     ) async throws -> FormattingResult {
+        await flushPendingEdits(for: documentURI)
         do {
             let params = DocumentRangeFormattingParams(
                 textDocument: TextDocumentIdentifier(uri: documentURI),
@@ -49,6 +85,7 @@ extension LanguageServer {
         character char: String,
         withFormat formattingOptions: FormattingOptions
     ) async throws -> FormattingResult {
+        await flushPendingEdits(for: documentURI)
         do {
             let params = DocumentOnTypeFormattingParams(
                 textDocument: TextDocumentIdentifier(uri: documentURI),

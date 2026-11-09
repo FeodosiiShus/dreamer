@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import Combine
 import Observation
 
 /// Manages task-related notifications.
@@ -119,9 +118,13 @@ import Observation
 final class TaskNotificationHandler {
     private(set) var notifications: [TaskNotificationModel] = []
     var workspaceURL: URL?
-    @ObservationIgnored var cancellables: Set<AnyCancellable> = []
 
-    enum Action: String {
+    @ObservationIgnored private let center: NotificationCenter
+    @ObservationIgnored private let clock: any Clock<Duration>
+    @ObservationIgnored private var observer: (any NSObjectProtocol)?
+    @ObservationIgnored private var deletionTasks: [UUID: Task<Void, Never>] = [:]
+
+    nonisolated enum Action: String, Sendable {
         case create
         case createWithPriority
         case update
@@ -148,104 +151,127 @@ final class TaskNotificationHandler {
     }
 
     /// Initialises a new `TaskNotificationHandler` and starts observing for task notifications.
-    init(workspaceURL: URL? = nil) {
+    init(
+        workspaceURL: URL? = nil,
+        center: NotificationCenter = .default,
+        clock: any Clock<Duration> = ContinuousClock()
+    ) {
         self.workspaceURL = workspaceURL
+        self.center = center
+        self.clock = clock
 
-        NotificationCenter.default
-            .publisher(for: .taskNotification)
-            .receive(on: DispatchQueue.main)
-            .sink { notification in
-                self.handleNotification(notification)
+        observer = center.addObserver(
+            forName: .taskNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let event = TaskNotificationEvent(userInfo: notification.userInfo)
+            MainActor.assumeIsolated {
+                self?.handle(event)
             }
-            .store(in: &cancellables)
+        }
     }
 
     isolated deinit {
-        NotificationCenter.default.removeObserver(self, name: .taskNotification, object: nil)
+        if let observer {
+            center.removeObserver(observer)
+        }
+        deletionTasks.values.forEach { $0.cancel() }
     }
 
-    /// Handles notifications about task events.
-    ///
-    /// - Parameter notification: The notification containing task information.
-    private func handleNotification(_ notification: Notification) {
-        guard let userInfo = notification.userInfo,
-              let taskID = userInfo["id"] as? String,
-              let actionRaw = userInfo["action"] as? String,
-              let action = Action(rawValue: actionRaw) else { return }
+    private func handle(_ event: TaskNotificationEvent) {
+        guard let taskID = event.id, let action = event.action else { return }
 
-        // If a workspace is specified and doesn't match, don't do anything with this task.
-        if let workspaceURL = userInfo["workspace"] as? URL, workspaceURL != self.workspaceURL {
+        if let workspaceURL = event.workspace, workspaceURL != self.workspaceURL {
             return
         }
 
         switch action {
         case .create, .createWithPriority:
-            createTask(task: userInfo)
+            createTask(event, taskID: taskID, action: action)
         case .update:
-            updateTask(task: userInfo)
+            updateTask(event, taskID: taskID)
         case .delete:
             deleteTask(taskID: taskID)
         case .deleteWithDelay:
-            if let delay = userInfo["delay"] as? Double {
+            if let delay = event.delay {
                 deleteTaskAfterDelay(taskID: taskID, delay: delay)
             }
         }
     }
 
-    /// Creates a new task or inserts it at the beginning of the tasks array based on the action.
-    ///
-    /// - Parameter task: A dictionary containing task information.
-    private func createTask(task: [AnyHashable: Any]) {
-        guard let title = task["title"] as? String,
-              let id = task["id"] as? String,
-              let action = task["action"] as? String else {
-            return
-        }
+    private func createTask(_ event: TaskNotificationEvent, taskID: String, action: Action) {
+        guard let title = event.title else { return }
 
         let task = TaskNotificationModel(
-            id: id,
+            id: taskID,
             title: title,
-            message: task["message"] as? String,
-            percentage: task["percentage"] as? Double,
-            isLoading: task["isLoading"] as? Bool ?? false
+            message: event.message,
+            percentage: event.percentage,
+            isLoading: event.isLoading ?? false
         )
 
-        if action == "create" {
+        if action == .create {
             notifications.append(task)
         } else {
             notifications.insert(task, at: 0)
         }
     }
 
-    /// Updates an existing task with new information.
-    ///
-    /// - Parameter task: A dictionary containing task information.
-    private func updateTask(task: [AnyHashable: Any]) {
-        guard let taskID = task["id"] as? String else { return }
-            if let index = self.notifications.firstIndex(where: { $0.id == taskID }) {
-                if let title = task["title"] as? String {
-                    self.notifications[index].title = title
-                }
-                if let message = task["message"] as? String {
-                    self.notifications[index].message = message
-                }
-                if let percentage = task["percentage"] as? Double {
-                    self.notifications[index].percentage = percentage
-                }
-                if let isLoading = task["isLoading"] as? Bool {
-                    self.notifications[index].isLoading = isLoading
-                }
-            }
+    private func updateTask(_ event: TaskNotificationEvent, taskID: String) {
+        guard let index = notifications.firstIndex(where: { $0.id == taskID }) else { return }
+        if let title = event.title {
+            notifications[index].title = title
+        }
+        if let message = event.message {
+            notifications[index].message = message
+        }
+        if let percentage = event.percentage {
+            notifications[index].percentage = percentage
+        }
+        if let isLoading = event.isLoading {
+            notifications[index].isLoading = isLoading
+        }
     }
 
     private func deleteTask(taskID: String) {
-            self.notifications.removeAll { $0.id == taskID }
+        notifications.removeAll { $0.id == taskID }
     }
 
     private func deleteTaskAfterDelay(taskID: String, delay: Double) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            self.notifications.removeAll { $0.id == taskID }
+        let key = UUID()
+        deletionTasks[key] = Task { [weak self, clock] in
+            do {
+                try await Task.sleep(for: Duration.seconds(delay), clock: clock)
+            } catch {
+                return
+            }
+            self?.deleteTask(taskID: taskID)
+            self?.deletionTasks[key] = nil
         }
+    }
+}
+
+nonisolated struct TaskNotificationEvent: Sendable, Equatable {
+    let id: String?
+    let action: TaskNotificationHandler.Action?
+    let workspace: URL?
+    let title: String?
+    let message: String?
+    let percentage: Double?
+    let isLoading: Bool?
+    let delay: Double?
+
+    init(userInfo: [AnyHashable: Any]?) {
+        let info = userInfo ?? [:]
+        id = info["id"] as? String
+        action = (info["action"] as? String).flatMap(TaskNotificationHandler.Action.init(rawValue:))
+        workspace = info["workspace"] as? URL
+        title = info["title"] as? String
+        message = info["message"] as? String
+        percentage = info["percentage"] as? Double
+        isLoading = info["isLoading"] as? Bool
+        delay = info["delay"] as? Double
     }
 }
 

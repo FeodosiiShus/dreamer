@@ -33,16 +33,13 @@ struct SplitView<Content: View>: View {
 }
 
 private struct SplitPanes: View {
-    static let weightTolerance: CGFloat = 1e-9
-
     let axis: Axis
     let dividerStyle: DreamderDividerStyle
     let weights: Binding<[CGFloat]>?
     let subviews: SubviewsCollection
 
     @State private var localWeights: [CGFloat] = []
-    @State private var probe = SplitLayoutProbe()
-    @State private var dragOrigin: [CGFloat]?
+    @State private var coordinator = SplitPaneCoordinator()
 
     private var sourceWeights: [CGFloat] {
         weights?.wrappedValue ?? localWeights
@@ -71,7 +68,7 @@ private struct SplitPanes: View {
             dividerThickness: dividerStyle.thickness,
             hitThickness: SplitDivider.hitThickness,
             weights: resolvedWeights,
-            probe: probe
+            probe: coordinator.probe
         ) {
             ForEach(subviews) { subview in
                 pane(subview)
@@ -109,44 +106,34 @@ private struct SplitPanes: View {
     }
 
     private func divider(pair: Int) -> some View {
-        SplitDivider(
+        let actions = SplitDividerActions(
+            pair: pair,
+            paneCount: subviews.count,
+            coordinator: $coordinator,
+            commit: commit
+        )
+        return SplitDivider(
             axis: axis,
             style: dividerStyle,
-            onDrag: { translation in drag(pair: pair, translation: translation) },
-            onDragEnd: { dragOrigin = nil },
-            onNudge: { delta in nudge(pair: pair, delta: delta) },
-            onEqualize: { commit(SplitLayoutMath.equalWeights(count: subviews.count)) }
+            onDrag: actions.drag,
+            onDragEnd: actions.endDrag,
+            onNudge: actions.nudge,
+            onEqualize: actions.equalize
         )
         .layoutValue(key: SplitLayoutRoleKey.self, value: .divider)
         .zIndex(1)
     }
 
-    private func drag(pair: Int, translation: CGFloat) {
-        let origin = dragOrigin ?? probe.lengths
-        dragOrigin = origin
-        commit(SplitLayoutMath(panes: probe.panes).drag(dividerIndex: pair, delta: translation, lengths: origin))
-    }
-
-    private func nudge(pair: Int, delta: CGFloat) {
-        commit(SplitLayoutMath(panes: probe.panes).drag(dividerIndex: pair, delta: delta, lengths: probe.lengths))
-    }
-
     private func applyHoldingPriorities(from oldLength: CGFloat, to newLength: CGFloat) {
-        guard oldLength > 0, newLength > 0, oldLength != newLength else { return }
-        let math = SplitLayoutMath(panes: probe.panes)
-        let visible = math.visibleIndices
-        guard Set(visible.map { math.panes[$0].holdingPriority }).count > 1 else { return }
-        let thickness = dividerStyle.thickness
-        let oldLengths = math.distribute(length: oldLength, dividerThickness: thickness)
-        commit(math.resize(lengths: oldLengths, newLength: newLength, dividerThickness: thickness))
+        let resized = coordinator.resized(from: oldLength, to: newLength, dividerThickness: dividerStyle.thickness)
+        _ = resized.map(commit)
     }
 
     private func commit(_ newWeights: [CGFloat]) {
-        let current = sourceWeights
-        if current.count == newWeights.count,
-           zip(current, newWeights).allSatisfy({ abs($0 - $1) <= Self.weightTolerance }) {
-            return
-        }
+        _ = SplitPaneCoordinator.changed(newWeights, from: sourceWeights).map(store)
+    }
+
+    private func store(_ newWeights: [CGFloat]) {
         if let weights {
             weights.wrappedValue = newWeights
         } else {

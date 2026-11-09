@@ -10,7 +10,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 class CEActiveTaskTests {
     var task: CETask
     var activeTask: CEActiveTask
@@ -61,8 +61,20 @@ class CEActiveTaskTests {
         await waitForExpectation(timeout: .seconds(90)) {
             output.getBufferAsString().contains("Testing")
         } onTimeout: {
-            Issue.record("Output never contained the environment value. \(output.getBufferAsString())")
+            let geometry = output.terminal.map { "cols=\($0.cols) rows=\($0.rows) yDisp=\($0.buffer.yDisp)" } ?? "no terminal"
+            Issue.record("Output never contained the environment value. \(geometry) text=\(output.getBufferAsString())")
         }
+    }
+
+    @Test
+    func aTaskTerminalWithoutAWindowReportsAUsableSizeToTheShell() throws {
+        let view = CEActiveTaskTerminalView(activeTask: activeTask)
+        let terminal = try #require(view.terminal)
+        #expect(terminal.cols >= 80)
+        #expect(terminal.rows >= 24)
+        let size = view.getWindowSize()
+        #expect(Int(size.ws_col) == terminal.cols)
+        #expect(Int(size.ws_row) == terminal.rows)
     }
 
     @Test(arguments: [Shell.zsh, Shell.bash])

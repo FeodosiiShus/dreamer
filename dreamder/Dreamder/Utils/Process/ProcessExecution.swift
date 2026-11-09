@@ -5,18 +5,16 @@ nonisolated final class ProcessExecution: Sendable {
     typealias Sink = @Sendable (ProcessStream, Data) -> Void
 
     static let readChunkSize = 65_536
-    static let killGracePeriod: DispatchTimeInterval = .seconds(3)
-    static let drainGracePeriod: DispatchTimeInterval = .seconds(2)
+
+    nonisolated struct Tuning: Sendable {
+        var killGracePeriod: Duration = .seconds(3)
+        var drainGracePeriod: Duration = .seconds(2)
+        var afterSpawn: (@Sendable () -> Void)?
+    }
 
     private enum StopReason: Sendable {
         case cancelled
         case timedOut
-    }
-
-    private enum ReadResult {
-        case data(Data)
-        case wouldBlock
-        case endOfStream
     }
 
     private struct UnsafeSendable<Value>: @unchecked Sendable {
@@ -48,14 +46,20 @@ nonisolated final class ProcessExecution: Sendable {
     private let state = Mutex(State())
     private let sink: Sink?
     private let timeout: Duration?
+    private let tuning: Tuning
 
-    private init(sink: Sink?, timeout: Duration?) {
+    private init(sink: Sink?, timeout: Duration?, tuning: Tuning) {
         self.sink = sink
         self.timeout = timeout
+        self.tuning = tuning
     }
 
-    static func run(_ invocation: ProcessInvocation, sink: Sink? = nil) async throws -> ProcessOutput {
-        let execution = ProcessExecution(sink: sink, timeout: invocation.timeout)
+    static func run(
+        _ invocation: ProcessInvocation,
+        sink: Sink? = nil,
+        tuning: Tuning = Tuning()
+    ) async throws -> ProcessOutput {
+        let execution = ProcessExecution(sink: sink, timeout: invocation.timeout, tuning: tuning)
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 execution.begin(invocation, continuation)
@@ -67,12 +71,13 @@ nonisolated final class ProcessExecution: Sendable {
 
     private func begin(_ invocation: ProcessInvocation, _ continuation: CheckedContinuation<ProcessOutput, any Error>) {
         state.withLock { $0.continuation = continuation }
-        DispatchQueue.global(qos: .userInitiated).async { [self] in
-            launch(invocation)
+        Task(priority: .userInitiated) { [self] in
+            await launch(invocation)
         }
     }
 
-    private func launch(_ invocation: ProcessInvocation) {
+    @concurrent
+    private func launch(_ invocation: ProcessInvocation) async {
         let alreadyStopped = state.withLock { $0.stopReason != nil }
         if alreadyStopped {
             finish()
@@ -115,6 +120,7 @@ nonisolated final class ProcessExecution: Sendable {
             return
         }
 
+        tuning.afterSpawn?()
         let stopReason = state.withLock { state -> StopReason? in
             state.launched = true
             return state.stopReason
@@ -134,29 +140,27 @@ nonisolated final class ProcessExecution: Sendable {
             scheduleTimeout(timeout)
         }
         if stopReason != nil {
-            Self.terminate(process)
+            terminate(process)
         }
     }
 
     private func drain(_ handle: FileHandle, stream: ProcessStream) {
-        switch Self.readAvailable(from: handle.fileDescriptor) {
-        case .data(let chunk):
-            if let sink {
-                sink(stream, chunk)
-            } else {
-                state.withLock { state in
-                    switch stream {
-                    case .standardOutput: state.standardOutput.append(chunk)
-                    case .standardError: state.standardError.append(chunk)
-                    }
-                }
-            }
-        case .wouldBlock:
-            break
-        case .endOfStream:
+        guard let chunk = Self.readAvailable(from: handle.fileDescriptor) else {
             handle.readabilityHandler = nil
             state.withLock { _ = $0.openStreams.remove(stream) }
             completeIfDrained()
+            return
+        }
+        guard !chunk.isEmpty else { return }
+        if let sink {
+            sink(stream, chunk)
+        } else {
+            state.withLock { state in
+                switch stream {
+                case .standardOutput: state.standardOutput.append(chunk)
+                case .standardError: state.standardError.append(chunk)
+                }
+            }
         }
     }
 
@@ -169,7 +173,8 @@ nonisolated final class ProcessExecution: Sendable {
             state.terminatedBySignal = bySignal
         }
         guard !completeIfDrained() else { return }
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Self.drainGracePeriod) { [self] in
+        Task(priority: .utility) { [self] in
+            try? await Task.sleep(for: tuning.drainGracePeriod)
             finish()
         }
     }
@@ -189,23 +194,18 @@ nonisolated final class ProcessExecution: Sendable {
             return state.launched && !state.terminated ? state.process : nil
         }
         if let process = target?.value {
-            Self.terminate(process)
+            terminate(process)
         }
     }
 
     private func scheduleTimeout(_ timeout: Duration) {
-        let task = Task { [self] in
-            try? await Task.sleep(for: timeout)
-            guard !Task.isCancelled else { return }
-            stop(.timedOut)
-        }
-        let discard = state.withLock { state -> Bool in
-            guard !state.finished else { return true }
-            state.timeoutTask = task
-            return false
-        }
-        if discard {
-            task.cancel()
+        state.withLock { state in
+            guard !state.finished else { return }
+            state.timeoutTask = Task { [self] in
+                try? await Task.sleep(for: timeout)
+                guard !Task.isCancelled else { return }
+                stop(.timedOut)
+            }
         }
     }
 
@@ -252,11 +252,13 @@ nonisolated final class ProcessExecution: Sendable {
         outcome.continuation?.resume(with: outcome.result)
     }
 
-    private static func terminate(_ process: Process) {
+    private func terminate(_ process: Process) {
         guard process.isRunning else { return }
         process.terminate()
         let target = UnsafeSendable(value: process)
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + killGracePeriod) {
+        let gracePeriod = tuning.killGracePeriod
+        Task(priority: .utility) {
+            try? await Task.sleep(for: gracePeriod)
             if target.value.isRunning {
                 kill(target.value.processIdentifier, SIGKILL)
             }
@@ -265,26 +267,27 @@ nonisolated final class ProcessExecution: Sendable {
 
     private static func feed(_ data: Data, into pipe: Pipe) {
         let writer = UnsafeSendable(value: pipe.fileHandleForWriting)
-        DispatchQueue.global(qos: .utility).async {
-            try? writer.value.write(contentsOf: data)
-            try? writer.value.close()
+        Task(priority: .utility) {
+            await write(data, to: writer)
         }
     }
 
-    private static func readAvailable(from descriptor: Int32) -> ReadResult {
-        withUnsafeTemporaryAllocation(of: UInt8.self, capacity: readChunkSize) { buffer -> ReadResult in
-            guard let base = buffer.baseAddress else { return .endOfStream }
+    @concurrent
+    private static func write(_ data: Data, to writer: UnsafeSendable<FileHandle>) async {
+        try? writer.value.write(contentsOf: data)
+        try? writer.value.close()
+    }
+
+    static func readAvailable(from descriptor: Int32) -> Data? {
+        withUnsafeTemporaryAllocation(of: UInt8.self, capacity: readChunkSize) { buffer -> Data? in
             var count: Int
             repeat {
-                count = Darwin.read(descriptor, base, buffer.count)
+                count = Darwin.read(descriptor, buffer.baseAddress, buffer.count)
             } while count < 0 && errno == EINTR
             if count > 0 {
-                return .data(Data(bytes: base, count: count))
+                return Data(buffer: UnsafeBufferPointer(rebasing: buffer[..<count]))
             }
-            if count < 0 && errno == EAGAIN {
-                return .wouldBlock
-            }
-            return .endOfStream
+            return count < 0 && errno == EAGAIN ? Data() : nil
         }
     }
 }

@@ -26,7 +26,11 @@ struct StatusBarCursorPositionLabel: View {
         .fixedSize()
         .accessibilityIdentifier("CursorPositionLabel")
         .accessibilityAddTraits(.updatesFrequently)
-        .onHover { isHovering($0) }
+        .onHover(perform: hoverChanged)
+    }
+
+    func hoverChanged(_ active: Bool) {
+        isHovering(active)
     }
 
     struct LineLabel: View {
@@ -44,7 +48,11 @@ struct StatusBarCursorPositionLabel: View {
         }
 
         var body: some View {
-            Text(getLabel())
+            Text(Self.label(
+                for: cursorPositions,
+                modifierKeys: ShortcutModifiers(modifierKeys).eventModifiers,
+                lineCount: getLines
+            ))
                 .font(Islands.smallFont)
                 .foregroundColor(Islands.secondaryForeground)
                 .lineLimit(1)
@@ -59,7 +67,11 @@ struct StatusBarCursorPositionLabel: View {
 
         /// Create a label string for cursor positions.
         /// - Returns: A string describing the user's location in a document.
-        func getLabel() -> String {
+        static func label(
+            for cursorPositions: [CursorPosition],
+            modifierKeys: EventModifiers,
+            lineCount linesInRange: (NSRange) -> Int
+        ) -> String {
             if cursorPositions.isEmpty {
                 return ""
             }
@@ -76,7 +88,7 @@ struct StatusBarCursorPositionLabel: View {
                     return "Char: \(cursorPositions[0].range.location) Len: \(cursorPositions[0].range.length)"
                 }
 
-                let lineCount = getLines(cursorPositions[0].range)
+                let lineCount = linesInRange(cursorPositions[0].range)
 
                 if lineCount > 1 {
                     return "\(lineCount) lines"

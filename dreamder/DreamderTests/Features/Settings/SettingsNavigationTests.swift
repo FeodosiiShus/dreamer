@@ -105,31 +105,7 @@ struct SettingsNavigationTests {
     }
 
     @Test
-    func keymapShortcutsUseModifierSymbols() {
-        #expect(KeymapShortcutDisplay.shortcut(for: shortcut(modifier: "command", key: "c")) == "\u{2318}C")
-        #expect(KeymapShortcutDisplay.shortcut(for: shortcut(modifier: "shift", key: "tab")) == "\u{21E7}TAB")
-        #expect(KeymapShortcutDisplay.shortcut(for: shortcut(modifier: "option", key: "f7")) == "\u{2325}F7")
-        #expect(KeymapShortcutDisplay.shortcut(for: shortcut(modifier: "control", key: "p")) == "\u{2303}P")
-    }
-
-    @Test
-    func unknownModifierFallsBackToCommand() {
-        #expect(KeymapShortcutDisplay.shortcut(for: shortcut(modifier: "hyper", key: "k")) == "\u{2318}K")
-    }
-
-    @Test
     func defaultPageIsGeneral() {
         #expect(SettingsNavigation.defaultPage == .general)
-    }
-
-    private func shortcut(modifier: String, key: String) -> KeyboardShortcutWrapper {
-        KeyboardShortcutWrapper(
-            name: key,
-            description: "Action",
-            context: "Global",
-            keybinding: key,
-            modifier: modifier,
-            id: key
-        )
     }
 }

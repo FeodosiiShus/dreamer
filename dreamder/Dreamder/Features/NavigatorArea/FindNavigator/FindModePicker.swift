@@ -24,19 +24,21 @@ struct FindModePicker: View {
     @Environment(WorkspaceDocument.self) private var workspace
 
     @State var position: NSPoint?
-    @State var isHovering: Bool = false
+    @State var isHovering: Bool
     @State private var button: NSPopUpButton?
 
     init(
         modes: [SearchModeModel],
         selection: Binding<SearchModeModel>,
         onSelect: @escaping (SearchModeModel) -> Void,
-        isLastItem: Bool
+        isLastItem: Bool,
+        isHovering: Bool = false
     ) {
         self.modes = modes
         self._selection = selection
         self.onSelect = onSelect
         self.isLastItem = isLastItem
+        self._isHovering = State(initialValue: isHovering)
     }
 
     var body: some View {
@@ -50,7 +52,7 @@ struct FindModePicker: View {
             button.isBordered = false
             button.appearance = NSAppearance(named: .darkAqua)
             (button.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.button = button
             }
             return button
@@ -74,13 +76,17 @@ struct FindModePicker: View {
             }
         }
         .padding(.vertical, 3)
-        .onHover { hover in
-            isHovering = hover
-        }
-        .onTapGesture {
-            button?.performClick(nil)
-        }
+        .onHover(perform: setHovering)
+        .onTapGesture(perform: openMenu)
         .opacity(activeState != .inactive ? 1 : 0.75)
+    }
+
+    func setHovering(_ hover: Bool) {
+        isHovering = hover
+    }
+
+    func openMenu() {
+        button?.performClick(nil)
     }
 
     private var chevron: some View {

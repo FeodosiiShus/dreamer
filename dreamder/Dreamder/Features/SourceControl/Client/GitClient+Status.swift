@@ -19,10 +19,6 @@ import Foundation
 /// These are documented here: https://git-scm.com/docs/git-status.
 ///
 /// There is one method for each change type that can be returned with the exception of ignored which is, well, ignored.
-///
-/// # TODO:
-/// In the future, this method should return information about push/pull status and stash status, as that
-/// information can be included in the same call.
 
 nonisolated extension GitClient {
     struct Status {
@@ -36,7 +32,7 @@ nonisolated extension GitClient {
     /// - Throws: Can throw ``GitClient/GitClientError`` errors if it finds unexpected output.
     @concurrent
     func getStatus() async throws -> Status {
-        let output = try await run(arguments: ["status", "-z", "--porcelain=2", "-u"] + scopePathspecArguments)
+        let output = try await run(arguments: ["status", "-z", "--porcelain=2", "-unormal"] + scopePathspecArguments)
         return try parseStatusString(output)
     }
 
@@ -44,10 +40,8 @@ nonisolated extension GitClient {
     /// - Parameter output: The git output from running `status`. Expects a porcelain v2 string.
     /// - Returns: A status object if parseable.
     func parseStatusString(_ output: String) throws -> Status {
-        if let status = try output.utf8.withContiguousStorageIfAvailable({ try parseStatus(bytes: $0) }) {
-            return status
-        }
-        return try Array(output.utf8).withUnsafeBufferPointer { try parseStatus(bytes: $0) }
+        var contiguous = output
+        return try contiguous.withUTF8 { try parseStatus(bytes: $0) }
     }
 
     /// Discard changes for file

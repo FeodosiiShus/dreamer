@@ -3,24 +3,23 @@ import Combine
 
 struct ToolbarBranchPicker: View {
     private let sourceControlManager: SourceControlManager?
+    private let settings: Settings
 
-    init(workspaceFileManager: CEWorkspaceFileManager?) {
-        self.sourceControlManager = workspaceFileManager?.sourceControlManager
-    }
-
-    init(sourceControlManager: SourceControlManager?) {
+    init(sourceControlManager: SourceControlManager?, settings: Settings = .shared) {
         self.sourceControlManager = sourceControlManager
+        self.settings = settings
     }
 
     var body: some View {
         if let sourceControlManager {
-            ToolbarBranchPickerContent(sourceControlManager: sourceControlManager)
+            ToolbarBranchPickerContent(sourceControlManager: sourceControlManager, settings: settings)
         }
     }
 }
 
 private struct ToolbarBranchPickerContent: View {
     let sourceControlManager: SourceControlManager
+    let settings: Settings
     @Environment(WorkspaceDocument.self) private var workspace
 
     @State private var anchor = ToolbarPopupAnchor()
@@ -28,9 +27,7 @@ private struct ToolbarBranchPickerContent: View {
 
     var body: some View {
         if sourceControlManager.isGitRepository {
-            Button {
-                presentBranches()
-            } label: {
+            Button(action: presentBranches) {
                 label
             }
             .buttonStyle(.plain)
@@ -38,7 +35,7 @@ private struct ToolbarBranchPickerContent: View {
             .help(sourceControlManager.currentBranch?.name ?? "No branch")
             .background(ToolbarPopupAnchorView(anchor: anchor))
             .task {
-                if Settings.shared.preferences.sourceControl.general.sourceControlIsEnabled {
+                if settings.preferences.sourceControl.general.sourceControlIsEnabled {
                     await sourceControlManager.refreshCurrentBranch()
                     await sourceControlManager.refreshBranches()
                 }

@@ -5,8 +5,8 @@ import Foundation
 enum MergeAutomation {
     static let notification = Notification.Name("dev.dreamder.merge")
 
-    private static var queue: Task<Void, Never> = Task {}
-    private static var targetPath = ""
+    private(set) static var queue: Task<Void, Never> = Task {}
+    private(set) static var targetPath = ""
     private static var bannerPath: String?
     private static var bannerAction: (() -> Void)?
 
@@ -15,8 +15,8 @@ enum MergeAutomation {
         bannerAction = action
     }
 
-    static func install() {
-        DistributedNotificationCenter.default().addObserver(
+    static func install(center: NotificationCenter = DistributedNotificationCenter.default()) {
+        center.addObserver(
             forName: notification,
             object: nil,
             queue: .main
@@ -28,7 +28,7 @@ enum MergeAutomation {
         }
     }
 
-    private static func enqueue(_ command: String) {
+    static func enqueue(_ command: String) {
         let previous = queue
         queue = Task { @MainActor in
             await previous.value
@@ -36,7 +36,7 @@ enum MergeAutomation {
         }
     }
 
-    private static func perform(_ command: String) async {
+    static func perform(_ command: String) async {
         let parts = command.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
             .map(String.init)
         guard let name = parts.first, !name.isEmpty else { return }
@@ -91,7 +91,8 @@ enum MergeAutomation {
             default: return
             }
         case "editResult":
-            MergeToolPresenter.revisionsModel?.userEditedResult(unescaped(first))
+            let text = String(command.dropFirst(name.count + 1))
+            MergeToolPresenter.revisionsModel?.userEditedResult(unescaped(text))
         case "acceptLeft":
             closeRevisionsIfNeeded(await MergeToolPresenter.revisionsModel?.requestAcceptSide(.yours, window: nil))
         case "acceptRight":
@@ -138,7 +139,8 @@ enum MergeAutomation {
 
     private static func clickChip(pane: String, blockID: Int, action: String) {
         guard let window = MergeToolPresenter.revisionsWindow,
-              let textView = findTextView(in: window.contentView, identifier: "merge-pane-\(pane)"),
+              let contentView = window.contentView,
+              let textView = findTextView(in: contentView, identifier: "merge-pane-\(pane)"),
               let storage = textView.textStorage,
               let target = NSURL(string: "merge-block://\(action)/\(blockID)") else { return }
         var location: Int?
@@ -152,8 +154,7 @@ enum MergeAutomation {
         textView.clicked(onLink: target, at: location)
     }
 
-    private static func findTextView(in view: NSView?, identifier: String) -> NSTextView? {
-        guard let view else { return nil }
+    private static func findTextView(in view: NSView, identifier: String) -> NSTextView? {
         if let textView = view as? NSTextView, textView.identifier?.rawValue == identifier {
             return textView
         }
@@ -165,17 +166,17 @@ enum MergeAutomation {
         return nil
     }
 
-    private static func workspace(for path: String) -> WorkspaceDocument? {
+    static func workspace(for path: String, keyWindow: NSWindow? = NSApp.keyWindow) -> WorkspaceDocument? {
         let documents = NSDocumentController.shared.documents.compactMap { $0 as? WorkspaceDocument }
         if !path.isEmpty {
-            let target = URL(fileURLWithPath: path).standardizedFileURL.path(percentEncoded: false)
+            let target = URL(fileURLWithPath: path).standardizedFileURL.path
             if let match = documents.first(where: {
-                $0.sourceControlManager?.workspaceURL.standardizedFileURL.path(percentEncoded: false) == target
+                $0.sourceControlManager?.workspaceURL.standardizedFileURL.path == target
             }) {
                 return match
             }
         }
-        if let controller = NSApp.keyWindow?.windowController as? DreamderWindowController,
+        if let controller = keyWindow?.windowController as? DreamderWindowController,
            let workspace = controller.workspace {
             return workspace
         }
@@ -189,25 +190,25 @@ enum MergeAutomation {
 
         var lines: [String] = []
         let target = workspace(for: targetPath)
-        if let target {
-            lines.append("workspace=\(target.sourceControlManager?.workspaceURL.path(percentEncoded: false) ?? "")")
+        if let manager = target?.sourceControlManager {
+            lines.append("workspace=\(manager.workspaceURL.path(percentEncoded: false))")
         }
         lines.append("target=\(targetPath)")
         lines.append("documents=\(NSDocumentController.shared.documents.compactMap { ($0 as? WorkspaceDocument)?.sourceControlManager?.workspaceURL.path(percentEncoded: false) }.joined(separator: ","))")
         lines.append("windowTitles=\(NSApp.windows.map(\.title).joined(separator: "|"))")
-        lines.append("menu.resolvePresent=\(gitMenuItem("Resolve Conflicts") == nil ? 0 : 1)")
-        lines.append("menu.resolveEnabled=\(gitMenuItem("Resolve Conflicts")?.isEnabled == true ? 1 : 0)")
+        lines.append("menu.resolvePresent=\(flag(gitMenuItem("Resolve Conflicts") != nil))")
+        lines.append("menu.resolveEnabled=\(flag(gitMenuItem("Resolve Conflicts")?.isEnabled == true))")
         lines.append("menu.resolveTitle=\(gitMenuItem("Resolve Conflicts")?.title ?? "")")
         lines.append("banner.path=\(bannerPath ?? "")")
-        lines.append("banner.action=\(bannerAction == nil ? 0 : 1)")
+        lines.append("banner.action=\(flag(bannerAction != nil))")
 
         let conflictsModel = target.flatMap { MergeToolPresenter.conflictsModel(for: $0) }
             ?? MergeToolPresenter.conflictsModel
-        lines.append("conflicts.open=\(conflictsModel == nil ? 0 : 1)")
+        lines.append("conflicts.open=\(flag(conflictsModel != nil))")
         if let model = conflictsModel {
             lines.append("conflicts.summary=\(escaped(model.summary))")
             lines.append("conflicts.error=\(escaped(model.errorMessage ?? ""))")
-            lines.append("conflicts.busy=\(model.isBusy ? 1 : 0)")
+            lines.append("conflicts.busy=\(flag(model.isBusy))")
             lines.append("conflicts.primary=\(model.primaryPath ?? "")")
             lines.append("conflicts.selected=\(model.selectedPaths.sorted().joined(separator: ","))")
             lines.append("conflicts.count=\(model.entries.count)")
@@ -220,15 +221,15 @@ enum MergeAutomation {
         }
 
         let revisionsModel = MergeToolPresenter.revisionsModel
-        lines.append("revisions.open=\(revisionsModel == nil ? 0 : 1)")
+        lines.append("revisions.open=\(flag(revisionsModel != nil))")
         if let model = revisionsModel {
             lines.append("revisions.path=\(model.path)")
             lines.append("revisions.title=\(escaped(model.title))")
             lines.append("revisions.summary=\(escaped(model.summary))")
             lines.append("revisions.error=\(escaped(model.errorMessage ?? ""))")
-            lines.append("revisions.valid=\(model.isConflictValid ? 1 : 0)")
-            lines.append("revisions.edited=\(model.isResultEdited ? 1 : 0)")
-            lines.append("revisions.loading=\(model.isLoading ? 1 : 0)")
+            lines.append("revisions.valid=\(flag(model.isConflictValid))")
+            lines.append("revisions.edited=\(flag(model.isResultEdited))")
+            lines.append("revisions.loading=\(flag(model.isLoading))")
             lines.append("revisions.leftTitle=\(escaped(model.leftTitle))")
             lines.append("revisions.rightTitle=\(escaped(model.rightTitle))")
             if let merge = model.merge {
@@ -239,15 +240,19 @@ enum MergeAutomation {
                                  + "|\(block.baseRange.lowerBound)-\(block.baseRange.upperBound)")
                 }
             }
-            lines.append("revisions.nonConflictingLeft=\(model.hasNonConflictingChanges(.left) ? 1 : 0)")
-            lines.append("revisions.nonConflictingAll=\(model.hasNonConflictingChanges(.all) ? 1 : 0)")
-            lines.append("revisions.nonConflictingRight=\(model.hasNonConflictingChanges(.right) ? 1 : 0)")
+            lines.append("revisions.nonConflictingLeft=\(flag(model.hasNonConflictingChanges(.left)))")
+            lines.append("revisions.nonConflictingAll=\(flag(model.hasNonConflictingChanges(.all)))")
+            lines.append("revisions.nonConflictingRight=\(flag(model.hasNonConflictingChanges(.right)))")
             lines.append("revisions.result=\(escaped(model.resultText))")
             lines.append("revisions.left=\(escaped(model.leftPane.text))")
             lines.append("revisions.right=\(escaped(model.rightPane.text))")
         }
 
         try? lines.joined(separator: "\n").appending("\n").write(to: output, atomically: true, encoding: .utf8)
+    }
+
+    private static func flag(_ value: Bool) -> String {
+        value ? "1" : "0"
     }
 
     private static func escaped(_ value: String) -> String {
@@ -258,8 +263,30 @@ enum MergeAutomation {
     }
 
     private static func unescaped(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\n", with: "\n")
-            .replacingOccurrences(of: "\\\\", with: "\\")
+        var result = String.UnicodeScalarView()
+        var pendingBackslash = false
+        for scalar in value.unicodeScalars {
+            guard pendingBackslash else {
+                if scalar == "\\" {
+                    pendingBackslash = true
+                } else {
+                    result.append(scalar)
+                }
+                continue
+            }
+            pendingBackslash = false
+            switch scalar {
+            case "n": result.append("\n")
+            case "r": result.append("\r")
+            case "\\": result.append("\\")
+            default:
+                result.append("\\")
+                result.append(scalar)
+            }
+        }
+        if pendingBackslash {
+            result.append("\\")
+        }
+        return String(result)
     }
 }

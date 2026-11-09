@@ -6,73 +6,83 @@
 //
 
 import Cocoa
+import OSLog
 import SwiftUI
-import WelcomeWindow
 
 final class DreamderDocumentController: NSDocumentController {
-    @Environment(\.openWindow)
-    private var openWindow
+    private static let logger = Logger(subsystem: "dev.dreamder.Dreamder", category: "DreamderDocumentController")
 
-    @Service var lspService: LSPService
+    var lspService: LSPService { .shared }
+
+    var recentProjects = RecentProjectsManager.shared
+
+    var settings = Settings.shared
+
+    var openDocuments: @MainActor () -> [NSDocument] = { DreamderDocumentController.shared.documents }
+
+    var showWelcomeWindow: @MainActor () -> Void = {
+        (NSApp.delegate as? AppDelegate)?.openWindow(sceneID: .welcome)
+    }
+
+    var quitApplication: @MainActor () -> Void = { NSApplication.shared.terminate(nil) }
 
     private let fileManager = FileManager.default
 
+    var recordsRecentDocuments: Bool {
+        !DreamderHeadless.isEnabled
+    }
+
+    override func noteNewRecentDocument(_ document: NSDocument) {
+        if recordsRecentDocuments { super.noteNewRecentDocument(document) }
+    }
+
+    override func noteNewRecentDocumentURL(_ url: URL) {
+        if recordsRecentDocuments { super.noteNewRecentDocumentURL(url) }
+    }
+
+    func noteRecentProject(at url: URL) {
+        if recordsRecentDocuments { recordRecentProject(at: url) }
+    }
+
+    func recordRecentProject(at url: URL) {
+        recentProjects.markRecent(at: url, isDirectory: url.isFolder)
+    }
+
     @MainActor
-    func createAndOpenNewDocument(onCompletion: @escaping () -> Void) {
-        guard let newDocumentUrl = self.newDocumentUrl else { return }
-
-        let createdFile = self.fileManager.createFile(
-            atPath: newDocumentUrl.path,
-            contents: nil,
-            attributes: [FileAttributeKey.creationDate: Date()]
-        )
-
-        guard createdFile else {
-            print("Failed to create new document")
-            return
+    @discardableResult
+    func createAndOpenNewDocument() async -> Bool {
+        guard let url = createNewDocumentFile() else { return false }
+        await withCheckedContinuation { continuation in
+            openDocument(withContentsOf: url, display: true) { _, _, _ in
+                continuation.resume()
+            }
         }
-
-        self.openDocument(withContentsOf: newDocumentUrl, display: true) { _, _, _ in
-            onCompletion()
-        }
+        return true
     }
 
     override func newDocument(_ sender: Any?) {
-        guard let newDocumentUrl = self.newDocumentUrl else { return }
+        guard let url = createNewDocumentFile() else { return }
+        openDocument(withContentsOf: url, display: true) { _, _, _ in }
+    }
 
-        let createdFile = self.fileManager.createFile(
-            atPath: newDocumentUrl.path,
+    private func createNewDocumentFile() -> URL? {
+        guard let url = filePanels.chooseSaveLocation(SavePanelRequest()) else { return nil }
+        let createdFile = fileManager.createFile(
+            atPath: url.path,
             contents: nil,
             attributes: [FileAttributeKey.creationDate: Date()]
         )
         guard createdFile else {
-            print("Failed to create new document")
-            return
-        }
-
-        self.openDocument(withContentsOf: newDocumentUrl, display: true) { _, _, _ in }
-    }
-
-    private var newDocumentUrl: URL? {
-        let panel = NSSavePanel()
-        guard panel.runModal() == .OK else {
+            Self.logger.error("Failed to create new document at \(url.path, privacy: .public)")
             return nil
         }
-
-        return panel.url
+        return url
     }
 
+    var filePanels: any FilePanelPresenting = SystemFilePanels()
+
     override func openDocument(_ sender: Any?) {
-        self.openDocument(onCompletion: { document, documentWasAlreadyOpen in
-            // TODO: handle errors
-
-            guard let document else {
-                print("Failed to unwrap document")
-                return
-            }
-
-            print(document, documentWasAlreadyOpen)
-        }, onCancel: {})
+        openDocument(onCompletion: { _, _ in }, onCancel: {}, panels: filePanels)
     }
 
     override func openDocument(
@@ -80,7 +90,8 @@ final class DreamderDocumentController: NSDocumentController {
         display displayDocument: Bool,
         completionHandler: @escaping (NSDocument?, Bool, Error?) -> Void
     ) {
-        guard !openFileInExistingWorkspace(url: url) else {
+        if let workspace = openFileInExistingWorkspace(url: url) {
+            completionHandler(workspace, true, nil)
             return
         }
 
@@ -90,10 +101,12 @@ final class DreamderDocumentController: NSDocumentController {
                     self.addDocument(document)
                 } else {
                     let errorMessage = error?.localizedDescription ?? "unknown error"
-                    print("Unable to open document '\(url)': \(errorMessage)")
+                    Self.logger.error(
+                        "Unable to open document '\(url.path, privacy: .public)': \(errorMessage, privacy: .public)"
+                    )
                 }
 
-                RecentsStore.documentOpened(at: url)
+                self.noteRecentProject(at: url)
                 completionHandler(document, documentWasAlreadyOpen, error)
             }
         }
@@ -101,9 +114,9 @@ final class DreamderDocumentController: NSDocumentController {
 
     /// Attempt to open the file URL in an open workspace, finding the nearest workspace to open it in if possible.
     /// - Parameter url: The file URL to open.
-    /// - Returns: True, if the document was opened in a workspace.
-    private func openFileInExistingWorkspace(url: URL) -> Bool {
-        guard !url.isFolder else { return false }
+    /// - Returns: The workspace that opened the file, or `nil` if no open workspace contains it.
+    private func openFileInExistingWorkspace(url: URL) -> WorkspaceDocument? {
+        guard !url.isFolder else { return nil }
         let workspaces = documents.compactMap({ $0 as? WorkspaceDocument })
 
         // Check open workspaces for the file being opened. Sorted by shared components with the url so we
@@ -115,10 +128,10 @@ final class DreamderDocumentController: NSDocumentController {
             if let newFile = workspace.workspaceFileManager?.getFile(url.absolutePath, createIfNotFound: true) {
                 workspace.editorManager?.openTab(item: newFile)
                 workspace.showWindows()
-                return true
+                return workspace
             }
         }
-        return false
+        return nil
     }
 
     override func removeDocument(_ document: NSDocument) {
@@ -128,53 +141,11 @@ final class DreamderDocumentController: NSDocumentController {
             lspService.closeWorkspace(path)
         }
 
-        if DreamderDocumentController.shared.documents.isEmpty {
-            switch Settings[\.general].reopenWindowAfterClose {
-            case .showWelcomeWindow:
-                // Opens the welcome window
-                openWindow(sceneID: .welcome)
-            case .quit:
-                // Quits Dreamder
-                NSApplication.shared.terminate(nil)
-            case .doNothing: break
-            }
-        }
-    }
-}
-
-extension NSDocumentController {
-    final func openDocument(onCompletion: @escaping (NSDocument?, Bool) -> Void, onCancel: @escaping () -> Void) {
-        let dialog = NSOpenPanel()
-
-        dialog.title = "Open Workspace or File"
-        dialog.showsHiddenFiles = false
-        dialog.canChooseFiles = true
-        dialog.canChooseDirectories = true
-
-        dialog.begin { result in
-            if result ==  NSApplication.ModalResponse.OK, let url = dialog.url {
-                self.openDocument(withContentsOf: url, display: true) { document, documentWasAlreadyOpen, error in
-                    if let error {
-                        NSAlert(error: error).runModal()
-                        return
-                    }
-
-                    guard let document else {
-                        let alert = NSAlert()
-                        alert.messageText = NSLocalizedString(
-                            "Failed to get document",
-                            comment: "Failed to get document"
-                        )
-                        alert.runModal()
-                        return
-                    }
-                    onCompletion(document, documentWasAlreadyOpen)
-                    print("Document:", document)
-                    print("Was already open?", documentWasAlreadyOpen)
-                }
-            } else if result == NSApplication.ModalResponse.cancel {
-                onCancel()
-            }
+        guard openDocuments().isEmpty else { return }
+        switch settings.preferences.general.reopenWindowAfterClose {
+        case .showWelcomeWindow: showWelcomeWindow()
+        case .quit: quitApplication()
+        case .doNothing: break
         }
     }
 }

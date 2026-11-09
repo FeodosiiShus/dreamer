@@ -27,7 +27,7 @@ final class MarkdownTextSource {
 }
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct MarkdownPreviewModelTests {
     @MainActor
     private struct Harness {

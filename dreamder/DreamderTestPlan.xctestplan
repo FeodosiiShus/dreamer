@@ -20,19 +20,6 @@
   },
   "testTargets" : [
     {
-      "skippedTests" : [
-        "DreamderUIUnitTests",
-        "DreamderUIUnitTests\/testBranchPickerDark()",
-        "DreamderUIUnitTests\/testBranchPickerLight()",
-        "DreamderUIUnitTests\/testEffectViewDark()",
-        "DreamderUIUnitTests\/testEffectViewLight()",
-        "DreamderUIUnitTests\/testHelpButtonDark()",
-        "DreamderUIUnitTests\/testHelpButtonLight()",
-        "DreamderUIUnitTests\/testSegmentedControlDark()",
-        "DreamderUIUnitTests\/testSegmentedControlLight()",
-        "DreamderUIUnitTests\/testSegmentedControlProminentDark()",
-        "DreamderUIUnitTests\/testSegmentedControlProminentLight()"
-      ],
       "target" : {
         "containerPath" : "container:Dreamder.xcodeproj",
         "identifier" : "B658FB3C27DA9E1000EA4DBD",

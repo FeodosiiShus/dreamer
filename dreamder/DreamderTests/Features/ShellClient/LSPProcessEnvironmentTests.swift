@@ -40,7 +40,12 @@ struct LSPProcessEnvironmentTests {
 
             #expect(resolved.loginPath == "/login/bin:/usr/bin")
             #expect(resolved.npmGlobalBin == prefix.appending(path: "bin").path(percentEncoded: false))
-            #expect(Array(resolved.searchPaths.prefix(2)) == ["/login/bin", "/usr/bin"])
+            #expect(Array(resolved.searchPaths.prefix(4)) == [
+                "/Users/tester/.local/share/mise/shims",
+                "/Users/tester/.asdf/shims",
+                "/login/bin",
+                "/usr/bin"
+            ])
             #expect(resolved.searchPaths.contains(prefix.appending(path: "bin").path(percentEncoded: false)))
             #expect(resolved.searchPaths.contains("/Users/tester/.cargo/bin"))
             #expect(resolved.environment["PATH"] == resolved.searchPaths.joined(separator: ":"))
@@ -72,11 +77,30 @@ struct LSPProcessEnvironmentTests {
         let resolved = await environment.resolve()
 
         #expect(resolved.loginPath == "/probed/bin:/usr/bin")
-        #expect(resolved.searchPaths.first == "/probed/bin")
+        #expect(Array(resolved.searchPaths.prefix(3)) == [
+            "/Users/tester/.local/share/mise/shims",
+            "/Users/tester/.asdf/shims",
+            "/probed/bin"
+        ])
         let probe = runner.invocations.first { $0.executable.path(percentEncoded: false) == "/bin/zsh" }
         #expect(probe.map { Array($0.arguments.prefix(2)) } == ["-l", "-c"])
         #expect(probe?.arguments.contains("-i") == false)
         #expect(probe?.timeout != nil)
+    }
+
+    @Test
+    func aFailedPathProbeKeepsTheFallbackLoginPath() async {
+        let runner = FakeProcessRunner { _ in FakeProcessRunner.output("", exitCode: 1) }
+        let environment = LSPProcessEnvironment(
+            shellEnvironment: Self.loginShell(path: nil),
+            runner: runner,
+            homeDirectory: "/Users/tester"
+        )
+
+        let resolved = await environment.resolve()
+
+        #expect(resolved.loginPath?.hasPrefix("/usr/bin:/opt/homebrew/bin:") == true)
+        #expect(runner.invocations.contains { $0.executable.path(percentEncoded: false) == "/bin/zsh" })
     }
 
     @Test
@@ -215,6 +239,28 @@ struct LSPProcessEnvironmentTests {
         #expect(await environment.xcrunFind("dreamder-no-such-tool") == nil)
         #expect(runner.invocations.count == 1)
     }
+
+    @Test
+    func whenXcrunFindsNothingTheToolchainDirectoryProvidesTheTool() async throws {
+        try await withTempDir { directory in
+            let tool = directory.appending(path: "sourcekit-lsp")
+            try Data("#!/bin/sh\n".utf8).write(to: tool)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tool.path(percentEncoded: false))
+            let runner = FakeProcessRunner { _ in FakeProcessRunner.output("\n") }
+            let environment = LSPProcessEnvironment(
+                shellEnvironment: Self.loginShell(path: "/login/bin"),
+                runner: runner,
+                homeDirectory: "/Users/tester",
+                toolchainDirectory: directory.path(percentEncoded: false)
+            )
+
+            let found = await environment.xcrunFind("sourcekit-lsp")
+            let missing = await environment.xcrunFind("dreamder-no-such-tool")
+
+            #expect(found == directory.path(percentEncoded: false) + "/sourcekit-lsp")
+            #expect(missing == nil)
+        }
+    }
 }
 
 @Suite
@@ -324,13 +370,14 @@ struct LanguageServerLauncherResolutionTests {
                 for: .typescript,
                 workspacePath: workspace.path(percentEncoded: false),
                 searchPaths: [layout.launcher.deletingLastPathComponent().path(percentEncoded: false)],
+                inlayHints: InlayHintSettings(),
                 runner: runner,
                 environment: [:]
             )
 
             let server = directory.appending(path: "pkg/node_modules/typescript/lib/tsserver.js")
             #expect(options == .hash([
-                "preferences": .hash(["includeInlayParameterNameHints": .string("literals")]),
+                "preferences": InlayHintServerPreferences.preferences(for: InlayHintSettings()),
                 "tsserver": .hash(["path": .string(server.path(percentEncoded: false))])
             ]))
             #expect(runner.invocations.count == 1)
@@ -344,6 +391,7 @@ struct LanguageServerLauncherResolutionTests {
             for: .swift,
             workspacePath: "/project",
             searchPaths: ["/usr/bin"],
+            inlayHints: InlayHintSettings(),
             runner: runner,
             environment: [:]
         )

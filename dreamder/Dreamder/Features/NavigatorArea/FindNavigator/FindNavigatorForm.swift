@@ -10,11 +10,12 @@ import SwiftUI
 struct FindNavigatorForm: View {
     @Bindable private var state: WorkspaceDocument.SearchState
 
-    @State private var showsScopeOptions: Bool = false
+    @State private var showsScopeOptions: Bool
     @FocusState private var isSearchFieldFocused: Bool
 
-    init(state: WorkspaceDocument.SearchState) {
+    init(state: WorkspaceDocument.SearchState, showsScopeOptions: Bool = false) {
         self.state = state
+        self._showsScopeOptions = State(initialValue: showsScopeOptions)
     }
 
     private var selectedMode: [SearchModeModel] {
@@ -55,6 +56,7 @@ struct FindNavigatorForm: View {
                 state.findModel.isMultiline = true
             }
         }
+        .onKeyPress(.downArrow, action: focusResults)
         .lineLimit(1...5)
     }
 
@@ -63,14 +65,7 @@ struct FindNavigatorForm: View {
             ForEach(0..<selectedMode.count, id: \.self) { index in
                 FindModePicker(
                     modes: getMenuList(index),
-                    selection: Binding(
-                        get: {
-                            selectedMode[index]
-                        },
-                        set: { searchMode in
-                            onSelectMenuItem(index, searchMode: searchMode)
-                        }
-                    ),
+                    selection: modeSelectionBinding(index),
                     onSelect: { searchMode in
                         onSelectMenuItem(index, searchMode: searchMode)
                     },
@@ -78,9 +73,7 @@ struct FindNavigatorForm: View {
                 )
             }
             Spacer(minLength: 4)
-            Button {
-                showsScopeOptions.toggle()
-            } label: {
+            Button(action: toggleScopeOptions) {
                 Text("Scoped")
                     .font(Islands.smallFont)
                     .foregroundStyle(hasScopeSettings ? Islands.accent : Islands.secondaryForeground)
@@ -104,9 +97,7 @@ struct FindNavigatorForm: View {
                 placeholder,
                 text: $state.searchQuery,
                 focus: $isSearchFieldFocused,
-                onClear: {
-                    state.clearResults()
-                },
+                onClear: clearSearch,
                 onSubmit: submitSearch
             )
         }
@@ -128,13 +119,20 @@ struct FindNavigatorForm: View {
     }
 
     private var replaceRow: some View {
-        HStack(spacing: 4) {
-            IslandSearchField("With", text: $state.replaceText)
-            FindOptionToggle(
-                glyph: .symbol("textformat.abc"),
-                isOn: $state.findModel.isPreserveCase,
-                help: "Preserve Case"
-            )
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                IslandSearchField("With", text: $state.replaceText)
+                FindOptionToggle(
+                    glyph: .symbol("textformat.abc"),
+                    isOn: $state.findModel.isPreserveCase,
+                    help: "Preserve Case"
+                )
+            }
+            if let error = state.replacementError {
+                Text(error)
+                    .font(Islands.smallFont)
+                    .foregroundStyle(Islands.errorForeground)
+            }
         }
     }
 
@@ -163,14 +161,7 @@ struct FindNavigatorForm: View {
     }
 
     private var replaceAllButton: some View {
-        Button {
-            Task {
-                try? await state.findAndReplace(
-                    query: state.searchQuery,
-                    replacingTerm: state.replaceText
-                )
-            }
-        } label: {
+        Button(action: replaceAll) {
             Text("Replace All")
                 .font(Islands.uiFont)
                 .foregroundStyle(.white)
@@ -184,7 +175,7 @@ struct FindNavigatorForm: View {
         .buttonStyle(.plain)
     }
 
-    private func submitSearch() {
+    func submitSearch() {
         if state.searchQuery.isEmpty {
             state.clearResults()
         } else {
@@ -193,9 +184,38 @@ struct FindNavigatorForm: View {
             }
         }
     }
+
+    func clearSearch() {
+        state.clearResults()
+    }
+
+    func toggleScopeOptions() {
+        showsScopeOptions.toggle()
+    }
+
+    func replaceAll() {
+        Task { await state.replaceAll() }
+    }
+
+    func focusResults() -> KeyPress.Result {
+        guard !state.searchResult.isEmpty else { return .ignored }
+        state.shouldFocusResults = true
+        return .handled
+    }
+
+    func modeSelectionBinding(_ index: Int) -> Binding<SearchModeModel> {
+        Binding(
+            get: {
+                selectedMode.indices.contains(index) ? selectedMode[index] : .Find
+            },
+            set: { searchMode in
+                onSelectMenuItem(index, searchMode: searchMode)
+            }
+        )
+    }
 }
 
-private struct FindOptionToggle: View {
+struct FindOptionToggle: View {
     enum Glyph {
         case symbol(String)
         case text(String)
@@ -208,9 +228,7 @@ private struct FindOptionToggle: View {
     @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
-        Button {
-            isOn.toggle()
-        } label: {
+        Button(action: toggle) {
             glyphView
                 .foregroundStyle(isOn ? Islands.accent : Islands.secondaryForeground)
                 .frame(width: 24, height: 24)
@@ -222,6 +240,10 @@ private struct FindOptionToggle: View {
         }
         .buttonStyle(.plain)
         .help(help)
+    }
+
+    func toggle() {
+        isOn.toggle()
     }
 
     @ViewBuilder private var glyphView: some View {
@@ -236,11 +258,40 @@ private struct FindOptionToggle: View {
     }
 }
 
-private struct FindMultilineField: View {
+struct FindMultilineField: View {
     let placeholder: String
     @Binding var text: String
     let focus: FocusState<Bool>.Binding
     let onSubmit: () -> Void
+    let currentModifiers: @MainActor () -> NSEvent.ModifierFlags
+
+    init(
+        placeholder: String,
+        text: Binding<String>,
+        focus: FocusState<Bool>.Binding,
+        onSubmit: @escaping () -> Void,
+        currentModifiers: @escaping @MainActor () -> NSEvent.ModifierFlags = { FindMultilineField.activeModifiers() }
+    ) {
+        self.placeholder = placeholder
+        self._text = text
+        self.focus = focus
+        self.onSubmit = onSubmit
+        self.currentModifiers = currentModifiers
+    }
+
+    static func activeModifiers() -> NSEvent.ModifierFlags {
+        NSApp.currentEvent?.modifierFlags ?? []
+    }
+
+    func submitOnReturn() -> KeyPress.Result {
+        guard !currentModifiers().contains(.shift) else { return .ignored }
+        onSubmit()
+        return .handled
+    }
+
+    func clear() {
+        text = ""
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
@@ -255,15 +306,9 @@ private struct FindMultilineField: View {
                 .foregroundStyle(Islands.foreground)
                 .lineLimit(2...6)
                 .focused(focus)
-                .onKeyPress(.return, phases: .down) { press in
-                    guard !press.modifiers.contains(.shift) else { return .ignored }
-                    onSubmit()
-                    return .handled
-                }
+                .onKeyPress(.return, action: submitOnReturn)
             if !text.isEmpty {
-                Button {
-                    text = ""
-                } label: {
+                Button(action: clear) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 11))
                         .foregroundStyle(Islands.secondaryForeground)
@@ -288,11 +333,12 @@ private struct FindMultilineField: View {
 }
 
 extension FindNavigatorForm {
-    private func getMenuList(_ index: Int) -> [SearchModeModel] {
-        index == 0 ? SearchModeModel.SearchModes : selectedMode[index - 1].children
+    func getMenuList(_ index: Int) -> [SearchModeModel] {
+        guard index > 0 else { return SearchModeModel.SearchModes }
+        return selectedMode.indices.contains(index - 1) ? selectedMode[index - 1].children : []
     }
 
-    private func onSelectMenuItem(_ index: Int, searchMode: SearchModeModel) {
+    func onSelectMenuItem(_ index: Int, searchMode: SearchModeModel) {
         var newSelectedMode: [SearchModeModel] = []
 
         switch index {

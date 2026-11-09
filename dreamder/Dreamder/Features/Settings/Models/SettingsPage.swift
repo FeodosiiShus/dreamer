@@ -21,7 +21,6 @@ struct SettingsPage: Hashable, Equatable, Identifiable {
     nonisolated enum Name: String, CaseIterable, Sendable {
         case general = "General"
         case appearance = "Appearance"
-        case accounts = "Accounts"
         case behavior = "Behaviors"
         case navigation = "Navigation"
         case theme = "Theme"
@@ -82,7 +81,7 @@ extension SettingsPage {
             case .appearanceAndBehavior: [.appearance, .general]
             case .keymap: [.keybindings]
             case .editor: [.textEditing, .theme, .navigation, .search]
-            case .versionControl: [.sourceControl, .accounts]
+            case .versionControl: [.sourceControl]
             case .languagesAndFrameworks: [.languageServers]
             case .tools: [.terminal, .location, .developer]
             }
@@ -97,7 +96,7 @@ nonisolated extension SettingsPage.Name {
         case .general, .appearance: .appearanceAndBehavior
         case .keybindings: .keymap
         case .textEditing, .theme, .navigation, .search: .editor
-        case .sourceControl, .accounts: .versionControl
+        case .sourceControl: .versionControl
         case .languageServers: .languagesAndFrameworks
         case .terminal, .location, .developer: .tools
         case .behavior, .components, .advanced: nil

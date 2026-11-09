@@ -3,21 +3,21 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct SourceControlSubdirectoryTests {
-    private func makeNestedWorkspace(_ dir: URL) throws -> (GitMergeFixture, URL) {
-        let fixture = try GitMergeFixture(root: dir)
+    private func makeNestedWorkspace(_ dir: URL) async throws -> (GitMergeFixture, URL) {
+        let fixture = try await GitMergeFixture(root: dir)
         try fixture.write("app/main.swift", "print(1)\n")
         try fixture.write("app/sub/helper.swift", "let x = 1\n")
         try fixture.write("other/readme.txt", "outside\n")
-        try fixture.commit("initial")
+        try await fixture.commit("initial")
         return (fixture, dir.appending(path: "app", directoryHint: .isDirectory))
     }
 
     @Test
-    func workspaceInsideARepositoryUsesTheRepositoryRoot() throws {
-        try withTempDir { dir in
-            let (_, workspace) = try makeNestedWorkspace(dir)
+    func workspaceInsideARepositoryUsesTheRepositoryRoot() async throws {
+        try await withTempDir { dir in
+            let (_, workspace) = try await makeNestedWorkspace(dir)
             let manager = SourceControlManager(workspaceURL: workspace, editorManager: EditorManager())
 
             #expect(manager.repositoryURL.standardizedFileURL.path(percentEncoded: false).hasSuffix(dir.lastPathComponent + "/"))
@@ -60,7 +60,7 @@ struct SourceControlSubdirectoryTests {
     @Test
     func statusOnlyListsWorkspaceFilesWithCorrectPaths() async throws {
         try await withTempDir { dir in
-            let (fixture, workspace) = try makeNestedWorkspace(dir)
+            let (fixture, workspace) = try await makeNestedWorkspace(dir)
             try fixture.write("app/sub/helper.swift", "let x = 2\n")
             try fixture.write("app/new.swift", "new\n")
             try fixture.write("other/readme.txt", "changed outside\n")
@@ -82,7 +82,7 @@ struct SourceControlSubdirectoryTests {
     @Test
     func diffAndMergeRepositoriesResolveFilesFromTheRepositoryRoot() async throws {
         try await withTempDir { dir in
-            let (fixture, workspace) = try makeNestedWorkspace(dir)
+            let (fixture, workspace) = try await makeNestedWorkspace(dir)
             try fixture.write("app/sub/helper.swift", "let x = 3\n")
             try fixture.write("other/readme.txt", "changed outside\n")
             let document = WorkspaceDocument()

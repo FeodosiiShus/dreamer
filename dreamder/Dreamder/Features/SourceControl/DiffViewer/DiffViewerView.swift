@@ -4,8 +4,8 @@ import SwiftUI
 struct DiffViewerView: View {
     let model: DiffViewerViewModel
 
-    private let enabledOpacity: Double = 1
-    private let disabledOpacity: Double = 0.4
+    private var enabledOpacity: Double { 1 }
+    private var disabledOpacity: Double { 0.4 }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,17 +30,13 @@ struct DiffViewerView: View {
 
     private var toolbar: some View {
         HStack(spacing: 4) {
-            ToolWindowActionButton(icon: "general/up", help: "Previous Difference") {
-                model.previousDifference()
-            }
-            .disabled(!model.canNavigatePrevious)
-            .opacity(model.canNavigatePrevious ? enabledOpacity : disabledOpacity)
+            ToolWindowActionButton(icon: "general/up", help: "Previous Difference", action: model.previousDifference)
+                .disabled(!model.canNavigatePrevious)
+                .opacity(model.canNavigatePrevious ? enabledOpacity : disabledOpacity)
 
-            ToolWindowActionButton(icon: "general/down", help: "Next Difference") {
-                model.nextDifference()
-            }
-            .disabled(!model.canNavigateNext)
-            .opacity(model.canNavigateNext ? enabledOpacity : disabledOpacity)
+            ToolWindowActionButton(icon: "general/down", help: "Next Difference", action: model.nextDifference)
+                .disabled(!model.canNavigateNext)
+                .opacity(model.canNavigateNext ? enabledOpacity : disabledOpacity)
 
             Text(model.differenceSummary)
                 .font(Islands.smallFont)
@@ -103,9 +99,10 @@ private struct DiffCodeView: View {
             }
             .background(Islands.island)
             .onChange(of: model.scrollRequest) { _, request in
-                guard let request else { return }
-                withAnimation(.easeInOut(duration: 0.12)) {
-                    proxy.scrollTo(request.row, anchor: .center)
+                if let request {
+                    withAnimation(.easeInOut(duration: 0.12)) {
+                        proxy.scrollTo(request.row, anchor: .center)
+                    }
                 }
             }
         }
@@ -184,18 +181,14 @@ private struct DiffCodeView: View {
     }
 }
 
-private struct DiffFileListView: View {
+struct DiffFileListView: View {
     let model: DiffViewerViewModel
 
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(model.files) { file in
-                    DiffFileListRow(file: file, isSelected: file.id == model.selectedID) {
-                        Task {
-                            await model.select(file.id)
-                        }
-                    }
+                    DiffFileListRow(file: file, isSelected: file.id == model.selectedID, onSelect: select)
                 }
             }
             .padding(.vertical, 4)
@@ -203,12 +196,18 @@ private struct DiffFileListView: View {
         .frame(width: 240)
         .background(Islands.island)
     }
+
+    func select(_ file: DiffFileRequest) {
+        Task {
+            await model.select(file.id)
+        }
+    }
 }
 
-private struct DiffFileListRow: View {
+struct DiffFileListRow: View {
     let file: DiffFileRequest
     let isSelected: Bool
-    let onSelect: () -> Void
+    let onSelect: (DiffFileRequest) -> Void
 
     @State private var isHovering = false
 
@@ -237,12 +236,24 @@ private struct DiffFileListRow: View {
         .frame(height: Islands.listRowHeight)
         .background(rowBackground)
         .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
-        .onTapGesture(perform: onSelect)
+        .onHover(perform: hoverChanged)
+        .onTapGesture(perform: tapped)
         .help(file.path)
     }
 
+    func tapped() {
+        onSelect(file)
+    }
+
+    func hoverChanged(_ hovering: Bool) {
+        isHovering = hovering
+    }
+
     private var rowBackground: Color {
+        Self.background(isSelected: isSelected, isHovering: isHovering)
+    }
+
+    static func background(isSelected: Bool, isHovering: Bool) -> Color {
         isSelected ? Islands.selection : (isHovering ? Islands.hover : Color.clear)
     }
 }

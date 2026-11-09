@@ -2,7 +2,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct MainTurnCoalescerTests {
     @Test
     func burstOfRequestsRunsTheActionOnce() async {

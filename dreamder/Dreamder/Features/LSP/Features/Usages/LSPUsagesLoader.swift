@@ -37,9 +37,8 @@ enum LSPUsagesLoader {
         )
     }
 
+    @concurrent
     private static func readText(at url: URL) async -> String? {
-        await Task.detached(priority: .userInitiated) {
-            try? String(contentsOf: url, encoding: .utf8)
-        }.value
+        try? String(contentsOf: url, encoding: .utf8)
     }
 }

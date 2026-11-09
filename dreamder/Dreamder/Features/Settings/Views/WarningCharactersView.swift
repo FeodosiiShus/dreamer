@@ -33,9 +33,7 @@ struct WarningCharactersView: View {
             Divider()
             HStack {
                 Spacer()
-                Button {
-                    dismiss()
-                } label: {
+                Button(action: done) {
                     Text("Done")
                         .frame(minWidth: 56)
                 }
@@ -43,5 +41,9 @@ struct WarningCharactersView: View {
             }
             .padding()
         }
+    }
+
+    func done() {
+        dismiss()
     }
 }

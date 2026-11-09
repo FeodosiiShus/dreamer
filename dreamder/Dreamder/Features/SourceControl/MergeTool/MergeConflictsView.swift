@@ -4,7 +4,7 @@ import SwiftUI
 struct MergeConflictsView: View {
     let model: MergeConflictsViewModel
 
-    private let sideColumnWidth: CGFloat = 190
+    private var sideColumnWidth: CGFloat { 190 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -95,24 +95,10 @@ struct MergeConflictsView: View {
 
     private func row(_ entry: MergeConflictEntry) -> some View {
         MergeConflictRowView(
+            model: model,
             entry: entry,
-            yours: model.detail(for: entry, choice: .yours),
-            theirs: model.detail(for: entry, choice: .theirs),
-            isSelected: model.isSelected(entry.path),
             sideColumnWidth: sideColumnWidth
         )
-        .onTapGesture(count: 2) {
-            model.select(entry.path)
-            model.openMergeWindow()
-        }
-        .onTapGesture {
-            let flags = NSEvent.modifierFlags
-            model.select(
-                entry.path,
-                extending: flags.contains(.shift),
-                toggling: flags.contains(.command)
-            )
-        }
     }
 
     private var footer: some View {
@@ -125,34 +111,36 @@ struct MergeConflictsView: View {
                     .truncationMode(.tail)
             }
             Spacer(minLength: 8)
-            Button("Accept Yours") {
-                Task { await model.accept(.yours) }
-            }
-            .disabled(!model.canAccept)
-            Button("Accept Theirs") {
-                Task { await model.accept(.theirs) }
-            }
-            .disabled(!model.canAccept)
-            Button("Merge…") {
-                model.openMergeWindow()
-            }
-            .disabled(!model.canMerge)
-            .keyboardShortcut(.defaultAction)
-            Button("Close") {
-                NSApp.keyWindow?.performClose(nil)
-            }
-            .keyboardShortcut(.cancelAction)
+            Button("Accept Yours", action: acceptYours)
+                .disabled(!model.canAccept)
+            Button("Accept Theirs", action: acceptTheirs)
+                .disabled(!model.canAccept)
+            Button("Merge…", action: model.openMergeWindow)
+                .disabled(!model.canMerge)
+                .keyboardShortcut(.defaultAction)
+            Button("Close", action: closeWindow)
+                .keyboardShortcut(.cancelAction)
         }
         .padding(.horizontal, 16)
         .frame(height: 52)
     }
+
+    func acceptYours() {
+        Task { await model.accept(.yours) }
+    }
+
+    func acceptTheirs() {
+        Task { await model.accept(.theirs) }
+    }
+
+    func closeWindow() {
+        NSApp.keyWindow?.performClose(nil)
+    }
 }
 
-private struct MergeConflictRowView: View {
+struct MergeConflictRowView: View {
+    let model: MergeConflictsViewModel
     let entry: MergeConflictEntry
-    let yours: String
-    let theirs: String
-    let isSelected: Bool
     let sideColumnWidth: CGFloat
 
     @State private var isHovering = false
@@ -177,13 +165,13 @@ private struct MergeConflictRowView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(yours)
+            Text(model.detail(for: entry, choice: .yours))
                 .font(Islands.smallFont)
                 .foregroundStyle(Islands.secondaryForeground)
                 .lineLimit(1)
                 .frame(width: sideColumnWidth, alignment: .leading)
 
-            Text(theirs)
+            Text(model.detail(for: entry, choice: .theirs))
                 .font(Islands.smallFont)
                 .foregroundStyle(Islands.secondaryForeground)
                 .lineLimit(1)
@@ -193,14 +181,45 @@ private struct MergeConflictRowView: View {
         .frame(height: Islands.listRowHeight)
         .background(background)
         .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
+        .onHover(perform: setHovering)
         .help(entry.path)
+        .onTapGesture(count: 2, perform: openMerge)
+        .onTapGesture(perform: click)
     }
 
-    private var background: Color {
+    var isSelected: Bool {
+        model.isSelected(entry.path)
+    }
+
+    var background: Color {
+        Self.background(isSelected: isSelected, isHovering: isHovering)
+    }
+
+    static func background(isSelected: Bool, isHovering: Bool) -> Color {
         if isSelected {
             return Islands.selection
         }
         return isHovering ? Islands.hover : Color.clear
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
+    }
+
+    func openMerge() {
+        model.select(entry.path)
+        model.openMergeWindow()
+    }
+
+    func click() {
+        select(modifiers: NSEvent.modifierFlags)
+    }
+
+    func select(modifiers: NSEvent.ModifierFlags) {
+        model.select(
+            entry.path,
+            extending: modifiers.contains(.shift),
+            toggling: modifiers.contains(.command)
+        )
     }
 }

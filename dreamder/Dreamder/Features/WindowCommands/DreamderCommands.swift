@@ -24,7 +24,6 @@ struct DreamderCommands: Commands {
             TasksCommands()
             if sourceControlIsEnabled { SourceControlCommands() }
             EditorCommands()
-            ExtensionCommands()
             WindowCommands()
         }
         AppearanceCommands()

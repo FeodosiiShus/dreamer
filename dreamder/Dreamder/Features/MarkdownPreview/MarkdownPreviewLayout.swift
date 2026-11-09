@@ -35,9 +35,9 @@ nonisolated enum MarkdownPreviewLayout: String, CaseIterable, Identifiable, Coda
 }
 
 extension MarkdownPreviewLayout {
-    func icon(isVerticalSplit: Bool) -> Image {
+    func icon(isVerticalSplit: Bool, hasCatalogIcon: (String) -> Bool = { IntelliJIcon.nsImage($0) != nil }) -> Image {
         let name = iconName(isVerticalSplit: isVerticalSplit)
-        if IntelliJIcon.nsImage(name) == nil {
+        if !hasCatalogIcon(name) {
             return Image(systemName: symbolName)
         }
         return Image(name)
@@ -70,11 +70,14 @@ final class MarkdownPreviewLayoutStore {
         valueOptions: .strongMemory
     )
 
-    static func store(for workspace: WorkspaceDocument) -> MarkdownPreviewLayoutStore {
+    static func store(
+        for workspace: WorkspaceDocument,
+        settings: Settings = .shared
+    ) -> MarkdownPreviewLayoutStore {
         if let existing = stores.object(forKey: workspace) {
             return existing
         }
-        let store = MarkdownPreviewLayoutStore(storage: workspace)
+        let store = MarkdownPreviewLayoutStore(storage: workspace, settings: settings)
         stores.setObject(store, forKey: workspace)
         return store
     }

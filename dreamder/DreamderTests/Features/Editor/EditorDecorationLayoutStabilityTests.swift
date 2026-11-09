@@ -4,7 +4,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct EditorDecorationLayoutStabilityTests {
     private func decorationViews(in hosted: HostedSourceEditor) -> [NSView] {
         let indentGuides: [NSView] = hosted.views(ofType: IndentGuideOverlayView.self)
@@ -39,7 +39,12 @@ struct EditorDecorationLayoutStabilityTests {
             let fixture = try HostedSourceEditorFixture.makeWide(in: directory)
             let hosted = fixture.host()
             defer { hosted.close() }
-            try await Task.sleep(for: .milliseconds(1_500))
+            try await eventually {
+                let views = decorationViews(in: hosted)
+                return views.contains { $0 is IndentGuideOverlayView }
+                    && views.contains { $0 is GitGutterMarkerView }
+                    && views.contains { $0 is GitBlameAnnotationView }
+            }
             let decorations = decorationViews(in: hosted)
             #expect(decorations.contains { $0 is IndentGuideOverlayView })
             #expect(decorations.contains { $0 is GitGutterMarkerView })

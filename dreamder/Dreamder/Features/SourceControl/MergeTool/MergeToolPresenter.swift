@@ -42,15 +42,21 @@ enum MergeToolPresenter {
         return conflictsWindows[MergeConflictsCenter.workspaceKey(manager.workspaceURL)]?.model
     }
 
-    static func activeWorkspace() -> WorkspaceDocument? {
-        let controller = (NSApp.keyWindow?.windowController as? DreamderWindowController)
-            ?? (NSApp.mainWindow?.windowController as? DreamderWindowController)
-            ?? NSApp.orderedWindows.lazy.compactMap { $0.windowController as? DreamderWindowController }.first
+    static func activeWorkspace(
+        keyWindow: NSWindow? = NSApp.keyWindow,
+        mainWindow: NSWindow? = NSApp.mainWindow,
+        orderedWindows: [NSWindow] = NSApp.orderedWindows
+    ) -> WorkspaceDocument? {
+        let controller = (keyWindow?.windowController as? DreamderWindowController)
+            ?? (mainWindow?.windowController as? DreamderWindowController)
+            ?? orderedWindows.lazy.compactMap { $0.windowController as? DreamderWindowController }.first
         return controller?.workspace
     }
 
-    static func showConflictsForActiveWorkspace() {
-        guard let workspace = activeWorkspace() else { return }
+    static func showConflictsForActiveWorkspace(
+        resolve: () -> WorkspaceDocument? = { MergeToolPresenter.activeWorkspace() }
+    ) {
+        guard let workspace = resolve() else { return }
         showConflicts(workspace: workspace)
     }
 

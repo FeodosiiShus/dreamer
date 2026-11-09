@@ -4,7 +4,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct MarkdownPreviewThemeTests {
     @Test
     func swiftUIColorsRoundTripThroughThePreviewColor() {

@@ -28,10 +28,9 @@ struct SearchEverywhereView: View {
         }
         .frame(width: model.panelWidth, height: model.panelHeight)
         .glassPopup()
-        .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                isQueryFocused = true
-            }
+        .task {
+            try? await Task.sleep(for: .milliseconds(50))
+            isQueryFocused = true
         }
     }
 
@@ -44,13 +43,7 @@ struct SearchEverywhereView: View {
     private var tabRow: some View {
         HStack(spacing: 4) {
             ForEach(SearchEverywhereTab.allCases) { tab in
-                ToolWindowTab(
-                    title: tab.title,
-                    icon: nil,
-                    isSelected: model.tab == tab,
-                    onClose: nil,
-                    action: { model.selectTab(tab) }
-                )
+                SearchEverywhereTabButton(tab: tab, isSelected: model.tab == tab, onSelect: model.selectTab)
             }
             Spacer(minLength: 8)
             if model.isIndexing {
@@ -74,7 +67,7 @@ struct SearchEverywhereView: View {
                 .foregroundStyle(Islands.foreground)
                 .focused($isQueryFocused)
                 .defaultFocus($isQueryFocused, true)
-                .onSubmit { model.openSelected() }
+                .onSubmit(model.openSelected)
         }
         .padding(.horizontal, 12)
         .frame(height: Islands.popupHeaderHeight)
@@ -90,8 +83,8 @@ struct SearchEverywhereView: View {
                             SearchEverywhereRow(
                                 item: item,
                                 isSelected: model.selectedItem?.id == item.id,
-                                onSelect: { model.select(item) },
-                                onOpen: { model.openSelected() }
+                                onSelect: model.select,
+                                onOpen: model.openSelected
                             )
                             .id(item.id)
                         }
@@ -152,7 +145,7 @@ struct SearchEverywhereView: View {
             footerHint("\u{238B}", "Close")
             Spacer(minLength: 8)
             if model.mode == .everywhere {
-                Button(action: { model.togglePreview() }) {
+                Button(action: model.togglePreview) {
                     HStack(spacing: 5) {
                         Image("general/previewOnly")
                             .resizable()
@@ -191,8 +184,8 @@ struct SearchEverywhereView: View {
 struct SearchEverywhereRow: View {
     let item: SearchEverywhereItem
     let isSelected: Bool
-    let onSelect: () -> Void
-    let onOpen: () -> Void
+    let onSelect: @MainActor (SearchEverywhereItem) -> Void
+    let onOpen: @MainActor () -> Void
 
     @State private var isHovering = false
 
@@ -226,11 +219,31 @@ struct SearchEverywhereRow: View {
                 .fill(isSelected ? Islands.selection : (isHovering ? Islands.hover : Color.clear))
         )
         .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
-        .onTapGesture {
-            onSelect()
-            onOpen()
-        }
+        .onHover(perform: setHovering)
+        .onTapGesture(perform: activate)
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
+    }
+
+    func activate() {
+        onSelect(item)
+        onOpen()
+    }
+}
+
+struct SearchEverywhereTabButton: View {
+    let tab: SearchEverywhereTab
+    let isSelected: Bool
+    let onSelect: @MainActor (SearchEverywhereTab) -> Void
+
+    var body: some View {
+        ToolWindowTab(title: tab.title, icon: nil, isSelected: isSelected, onClose: nil, action: select)
+    }
+
+    func select() {
+        onSelect(tab)
     }
 }
 
@@ -254,12 +267,12 @@ struct SearchEverywhereHighlightedText: View {
         return result
     }
 
-    private struct Segment {
+    struct Segment: Equatable {
         let text: String
         let isMatch: Bool
     }
 
-    private var segments: [Segment] {
+    var segments: [Segment] {
         let string = text as NSString
         guard !ranges.isEmpty, string.length > 0 else {
             return [Segment(text: text, isMatch: false)]
@@ -293,7 +306,7 @@ struct SearchEverywhereHighlightedText: View {
             ))
         }
 
-        return result.isEmpty ? [Segment(text: text, isMatch: false)] : result
+        return result
     }
 }
 

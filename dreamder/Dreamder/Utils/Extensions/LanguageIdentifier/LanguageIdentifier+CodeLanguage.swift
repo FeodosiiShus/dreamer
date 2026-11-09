@@ -9,37 +9,40 @@ import LanguageServerProtocol
 import CodeEditLanguages
 
 extension CodeLanguage {
-    var lspLanguage: LanguageIdentifier? {
+    var lspLanguage: LSPLanguage? {
         switch self.id {
         case .agda,
-                .bash,
                 .haskell,
                 .julia,
-                .kotlin,
                 .ocaml,
                 .ocamlInterface,
                 .regex,
-                .toml,
                 .verilog,
                 .zig,
                 .plainText:
             return nil
+        case .bash:
+            return .shellscript
+        case .kotlin:
+            return .kotlin
+        case .toml:
+            return .toml
         case .c:
             return .c
         case .cpp:
             return .cpp
         case .cSharp:
-            return .csharp
+            return LSPLanguage(.csharp)
         case .css:
             return .css
         case .dart:
-            return .dart
+            return LSPLanguage(.dart)
         case .dockerfile:
-            return .dockerfile
+            return LSPLanguage(.dockerfile)
         case .elixir:
-            return .elixir
+            return LSPLanguage(.elixir)
         case .go, .goMod:
-            return  .go
+            return .go
         case .html:
             return .html
         case .java:
@@ -51,25 +54,25 @@ extension CodeLanguage {
         case .jsx:
             return .javascriptreact
         case .lua:
-            return .lua
+            return LSPLanguage(.lua)
         case .markdown, .markdownInline:
-            return .markdown
+            return LSPLanguage(.markdown)
         case .objc:
             return .objc
         case .perl:
-            return .perl
+            return LSPLanguage(.perl)
         case .php:
-            return .php
+            return LSPLanguage(.php)
         case .python:
             return .python
         case .ruby:
-            return .ruby
+            return LSPLanguage(.ruby)
         case .rust:
             return .rust
         case .scala:
-            return .scala
+            return LSPLanguage(.scala)
         case .sql:
-            return .sql
+            return LSPLanguage(.sql)
         case .swift:
             return .swift
         case .tsx:
@@ -79,5 +82,9 @@ extension CodeLanguage {
         case .yaml:
             return .yaml
         }
+    }
+
+    var lspLanguageId: String {
+        lspLanguage?.rawValue ?? "plaintext"
     }
 }

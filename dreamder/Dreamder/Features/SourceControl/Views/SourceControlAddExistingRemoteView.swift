@@ -7,13 +7,67 @@
 
 import SwiftUI
 
+@Observable
+@MainActor
+final class SourceControlAddExistingRemoteModel {
+    var name: String
+    var location: String
+    @ObservationIgnored var manager: SourceControlManager?
+    @ObservationIgnored var dismiss: (() -> Void)?
+    @ObservationIgnored private(set) var submission: Task<Void, Never>?
+
+    init(name: String = "", location: String = "") {
+        self.name = name
+        self.location = location
+    }
+
+    func attach(manager: SourceControlManager, dismiss: @escaping () -> Void) {
+        self.manager = manager
+        self.dismiss = dismiss
+    }
+
+    func suggestOriginWhenMissing() -> Bool {
+        guard let manager, !manager.remotes.contains(where: { $0.name == "origin" }) else { return false }
+        name = "origin"
+        return true
+    }
+
+    func cancel() {
+        dismiss?()
+        name = ""
+        location = ""
+    }
+
+    func submit() {
+        submission = Task { await perform() }
+    }
+
+    func perform() async {
+        guard let manager else { return }
+        do {
+            try await manager.addRemote(name: name, location: location)
+            if manager.pullSheetIsPresented || manager.pushSheetIsPresented {
+                manager.operationRemote = manager.remotes.first(where: { $0.name == name })
+            }
+            name = ""
+            location = ""
+            dismiss?()
+        } catch {
+            await manager.showAlertForError(title: "Failed to add remote", error: error)
+        }
+    }
+}
+
 struct SourceControlAddExistingRemoteView: View {
     @Environment(SourceControlManager.self) private var sourceControlManager
     @Environment(\.dismiss)
     private var dismiss
 
-    @State private var name: String = ""
-    @State private var location: String = ""
+    @State private var model: SourceControlAddExistingRemoteModel
+
+    init(model: SourceControlAddExistingRemoteModel = SourceControlAddExistingRemoteModel()) {
+        _model = State(initialValue: model)
+    }
 
     enum FocusedField {
         case name, location
@@ -22,32 +76,27 @@ struct SourceControlAddExistingRemoteView: View {
     @FocusState private var focusedField: FocusedField?
 
     var body: some View {
+        @Bindable var form = model
         VStack(spacing: 0) {
             Form {
                 Section("Add Remote") {
-                    TextField("Remote Name", value: $name, formatter: RegexFormatter(pattern: "[^a-zA-Z0-9_-]"))
+                    TextField("Remote Name", value: $form.name, formatter: RegexFormatter(pattern: "[^a-zA-Z0-9_-]"))
                         .focused($focusedField, equals: .name)
-                    TextField("Location", value: $location, formatter: TrimWhitespaceFormatter())
+                    TextField("Location", value: $form.location, formatter: TrimWhitespaceFormatter())
                         .focused($focusedField, equals: .location)
                 }
             }
             .formStyle(.grouped)
             .scrollDisabled(true)
             .scrollContentBackground(.hidden)
-            .onSubmit(submit)
+            .onSubmit(model.submit)
             HStack {
                 Spacer()
-                Button {
-                    dismiss()
-                    name = ""
-                    location = ""
-                } label: {
+                Button(action: model.cancel) {
                     Text("Cancel")
                         .frame(minWidth: 56)
                 }
-                Button {
-                    submit()
-                } label: {
+                Button(action: model.submit) {
                     Text("Add")
                         .frame(minWidth: 56)
                 }
@@ -58,29 +107,9 @@ struct SourceControlAddExistingRemoteView: View {
         }
         .frame(width: 500)
         .onAppear {
-            let originExists = sourceControlManager.remotes.contains { $0.name == "origin" }
-
-            if !originExists {
-                name = "origin"
+            model.attach(manager: sourceControlManager, dismiss: dismiss.callAsFunction)
+            if model.suggestOriginWhenMissing() {
                 focusedField = .location
-            }
-        }
-    }
-
-    func submit() {
-        Task {
-            do {
-                try await sourceControlManager.addRemote(name: name, location: location)
-                if sourceControlManager.pullSheetIsPresented || sourceControlManager.pushSheetIsPresented {
-                    sourceControlManager.operationRemote = sourceControlManager.remotes.first(
-                        where: { $0.name == name }
-                    )
-                }
-                name = ""
-                location = ""
-                dismiss()
-            } catch {
-                await sourceControlManager.showAlertForError(title: "Failed to add remote", error: error)
             }
         }
     }

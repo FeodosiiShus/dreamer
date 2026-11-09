@@ -3,22 +3,19 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.serialized, .uiGate)
 struct GitLogViewModelTests {
     private func makeRepo(_ dir: URL) async throws -> (GitMergeFixture, SourceControlManager) {
-        let fixture = try await GitMergeFixture.offMain {
-            let fixture = try GitMergeFixture(root: dir)
-            try fixture.write("a.txt", "a\n")
-            try fixture.commit("initial")
-            try fixture.run("checkout", "-q", "-b", "feature")
-            try fixture.write("src/feature.txt", "f\n")
-            try fixture.run("add", "-A")
-            try fixture.run("commit", "-q", "-m", "Feature subject", "-m", "Feature body line")
-            try fixture.run("checkout", "-q", "main")
-            try fixture.write("a.txt", "main\n")
-            try fixture.commit("Main change by author")
-            return fixture
-        }
+        let fixture = try await GitMergeFixture(root: dir)
+        try fixture.write("a.txt", "a\n")
+        try await fixture.commit("initial")
+        try await fixture.run("checkout", "-q", "-b", "feature")
+        try fixture.write("src/feature.txt", "f\n")
+        try await fixture.run("add", "-A")
+        try await fixture.run("commit", "-q", "-m", "Feature subject", "-m", "Feature body line")
+        try await fixture.run("checkout", "-q", "main")
+        try fixture.write("a.txt", "main\n")
+        try await fixture.commit("Main change by author")
         return (fixture, SourceControlManager(workspaceURL: dir, editorManager: EditorManager()))
     }
 
@@ -109,7 +106,7 @@ struct GitLogViewModelTests {
             let root = try #require(model.commits.first { $0.subject == "initial" })
             await model.select(hash: root.hash)
             try fixture.write("b.txt", "b\n")
-            try fixture.commit("Later")
+            try await fixture.commit("Later")
 
             await model.load(manager: manager)
 
@@ -181,19 +178,16 @@ struct GitLogViewModelTests {
         }
     }
 
-    private func makeManager(_ dir: URL, build: @escaping @Sendable (GitMergeFixture) throws -> Void) async throws -> SourceControlManager {
-        _ = try await GitMergeFixture.offMain {
-            let fixture = try GitMergeFixture(root: dir)
-            try build(fixture)
-            return fixture
-        }
+    private func makeManager(_ dir: URL, build: (GitMergeFixture) async throws -> Void) async throws -> SourceControlManager {
+        let fixture = try await GitMergeFixture(root: dir)
+        try await build(fixture)
         return SourceControlManager(workspaceURL: dir, editorManager: EditorManager())
     }
 
-    private nonisolated static func buildLinearHistory(_ fixture: GitMergeFixture) throws {
+    private nonisolated static func buildLinearHistory(_ fixture: GitMergeFixture) async throws {
         for index in 1...5 {
             try fixture.write("f\(index).txt", "\(index)\n")
-            try fixture.commit("c\(index)")
+            try await fixture.commit("c\(index)")
         }
     }
 
@@ -202,15 +196,15 @@ struct GitLogViewModelTests {
         try await withTempDir { dir in
             let manager = try await makeManager(dir) { fixture in
                 try fixture.write("a.txt", "a\n")
-                try fixture.commit("initial")
-                try fixture.run("checkout", "-q", "-b", "side")
+                try await fixture.commit("initial")
+                try await fixture.run("checkout", "-q", "-b", "side")
                 try fixture.write("side.txt", "s\n")
-                try fixture.commit("side work")
-                try fixture.run("checkout", "-q", "main")
+                try await fixture.commit("side work")
+                try await fixture.run("checkout", "-q", "main")
                 try fixture.write("main.txt", "m\n")
-                try fixture.commit("main work")
-                try fixture.run("merge", "-q", "--no-ff", "-m", "merge side", "side")
-                try fixture.run("branch", "-q", "-d", "side")
+                try await fixture.commit("main work")
+                try await fixture.run("merge", "-q", "--no-ff", "-m", "merge side", "side")
+                try await fixture.run("branch", "-q", "-d", "side")
             }
             let model = GitLogViewModel()
             await model.load(manager: manager)
@@ -235,12 +229,12 @@ struct GitLogViewModelTests {
         try await withTempDir { dir in
             let manager = try await makeManager(dir) { fixture in
                 try fixture.write("a.txt", "a\n")
-                try fixture.commit("mine one")
+                try await fixture.commit("mine one")
                 try fixture.write("b.txt", "b\n")
-                try fixture.commit("mine two")
+                try await fixture.commit("mine two")
                 try fixture.write("c.txt", "c\n")
-                try fixture.run("add", "-A")
-                try fixture.run(
+                try await fixture.run("add", "-A")
+                try await fixture.run(
                     "-c", "user.name=Other Person", "-c", "user.email=other@dreamder.test",
                     "commit", "-qm", "by other"
                 )
@@ -314,8 +308,8 @@ struct GitLogViewModelTests {
         try await withTempDir { dir in
             let manager = try await makeManager(dir) { fixture in
                 try fixture.write("a.txt", "a\n")
-                try fixture.commit("initial")
-                try fixture.run("commit", "-q", "--allow-empty", "-m", "empty commit")
+                try await fixture.commit("initial")
+                try await fixture.run("commit", "-q", "--allow-empty", "-m", "empty commit")
             }
             let model = GitLogViewModel()
             await model.load(manager: manager)

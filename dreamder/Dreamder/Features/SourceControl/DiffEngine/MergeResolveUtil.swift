@@ -72,10 +72,8 @@ nonisolated struct SimpleResolveHelper {
             let type = conflictType(range, .default)
             if type.isChange(.left) {
                 append(range, .left)
-            } else if type.isChange(.right) {
-                append(range, .right)
             } else {
-                append(range, .base)
+                append(range, .right)
             }
         }
     }

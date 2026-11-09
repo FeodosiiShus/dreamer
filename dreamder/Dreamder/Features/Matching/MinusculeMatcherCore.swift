@@ -105,7 +105,7 @@ nonisolated struct MinusculeMatcherCore: Sendable {
 
     func matchingDegree(_ name: [UInt16], valueStartCaseMatch: Bool, fragments: [Range<Int>]?) -> Int {
         guard let fragments else { return Int.min }
-        guard let first = fragments.first else { return 0 }
+        guard let first = fragments.first, let last = fragments.last else { return 0 }
         if fragments.contains(where: { $0.lowerBound < 0 || $0.upperBound > name.count || $0.isEmpty }) {
             return Int.min
         }
@@ -164,7 +164,7 @@ nonisolated struct MinusculeMatcherCore: Sendable {
         let afterSeparator = indexOfAnyHardSeparator(name, start: 0, end: startIndex) >= 0
         let wordStart = startIndex == 0
             || (NameUtilCore.isWordStart(name, startIndex) && !NameUtilCore.isWordStart(name, startIndex - 1))
-        let finalMatch = (fragments.last?.upperBound ?? 0) == name.count
+        let finalMatch = last.upperBound == name.count
 
         var score = wordStart ? 1000 : 0
         score += matchingCase
@@ -247,9 +247,6 @@ nonisolated struct MinusculeMatcherCore: Sendable {
 
     private func matchBySubstring(_ name: [UInt16]) -> [Range<Int>]? {
         let meaningfulCount = meaningfulCharacters.count / 2
-        if name.count < meaningfulCount {
-            return nil
-        }
         if isPatternChar(0, Self.star) {
             var i = 0
             while i <= name.count - meaningfulCount {
@@ -486,9 +483,6 @@ nonisolated struct MinusculeMatcherCore: Sendable {
     }
 
     private func isFirstCharMatching(_ name: [UInt16], _ nameIndex: Int, _ patternIndex: Int) -> Bool {
-        if nameIndex >= name.count {
-            return false
-        }
         let ignoreCase = mode != .matchCase
         if !charEquals(pattern[patternIndex], patternIndex, name[nameIndex], ignoreCase: ignoreCase) {
             return false
@@ -518,18 +512,12 @@ nonisolated struct MinusculeMatcherCore: Sendable {
             || (isMixedCase && isLowerCase[patternIndex] && !(patternIndex > 0 && isWordSeparator[patternIndex - 1])) {
             return -1
         }
-        var i = startFrom
+        var i = indexOfIgnoreCase(name, startFrom, patternIndex)
         let isSpecialSymbol = !MatchingCharacter.isLetterOrDigit(p)
-        while true {
-            i = indexOfIgnoreCase(name, i, patternIndex)
-            if i < 0 {
-                return -1
-            }
-            if isSpecialSymbol || NameUtilCore.isWordStart(name, i) {
-                return i
-            }
-            i += 1
+        while i >= 0, !isSpecialSymbol, !NameUtilCore.isWordStart(name, i) {
+            i = indexOfIgnoreCase(name, i + 1, patternIndex)
         }
+        return i
     }
 
     private func indexOfIgnoreCase(_ name: [UInt16], _ fromIndex: Int, _ patternIndex: Int) -> Int {

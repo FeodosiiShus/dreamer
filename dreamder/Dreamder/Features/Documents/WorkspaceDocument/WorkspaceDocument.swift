@@ -41,6 +41,10 @@ final class WorkspaceDocument: NSDocument, NSToolbarDelegate {
     var listenerModel: WorkspaceNotificationModel = .init()
     var sourceControlManager: SourceControlManager?
     @ObservationIgnored private(set) var excludedDirectories: ExcludedDirectories?
+    @ObservationIgnored var fileScope: WorkspaceFileScope?
+    @ObservationIgnored var symbolIndex: SearchEverywhereSymbolIndex?
+    @ObservationIgnored var fileScopeObserver: WorkspaceFileScopeObserver?
+    @ObservationIgnored var fileScopeTasks: [Task<Void, Never>] = []
 
     @ObservationIgnored var taskManager: TaskManager?
     @ObservationIgnored var workspaceSettingsManager: CEWorkspaceSettings?
@@ -59,6 +63,8 @@ final class WorkspaceDocument: NSDocument, NSToolbarDelegate {
 
     isolated deinit {
         NotificationCenter.default.removeObserver(self)
+        fileScopeTasks.forEach { $0.cancel() }
+        fileScope?.cleanUp()
     }
 
     func getFromWorkspaceState(_ key: WorkspaceStateKey) -> Any? {
@@ -88,6 +94,10 @@ final class WorkspaceDocument: NSDocument, NSToolbarDelegate {
     }
 
     override func makeWindowControllers() {
+        makeWorkspaceWindow().makeKeyAndOrderFront(nil)
+    }
+
+    func makeWorkspaceWindow() -> NSWindow {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1400, height: 900),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -118,8 +128,7 @@ final class WorkspaceDocument: NSDocument, NSToolbarDelegate {
         window.setAccessibilityDocument(self.fileURL?.absoluteString)
 
         self.addWindowController(windowController)
-
-        window.makeKeyAndOrderFront(nil)
+        return window
     }
 
     // MARK: Set Up Workspace
@@ -152,8 +161,9 @@ final class WorkspaceDocument: NSDocument, NSToolbarDelegate {
         )
         self.sourceControlManager = sourceControlManager
         sourceControlManager.fileManager = workspaceFileManager
+        configureFileScope(rootURL: url)
         self.searchState = .init(self)
-        self.openQuicklyViewModel = .init(fileURL: url)
+        self.openQuicklyViewModel = .init(fileURL: url, scope: fileScope)
         self.commandsPaletteState = .init()
         self.workspaceSettingsManager = CEWorkspaceSettings(workspaceURL: url)
         if let workspaceSettingsManager {
@@ -183,6 +193,9 @@ final class WorkspaceDocument: NSDocument, NSToolbarDelegate {
         super.close()
         editorManager?.saveRestorationState(self)
         utilityAreaModel?.saveRestorationState(self)
+        if let utilityAreaModel {
+            utilityAreaModel.removeTerminals(Set(utilityAreaModel.terminals.map(\.id)))
+        }
 
         statusBarViewModel = nil
         utilityAreaModel = nil
@@ -193,6 +206,7 @@ final class WorkspaceDocument: NSDocument, NSToolbarDelegate {
         sourceControlManager = nil
         workspaceFileManager?.cleanUp()
         workspaceFileManager = nil
+        tearDownFileScope()
         workspaceSettingsManager?.cleanUp()
         workspaceSettingsManager = nil
         taskManager = nil
@@ -256,15 +270,16 @@ final class WorkspaceDocument: NSDocument, NSToolbarDelegate {
             }
         }
         // Invoke shouldCloseSelector at delegate
-        let implementation = object.method(for: shouldCloseSelector)
-        let function = unsafeBitCast(
-            implementation,
-            to: (@convention(c)(Any, Selector, Any, Bool, UnsafeMutableRawPointer?) -> Void).self
-        )
         let areAllOpenedCodeFilesClean = editorManager?.editorLayout.gatherOpenFiles()
             .compactMap(\.fileDocument)
             .allSatisfy { !$0.isDocumentEdited } ?? false
-        function(object, shouldCloseSelector, self, areAllOpenedCodeFilesClean, contextInfo)
+        DocumentCloseCallback.invoke(
+            on: object,
+            selector: shouldCloseSelector,
+            document: self,
+            shouldClose: areAllOpenedCodeFilesClean,
+            contextInfo: contextInfo
+        )
     }
 
     // MARK: NSDocument delegate

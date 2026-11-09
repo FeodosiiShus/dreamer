@@ -1,5 +1,6 @@
 import AppKit
 import CodeEditSourceEditor
+import CodeEditTextView
 import Foundation
 import LanguageServerProtocol
 
@@ -39,47 +40,20 @@ extension LSPService {
     }
 
     func applyWorkspaceEdit(_ params: ApplyWorkspaceEditParams, for key: ClientKey) async -> ApplyWorkspaceEditResult {
-        guard languageClients[key] != nil else {
+        guard let client = languageClients[key] else {
             return ApplyWorkspaceEditResult(applied: false, failureReason: "The language server is not running")
         }
-        let executor = LSPWorkspaceEditExecutor { [weak self] uri, edits in
-            guard let self else { return false }
-            return try await self.editOpenDocument(uri: uri, edits: edits, for: key)
-        }
-        return await executor.apply(params.edit)
+        return await applyWorkspaceEdit(params.edit, via: client)
     }
 
-    func editOpenDocument(uri: String, edits: [TextEdit], for key: ClientKey) async throws -> Bool {
-        guard let client = languageClients[key] else { return false }
-        let canonicalURI = LSPFileURI.fileURL(from: uri)?.lspURI
-        let document = client.openFiles.document(for: uri)
-            ?? canonicalURI.flatMap { client.openFiles.document(for: $0) }
-        guard let document, let storage = document.content else { return false }
-
-        let resolved = try LSPTextEditApplier.resolve(edits, in: storage.string)
-        storage.beginEditing()
-        for item in resolved.reversed() {
-            storage.replaceCharacters(in: item.range, with: item.edit.newText)
-        }
-        storage.endEditing()
-        document.updateChangeCount(.changeDone)
-
-        let changes = resolved.reversed().map {
-            LanguageServerType.DocumentChange(replacingContentsIn: $0.edit.range, with: $0.edit.newText)
-        }
-        do {
-            try await client.documentChanged(uri: document.languageServerURI ?? uri, changes: changes)
-        } catch {
-            logger.warning("Failed to sync workspace edit for \(uri, privacy: .private): \(error)")
-        }
-        return true
+    func applyWorkspaceEdit(_ edit: WorkspaceEdit, via client: LanguageServerType) async -> ApplyWorkspaceEditResult {
+        await WorkspaceEditApplier(client: client).apply(edit)
     }
 
     func showDocument(_ params: ShowDocumentParams, for key: ClientKey) -> Bool {
         switch LSPShowDocumentPlan.make(for: params) {
         case let .external(url):
-            guard !DreamderHeadless.isEnabled else { return false }
-            return NSWorkspace.shared.open(url)
+            return dependencies.openExternalURL(url)
         case let .editor(url, selection, _):
             guard FileManager.default.fileExists(atPath: url.path),
                   let workspace = LSPDiagnosticsPublisher.workspace(containing: url, workspacePath: key.workspacePath),
@@ -95,7 +69,7 @@ extension LSPService {
 
     func presentMessageRequest(_ params: ShowMessageRequestParams, for key: ClientKey) -> MessageActionItem? {
         languageClients[key]?.logContainer.appendLog(LogMessageParams(type: params.type, message: params.message))
-        guard let actions = params.actions, !actions.isEmpty, !DreamderHeadless.isEnabled else {
+        guard let actions = params.actions, !actions.isEmpty else {
             return nil
         }
         let alert = NSAlert()
@@ -112,7 +86,8 @@ extension LSPService {
         for action in actions {
             alert.addButton(withTitle: action.title)
         }
-        let index = alert.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        let response = dependencies.runAlert(alert)
+        let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
         return actions.indices.contains(index) ? actions[index] : nil
     }
 
@@ -129,7 +104,7 @@ extension LSPService {
             }
         case .diagnostics:
             await refreshDiagnostics(of: client, key: key)
-        case .inlayHint, .codeLens:
+        case .inlayHint:
             NotificationCenter.default.post(
                 name: Self.refreshRequestedNotification,
                 object: self,
@@ -154,6 +129,7 @@ extension LSPService {
                 logger.warning("Failed to refresh diagnostics for \(uri, privacy: .private): \(error)")
             }
         }
+        await WorkspaceDiagnosticsPuller.shared.pull(client: client, key: key)
     }
 
     private static func cursorPosition(for selection: LSPRange?) -> CursorPosition {
@@ -162,5 +138,61 @@ extension LSPService {
         guard !selection.isEmpty else { return CursorPosition(start: start, end: nil) }
         let end = CursorPosition.Position(line: selection.end.line + 1, column: selection.end.character + 1)
         return CursorPosition(start: start, end: end)
+    }
+}
+
+final class WorkspaceEditApplier {
+    typealias Client = LSPService.LanguageServerType
+
+    private let client: Client
+
+    init(client: Client) {
+        self.client = client
+    }
+
+    func apply(_ edit: WorkspaceEdit) async -> ApplyWorkspaceEditResult {
+        let executor = LSPWorkspaceEditExecutor { [self] uri, edits in
+            try await editOpenDocument(uri: uri, edits: edits)
+        }
+        return await executor.apply(edit)
+    }
+
+    func editOpenDocument(uri: String, edits: [TextEdit]) async throws -> Bool {
+        let canonicalURI = LSPFileURI.fileURL(from: uri)?.lspURI
+        let document = client.openFiles.document(for: uri)
+            ?? canonicalURI.flatMap { client.openFiles.document(for: $0) }
+        guard let document, let storage = document.content else { return false }
+
+        let resolved = try LSPTextEditApplier.resolve(edits, in: storage.string)
+        if let textView = document.attachedTextView, textView.textStorage === storage, textView.isEditable {
+            Self.apply(resolved, to: textView)
+            return true
+        }
+
+        storage.beginEditing()
+        for item in resolved.reversed() {
+            storage.replaceCharacters(in: item.range, with: item.edit.newText)
+        }
+        storage.endEditing()
+        document.updateChangeCount(.changeDone)
+
+        let changes = resolved.reversed().map {
+            Client.DocumentChange(replacingContentsIn: $0.edit.range, with: $0.edit.newText)
+        }
+        do {
+            try await client.documentChanged(uri: document.languageServerURI ?? uri, changes: changes)
+        } catch {
+            client.logger.warning("Failed to sync workspace edit for \(uri, privacy: .private): \(error)")
+        }
+        return true
+    }
+
+    static func apply(_ resolved: [LSPResolvedTextEdit], to textView: TextView) {
+        let undoManager = textView.undoManager
+        undoManager?.beginUndoGrouping()
+        for item in resolved.reversed() {
+            textView.replaceCharacters(in: item.range, with: item.edit.newText)
+        }
+        undoManager?.endUndoGrouping()
     }
 }

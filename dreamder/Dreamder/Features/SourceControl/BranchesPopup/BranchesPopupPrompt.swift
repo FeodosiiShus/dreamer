@@ -1,7 +1,19 @@
 import AppKit
 
 enum BranchesPopupPrompt {
-    static func name(title: String, message: String, placeholder: String, initialValue: String = "") -> String? {
+    typealias ModalRunner = @MainActor (NSAlert) -> NSApplication.ModalResponse
+
+    static func systemRunner(_ alert: NSAlert) -> NSApplication.ModalResponse {
+        alert.runModal()
+    }
+
+    static func name(
+        title: String,
+        message: String,
+        placeholder: String,
+        initialValue: String = "",
+        runModal: ModalRunner = BranchesPopupPrompt.systemRunner
+    ) -> String? {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
@@ -13,36 +25,52 @@ enum BranchesPopupPrompt {
         field.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
         alert.accessoryView = field
         alert.window.initialFirstResponder = field
-        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        guard runModal(alert) == .alertFirstButtonReturn else { return nil }
         let value = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : value
     }
 
-    static func confirm(title: String, message: String, confirmTitle: String) -> Bool {
+    static func confirm(
+        title: String,
+        message: String,
+        confirmTitle: String,
+        runModal: ModalRunner = BranchesPopupPrompt.systemRunner
+    ) -> Bool {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
         alert.alertStyle = .warning
         alert.addButton(withTitle: confirmTitle)
         alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn
+        return runModal(alert) == .alertFirstButtonReturn
     }
 
-    static func error(title: String, message: String) {
+    static func error(
+        title: String,
+        message: String,
+        runModal: ModalRunner = BranchesPopupPrompt.systemRunner
+    ) {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
-        alert.runModal()
+        _ = runModal(alert)
     }
 
-    static func branchDialog(_ request: BranchesPopupBranchDialogRequest) -> BranchesPopupBranchDialogResult? {
+    static func branchDialog(
+        _ request: BranchesPopupBranchDialogRequest,
+        runModal: ModalRunner = BranchesPopupPrompt.systemRunner
+    ) -> BranchesPopupBranchDialogResult? {
         let controller = BranchesPopupBranchDialogController(request: request)
-        return withExtendedLifetime(controller) { controller.run() }
+        return withExtendedLifetime(controller) { controller.run(runModal) }
     }
 
-    static func unmergedDelete(name: String, commits: [String]) -> BranchesPopupDeleteBranchDecision {
+    static func unmergedDelete(
+        name: String,
+        commits: [String],
+        runModal: ModalRunner = BranchesPopupPrompt.systemRunner
+    ) -> BranchesPopupDeleteBranchDecision {
         let alert = NSAlert()
         alert.messageText = "Branch '\(name)' is not fully merged"
         var message = "The branch contains commits that are not merged anywhere:\n\n"
@@ -55,13 +83,14 @@ enum BranchesPopupPrompt {
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Force Delete")
         alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn ? .force : .cancel
+        return runModal(alert) == .alertFirstButtonReturn ? .force : .cancel
     }
 
     static func localCommitsDecision(
         local: String,
         remote: String,
-        count: Int
+        count: Int,
+        runModal: ModalRunner = BranchesPopupPrompt.systemRunner
     ) -> BranchesPopupLocalCommitsDecision {
         let alert = NSAlert()
         alert.messageText = "Local branch '\(local)' has commits that do not exist in '\(remote)'"
@@ -72,7 +101,7 @@ enum BranchesPopupPrompt {
         alert.addButton(withTitle: "Rebase")
         alert.addButton(withTitle: "Drop Local Commits")
         alert.addButton(withTitle: "Cancel")
-        switch alert.runModal() {
+        switch runModal(alert) {
         case .alertFirstButtonReturn: return .rebase
         case .alertSecondButtonReturn: return .drop
         default: return .cancel
@@ -95,7 +124,7 @@ private final class BranchesPopupBranchDialogController: NSObject, NSTextFieldDe
         super.init()
     }
 
-    func run() -> BranchesPopupBranchDialogResult? {
+    func run(_ runModal: BranchesPopupPrompt.ModalRunner) -> BranchesPopupBranchDialogResult? {
         field.placeholderString = "Branch name"
         field.delegate = self
         field.frame = NSRect(x: 0, y: 0, width: 300, height: 24)
@@ -133,7 +162,7 @@ private final class BranchesPopupBranchDialogController: NSObject, NSTextFieldDe
         alert.window.initialFirstResponder = field
         updateValidation()
 
-        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        guard runModal(alert) == .alertFirstButtonReturn else { return nil }
         let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         return BranchesPopupBranchDialogResult(
             name: name,

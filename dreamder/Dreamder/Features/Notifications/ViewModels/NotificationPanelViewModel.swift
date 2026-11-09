@@ -18,21 +18,53 @@ final class NotificationPanelViewModel {
     /// Set of hidden notification IDs
     private(set) var hiddenNotificationIds: Set<UUID> = []
 
-    /// Timers for notifications
     @ObservationIgnored
-    private var timers: [UUID: Timer] = [:]
+    private var hideTasks: [UUID: Task<Void, Never>] = [:]
 
-    /// Display duration for notifications
-    private let displayDuration: TimeInterval = 5.0
+    @ObservationIgnored
+    private var slideOutTask: Task<Void, Never>?
+
+    @ObservationIgnored
+    private var deactivationTask: Task<Void, Never>?
+
+    private static let displayDuration: Duration = .seconds(5)
+    private static let slideOutDuration: Duration = .milliseconds(300)
+    private static let scrollResetDelay: Duration = .milliseconds(100)
+    private static let dismissalFadeDelay: Duration = .milliseconds(10)
+
+    @ObservationIgnored
+    private let clock: any Clock<Duration>
 
     /// Whether notifications are paused
     @ObservationIgnored
     private var isPaused: Bool = false
 
-    @ObservationIgnored
-    private var notificationManager = NotificationManager.shared
+    private let notificationManager: NotificationManager
+
+    private let notificationCenter: NotificationCenter
 
     var scrolledToTop: Bool = true
+
+    private(set) var hasOverflow: Bool = false
+
+    private(set) var contentHeight: CGFloat = 0.0
+
+    func updateOverflow(contentHeight: CGFloat, containerHeight: CGFloat) {
+        if !hasOverflow && contentHeight > containerHeight {
+            hasOverflow = true
+        } else if hasOverflow && contentHeight <= containerHeight {
+            hasOverflow = false
+        }
+    }
+
+    func contentHeightChanged(_ newHeight: CGFloat, containerHeight: CGFloat) {
+        contentHeight = newHeight
+        updateOverflow(contentHeight: newHeight, containerHeight: containerHeight)
+    }
+
+    func containerHeightChanged(_ newHeight: CGFloat) {
+        updateOverflow(contentHeight: contentHeight, containerHeight: newHeight)
+    }
 
     /// A filtered list of active notifications.
     var visibleNotifications: [CENotification] {
@@ -70,28 +102,21 @@ final class NotificationPanelViewModel {
     func toggleNotificationsVisibility() {
         if isPresented {
             if !scrolledToTop {
-                // Just set isPresented to false to trigger the offset animation
                 withAnimation(.easeInOut(duration: 0.3)) {
                     isPresented = false
                 }
-
-                // After the slide-out animation, hide notifications
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    // Hide non-sticky notifications
-                    self.activeNotifications
-                        .filter { !$0.isSticky }
-                        .forEach { self.hiddenNotificationIds.insert($0.id) }
-
-                    // After notifications are hidden, reset scroll position
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        self.scrolledToTop = true
-                    }
+                slideOutTask?.cancel()
+                slideOutTask = Task { [weak self, clock] in
+                    guard await Self.pause(Self.slideOutDuration, on: clock) else { return }
+                    self?.hideRegularNotifications()
+                    guard await Self.pause(Self.scrollResetDelay, on: clock) else { return }
+                    self?.scrolledToTop = true
                 }
             } else {
-                // At top, just hide normally
                 hideNotifications()
             }
         } else {
+            slideOutTask?.cancel()
             withAnimation(.easeInOut(duration: 0.3)) {
                 isPresented = true
                 hiddenNotificationIds.removeAll()
@@ -99,59 +124,75 @@ final class NotificationPanelViewModel {
         }
     }
 
-    private func hideNotifications() {
-        withAnimation(.easeInOut(duration: 0.3)) {
-            self.isPresented = false
-            self.activeNotifications
-                .filter { !$0.isSticky }
-                .forEach { self.hiddenNotificationIds.insert($0.id) }
+    func controlStateChanged(isActive: Bool) {
+        deactivationTask?.cancel()
+        guard !isActive, isPresented else { return }
+        deactivationTask = Task { [weak self, clock] in
+            guard await Self.pause(Self.slideOutDuration, on: clock) else { return }
+            guard let self, isPresented else { return }
+            toggleNotificationsVisibility()
         }
     }
 
-    /// Starts the timer to automatically hide a notification
+    private static func pause(_ duration: Duration, on clock: any Clock<Duration>) async -> Bool {
+        do {
+            try await Task.sleep(for: duration, clock: clock)
+            return !Task.isCancelled
+        } catch {
+            return false
+        }
+    }
+
+    private func hideRegularNotifications() {
+        activeNotifications
+            .filter { !$0.isSticky }
+            .forEach { hiddenNotificationIds.insert($0.id) }
+    }
+
+    private func hideNotifications() {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            isPresented = false
+            hideRegularNotifications()
+        }
+    }
+
     func startHideTimer(for notification: CENotification) {
         guard !notification.isSticky && !isPresented else { return }
 
-        timers[notification.id]?.invalidate()
-        timers[notification.id] = nil
+        let id = notification.id
+        hideTasks[id]?.cancel()
+        hideTasks[id] = nil
 
         guard !isPaused else { return }
 
-        timers[notification.id] = Timer.scheduledTimer(
-            withTimeInterval: displayDuration,
-            repeats: false
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self = self else { return }
-                self.timers[notification.id] = nil
+        hideTasks[id] = Task { [weak self, clock] in
+            guard await Self.pause(Self.displayDuration, on: clock) else { return }
+            self?.hideAfterDisplayDuration(id)
+        }
+    }
 
-                // Ensure we're on the main thread and animate the change
-                DispatchQueue.main.async {
-                    NSAnimationContext.runAnimationGroup { context in
-                        context.duration = 0.3
-                        context.allowsImplicitAnimation = true
+    private func hideAfterDisplayDuration(_ id: UUID) {
+        hideTasks[id] = nil
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.3
+            context.allowsImplicitAnimation = true
 
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            var newHiddenIds = self.hiddenNotificationIds
-                            newHiddenIds.insert(notification.id)
-                            self.hiddenNotificationIds = newHiddenIds
-                        }
-                    }
-                }
+            withAnimation(.easeInOut(duration: 0.3)) {
+                var newHiddenIds = hiddenNotificationIds
+                newHiddenIds.insert(id)
+                hiddenNotificationIds = newHiddenIds
             }
         }
     }
 
-    /// Pauses all auto-hide timers
     func pauseTimer() {
         isPaused = true
-        timers.values.forEach { $0.invalidate() }
+        hideTasks.values.forEach { $0.cancel() }
+        hideTasks.removeAll()
     }
 
-    /// Resumes all auto-hide timers
     func resumeTimer() {
         isPaused = false
-        // Only restart timers for notifications that are currently visible
         activeNotifications
             .filter { !$0.isSticky && isNotificationVisible($0) }
             .forEach { startHideTimer(for: $0) }
@@ -190,28 +231,23 @@ final class NotificationPanelViewModel {
             }
         }
 
-        if #available(macOS 26, *) {
-            withAnimation(.easeInOut(duration: 0.3), operation) {
-                self.updateToolbarItem()
-            }
-        } else {
-            withAnimation(.easeInOut(duration: 0.3), operation)
+        withAnimation(.easeInOut(duration: 0.3), operation) {
+            self.updateToolbarItem()
         }
     }
 
     /// Dismisses a specific notification
     func dismissNotification(_ notification: CENotification, disableAnimation: Bool = false) {
-        // Clean up timers
-        timers[notification.id]?.invalidate()
-        timers[notification.id] = nil
+        hideTasks[notification.id]?.cancel()
+        hideTasks[notification.id] = nil
         hiddenNotificationIds.remove(notification.id)
 
         // Mark as being dismissed for animation
         if let index = activeNotifications.firstIndex(where: { $0.id == notification.id }) {
             if disableAnimation {
                 self.activeNotifications.removeAll(where: { $0.id == notification.id })
-                NotificationManager.shared.markAsRead(notification)
-                NotificationManager.shared.dismissNotification(notification)
+                notificationManager.markAsRead(notification)
+                notificationManager.dismissNotification(notification)
                 return
             }
 
@@ -219,49 +255,80 @@ final class NotificationPanelViewModel {
             dismissingNotification.isBeingDismissed = true
             activeNotifications[index] = dismissingNotification
 
-            // Wait for fade animation before removing
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+            Task { [self, clock] in
+                guard await Self.pause(Self.dismissalFadeDelay, on: clock) else { return }
                 withAnimation(.easeOut(duration: 0.2)) {
-                    self.activeNotifications.removeAll(where: { $0.id == notification.id })
-                    if self.activeNotifications.isEmpty && self.isPresented {
-                        self.isPresented = false
+                    activeNotifications.removeAll(where: { $0.id == notification.id })
+                    if activeNotifications.isEmpty && isPresented {
+                        isPresented = false
                     }
                 }
 
-                NotificationManager.shared.markAsRead(notification)
-                NotificationManager.shared.dismissNotification(notification)
+                notificationManager.markAsRead(notification)
+                notificationManager.dismissNotification(notification)
             }
         }
     }
 
     func updateToolbarItem() {
-        if #available(macOS 15.0, *) {
-            self.workspace?.windowControllers.forEach { controller in
-                guard let toolbar = controller.window?.toolbar else {
-                    return
-                }
-                let shouldShow = !self.visibleNotifications.isEmpty || NotificationManager.shared.unreadCount > 0
-                if shouldShow && toolbar.items.filter({ $0.itemIdentifier == .notificationItem }).first == nil {
-                    guard let activityItemIdx = toolbar.items
-                        .firstIndex(where: { $0.itemIdentifier == .activityViewer }) else {
-                        return
-                    }
-                    toolbar.insertItem(withItemIdentifier: .space, at: activityItemIdx + 1)
-                    toolbar.insertItem(withItemIdentifier: .notificationItem, at: activityItemIdx + 2)
-                }
-
-                if !shouldShow, let index = toolbar.items
-                    .firstIndex(where: { $0.itemIdentifier == .notificationItem }) {
-                    toolbar.removeItem(at: index)
-                    toolbar.removeItem(at: index)
-                }
+        let shouldShow = !visibleNotifications.isEmpty || notificationManager.unreadCount > 0
+        workspace?.windowControllers.compactMap { $0.window?.toolbar }.forEach { toolbar in
+            if shouldShow {
+                toolbar.showNotificationItem()
+            } else {
+                toolbar.hideNotificationItem()
             }
         }
     }
 
-    init() {
+    func dismissHandler(for notification: CENotification) -> () -> Void {
+        { [self] in dismissNotification(notification) }
+    }
+
+    func actionHandler(for notification: CENotification) -> () -> Void {
+        { [self] in performAction(of: notification) }
+    }
+
+    func performAction(of notification: CENotification) {
+        notification.action()
+        if isPresented {
+            toggleNotificationsVisibility()
+            dismissNotification(notification, disableAnimation: true)
+        } else {
+            dismissNotification(notification)
+        }
+    }
+
+    func updateScrollOffset(_ offset: CGFloat) {
+        if offset <= 0.0 && !scrolledToTop {
+            scrolledToTop = true
+        } else if offset > 0.0 && scrolledToTop {
+            scrolledToTop = false
+        }
+    }
+
+    func focusChanged(_ oldValue: Bool, _ newValue: Bool) {
+        handleFocusChange(isFocused: newValue)
+    }
+
+    func hoverChanged(_ hovering: Bool) {
+        if hovering {
+            pauseTimer()
+        } else {
+            resumeTimer()
+        }
+    }
+
+    init(
+        notificationManager: NotificationManager = .shared,
+        notificationCenter: NotificationCenter = .default,
+        clock: any Clock<Duration> = ContinuousClock()
+    ) {
+        self.notificationManager = notificationManager
+        self.notificationCenter = notificationCenter
+        self.clock = clock
         // Observe new notifications
-        NotificationCenter.default.addObserver(
+        notificationCenter.addObserver(
             self,
             selector: #selector(handleNewNotificationAdded(_:)),
             name: .init("NewNotificationAdded"),
@@ -269,7 +336,7 @@ final class NotificationPanelViewModel {
         )
 
         // Observe notification dismissals
-        NotificationCenter.default.addObserver(
+        notificationCenter.addObserver(
             self,
             selector: #selector(handleNotificationRemoved(_:)),
             name: .init("NotificationDismissed"),
@@ -283,7 +350,10 @@ final class NotificationPanelViewModel {
     }
 
     isolated deinit {
-        NotificationCenter.default.removeObserver(self)
+        notificationCenter.removeObserver(self)
+        hideTasks.values.forEach { $0.cancel() }
+        slideOutTask?.cancel()
+        deactivationTask?.cancel()
     }
 
     @objc
@@ -306,12 +376,8 @@ final class NotificationPanelViewModel {
         }
 
         // Just remove from active notifications without triggering global state changes
-        if #available(macOS 26, *) {
-            withAnimation(.easeOut(duration: 0.2), operation) {
-                self.updateToolbarItem()
-            }
-        } else {
-            withAnimation(.easeOut(duration: 0.2), operation)
+        withAnimation(.easeOut(duration: 0.2), operation) {
+            self.updateToolbarItem()
         }
     }
 }

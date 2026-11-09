@@ -387,7 +387,7 @@ private nonisolated struct BlockScanner {
             closeLeafBlocks()
             var state = HTMLBlockState(type: type, scanner: MarkdownHTMLScanner(emitsText: true))
             state.scanner.scan(units, from: cursor.position, to: end, into: &tokens)
-            html = (type <= 5 && htmlBlockEnds(type: type, from: first, to: end)) ? nil : state
+            html = htmlBlockEnds(type: type, from: first, to: end) ? nil : state
             return
         }
         if paragraphOpen, openTableIfDelimiterRow(at: first, end: end) {
@@ -542,7 +542,7 @@ private nonisolated struct BlockScanner {
             return false
         }
         state.scanner.scan(units, from: cursor.position, to: end, into: &tokens)
-        html = (state.type <= 5 && htmlBlockEnds(type: state.type, from: cursor.position, to: end)) ? nil : state
+        html = htmlBlockEnds(type: state.type, from: cursor.position, to: end) ? nil : state
         return true
     }
 
@@ -745,18 +745,17 @@ private nonisolated struct BlockScanner {
             index += 1
         }
         let name = String(decoding: units[nameStart..<index], as: UTF16.self).lowercased()
-        let afterName: UInt16? = index < end ? units[index] : nil
-        let endsName = afterName == nil || MarkdownChar.isSpaceOrTab(afterName ?? 0) || afterName == MarkdownChar.greater
+        let afterName = index < end ? units[index] : MarkdownChar.space
+        let endsName = MarkdownChar.isSpaceOrTab(afterName) || afterName == MarkdownChar.greater
         if !closing, Self.rawHTMLNames.contains(name), endsName { return 1 }
         if Self.htmlBlockNames.contains(name) {
             let selfClosing = afterName == MarkdownChar.slash && index + 1 < end && units[index + 1] == MarkdownChar.greater
             if endsName || selfClosing { return 6 }
         }
-        if paragraphOpen { return nil }
-        if let tagEnd = MarkdownHTMLScanner.tagEnd(in: units, from: first, to: end), isBlank(from: tagEnd, to: end) {
-            return 7
-        }
-        return nil
+        guard !paragraphOpen,
+              let tagEnd = MarkdownHTMLScanner.tagEnd(in: units, from: first, to: end),
+              isBlank(from: tagEnd, to: end) else { return nil }
+        return 7
     }
 
     private func htmlBlockEnds(type: Int, from start: Int, to end: Int) -> Bool {

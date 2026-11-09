@@ -33,13 +33,7 @@ final class MergeConflictsViewModel {
         center.monitor(manager)
         observation = Task { [weak self] in
             for await _ in Observations({ _ = center.states }) {
-                guard let self else { return }
-                let state = center.states[key]
-                entries = state?.entries ?? []
-                if let context = state?.context {
-                    self.context = context
-                }
-                pruneSelection()
+                self?.apply(center.states[key])
             }
         }
 
@@ -65,10 +59,10 @@ final class MergeConflictsViewModel {
     }
 
     var summary: String {
-        if entries.isEmpty {
+        guard !entries.isEmpty, let context else {
             return "All conflicts have been resolved"
         }
-        return context?.summary ?? "The following files have conflicts:"
+        return context.summary
     }
 
     var yoursHeader: String {
@@ -161,5 +155,13 @@ final class MergeConflictsViewModel {
         } else {
             anchorPath = nil
         }
+    }
+
+    private func apply(_ state: MergeConflictsCenter.WorkspaceState?) {
+        entries = state?.entries ?? []
+        if let context = state?.context {
+            self.context = context
+        }
+        pruneSelection()
     }
 }

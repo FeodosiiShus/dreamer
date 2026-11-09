@@ -7,14 +7,55 @@
 
 import SwiftUI
 
+@Observable
+@MainActor
+final class SourceControlSwitchModel {
+    @ObservationIgnored var manager: SourceControlManager?
+    @ObservationIgnored var dismiss: (() -> Void)?
+    @ObservationIgnored private(set) var submission: Task<Void, Never>?
+
+    func attach(manager: SourceControlManager, dismiss: @escaping () -> Void) {
+        self.manager = manager
+        self.dismiss = dismiss
+    }
+
+    func cancel() {
+        dismiss?()
+    }
+
+    func submit(_ branch: GitBranch) {
+        submission = Task { await perform(branch) }
+    }
+
+    func perform(_ branch: GitBranch) async {
+        guard let manager else { return }
+        do {
+            if !manager.changedFiles.isEmpty {
+                manager.stashSheetIsPresented = true
+            } else {
+                try await manager.checkoutBranch(branch: branch)
+                dismiss?()
+            }
+        } catch {
+            await manager.showAlertForError(title: "Failed to checkout", error: error)
+        }
+    }
+}
+
 struct SourceControlSwitchView: View {
     @Environment(\.dismiss)
     private var dismiss
 
     @Environment(SourceControlManager.self) private var sourceControlManager
-    @Environment(WorkspaceDocument.self) private var workspace
+
+    @State private var model: SourceControlSwitchModel
 
     var branch: GitBranch
+
+    init(branch: GitBranch, model: SourceControlSwitchModel = SourceControlSwitchModel()) {
+        self.branch = branch
+        _model = State(initialValue: model)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,15 +80,11 @@ struct SourceControlSwitchView: View {
             .padding(.horizontal, 20)
             HStack {
                 Spacer()
-                Button {
-                    dismiss()
-                } label: {
+                Button(action: model.cancel) {
                     Text("Cancel")
                         .frame(minWidth: 56)
                 }
-                Button {
-                    submit()
-                } label: {
+                Button { model.submit(branch) } label: {
                     Text("Switch")
                         .frame(minWidth: 56)
                 }
@@ -57,21 +94,8 @@ struct SourceControlSwitchView: View {
             .padding(.bottom, 20)
         }
         .frame(width: 420)
-    }
-
-    /// Checks out the specifiied branch and if local changes exist prompts the user to shash changes
-    func submit() {
-        Task {
-            do {
-                if !sourceControlManager.changedFiles.isEmpty {
-                    sourceControlManager.stashSheetIsPresented = true
-                } else {
-                    try await sourceControlManager.checkoutBranch(branch: branch)
-                    dismiss()
-                }
-            } catch {
-                await sourceControlManager.showAlertForError(title: "Failed to checkout", error: error)
-            }
+        .onAppear {
+            model.attach(manager: sourceControlManager, dismiss: dismiss.callAsFunction)
         }
     }
 }

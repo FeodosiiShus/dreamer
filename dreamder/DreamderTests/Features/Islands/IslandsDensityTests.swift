@@ -4,7 +4,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .uiGate)
 struct IslandsDensityTests {
     private func withDensity(_ value: String?, _ body: () -> Void) {
         let defaults = UserDefaults.standard
@@ -81,5 +81,44 @@ struct IslandsDensityTests {
             #expect(ToolWindowID.allCases.allSatisfy { $0.icon.hasSuffix("_20") })
             #expect(ToolWindowID.allCases.allSatisfy { NSImage(named: $0.icon) != nil })
         }
+    }
+
+    @Test
+    func compactChromeMetricsAreTheCompactVariants() {
+        withDensity("compact") {
+            #expect(Islands.mainToolbarHeight == 34)
+            #expect(Islands.toolbarControlHeight == 24)
+            #expect(Islands.tabColorInset == 2)
+            #expect(Islands.stripeButtonSize == 32)
+            #expect(Islands.listRowHeight == 20)
+            #expect(Islands.popupRowHeight == 22)
+            #expect(Islands.popupHeaderHeight == 32)
+            #expect(Islands.popupFooterHeight == 26)
+        }
+    }
+
+    @Test
+    func defaultChromeMetricsAreTheIntelliJNewUIVariants() {
+        withDensity("default") {
+            #expect(Islands.mainToolbarHeight == 40)
+            #expect(Islands.toolbarControlHeight == 28)
+            #expect(Islands.tabPillRadius == 6)
+            #expect(Islands.tabColorInset == 3)
+            #expect(Islands.tabLabelFontSize == 13)
+            #expect(Islands.stripeButtonSize == 30)
+            #expect(Islands.listRowHeight == 24)
+            #expect(Islands.popupRowHeight == 26)
+            #expect(Islands.popupHeaderHeight == 40)
+            #expect(Islands.popupFooterHeight == 30)
+        }
+    }
+
+    @Test
+    func codeFontFallsBackToTheSystemMonospacedFontWhenTheNamedFontIsMissing() {
+        let fallback = Islands.codeNSFont(named: "Dreamder Missing Font")
+
+        #expect(fallback.pointSize == Islands.codeFontSize)
+        #expect(fallback.isFixedPitch)
+        #expect(Islands.codeNSFont(named: Islands.codeFontName).pointSize == Islands.codeFontSize)
     }
 }

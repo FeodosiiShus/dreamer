@@ -182,9 +182,8 @@ extension DreamderWindowController {
         var environment = MarkdownEditorEnvironment()
         environment.emphasisStyle = MarkdownEditorPreferences.emphasisStyle()
         environment.tableStyle = MarkdownEditorPreferences.tableStyle()
-        let editing = Settings[\.textEditing]
-        environment.tabSize = target.codeFile.defaultTabWidth ?? editing.defaultTabWidth
-        let indentOption = target.codeFile.indentOption ?? editing.indentOption
+        environment.tabSize = target.codeFile.effectiveTabWidth
+        let indentOption = target.codeFile.effectiveIndentOption
         if indentOption.indentType == .spaces {
             environment.indentSize = max(indentOption.spaceCount, 1)
         }
@@ -200,7 +199,7 @@ extension DreamderWindowController {
 final class MarkdownTablePopoverPresenter {
     static let shared = MarkdownTablePopoverPresenter()
 
-    private var popover: NSPopover?
+    private(set) var popover: NSPopover?
 
     func present(
         for target: MarkdownEditorTarget,

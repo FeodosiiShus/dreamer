@@ -15,8 +15,7 @@ struct SearchPanelView<RowView: View, PreviewView: View, Option: Identifiable & 
     @Binding var options: [Option]
     @Binding var text: String
 
-    @State var selection: Option?
-    @State var previewVisible: Bool = true
+    @State private var model: SearchPanelModel<Option>
 
     let title: String
     let image: Image
@@ -49,6 +48,7 @@ struct SearchPanelView<RowView: View, PreviewView: View, Option: Identifiable & 
         self.hasPreview = preview != nil
         self.alwaysShowOptions = alwaysShowOptions
         self.optionRowHeight = optionRowHeight
+        self._model = State(initialValue: SearchPanelModel(onRowClick: onRowClick))
     }
 
     var body: some View {
@@ -63,29 +63,11 @@ struct SearchPanelView<RowView: View, PreviewView: View, Option: Identifiable & 
                     TextField(title, text: $text)
                         .font(.system(size: 20, weight: .light, design: .default))
                         .textFieldStyle(.plain)
-                        .onSubmit {
-                            if let selection {
-                                onRowClick(selection)
-                            } else {
-                                NSSound.beep()
-                            }
-                        }
-                        .task(id: options) {
-                            if options.isEmpty {
-                                selection = nil
-                            } else {
-                                if !options.isEmpty {
-                                    selection = options.first
-                                }
-                            }
-                        }
+                        .onSubmit(model.submit)
+                        .task(id: options) { model.update(options: options) }
                     if hasPreview {
-                        PreviewToggle(previewVisible: $previewVisible)
-                            .onTapGesture {
-                                withAnimation {
-                                    previewVisible.toggle()
-                                }
-                            }
+                        PreviewToggle(previewVisible: model.previewVisible)
+                            .onTapGesture(perform: model.togglePreview)
                     }
                 }
                 .padding(.vertical, 12)
@@ -105,18 +87,18 @@ struct SearchPanelView<RowView: View, PreviewView: View, Option: Identifiable & 
                         NSTableViewWrapper(
                             data: options,
                             rowHeight: optionRowHeight,
-                            selection: $selection,
+                            selection: Bindable(model).selection,
                             itemView: rowViewBuilder
                         )
-                        .frame(maxWidth: hasPreview && previewVisible ? 272 : .infinity)
+                        .frame(maxWidth: hasPreview && model.previewVisible ? 272 : .infinity)
                     }
-                    if hasPreview && previewVisible {
+                    if hasPreview && model.previewVisible {
                         Divider()
                         if options.isEmpty {
                             Spacer()
                                 .frame(maxWidth: .infinity)
                         } else {
-                            if let selection, let previewViewBuilder {
+                            if let selection = model.selection, let previewViewBuilder {
                                 previewViewBuilder(selection)
                                     .clipped()
                                     .frame(maxWidth: .infinity)
@@ -143,36 +125,15 @@ struct SearchPanelView<RowView: View, PreviewView: View, Option: Identifiable & 
     }
 
     @ViewBuilder var keyHandlers: some View {
-        Button {
-            onClose()
-        } label: { EmptyView() }
+        Button(action: onClose) { EmptyView() }
             .opacity(0)
             .keyboardShortcut(.escape, modifiers: [])
             .accessibilityLabel("Close Overlay")
-        Button {
-            guard selection != options.first else {
-                return
-            }
-            if let selection, let index = options.firstIndex(of: selection) {
-                self.selection = options[index-1]
-            } else {
-                selection = options.first
-            }
-        } label: { EmptyView() }
+        Button(action: model.moveUp) { EmptyView() }
             .opacity(0)
             .keyboardShortcut(.upArrow, modifiers: [])
             .accessibilityLabel("Select Up")
-        Button {
-            guard selection != options.last else {
-                return
-            }
-            if let selection, let index = options.firstIndex(of: selection) {
-
-                self.selection = options[index+1]
-            } else {
-                selection = options.first
-            }
-        } label: { EmptyView() }
+        Button(action: model.moveDown) { EmptyView() }
             .opacity(0)
             .keyboardShortcut(.downArrow, modifiers: [])
             .accessibilityLabel("Select Down")
@@ -180,7 +141,7 @@ struct SearchPanelView<RowView: View, PreviewView: View, Option: Identifiable & 
 }
 
 struct PreviewToggle: View {
-    @Binding var previewVisible: Bool
+    let previewVisible: Bool
 
     var body: some View {
         ZStack {

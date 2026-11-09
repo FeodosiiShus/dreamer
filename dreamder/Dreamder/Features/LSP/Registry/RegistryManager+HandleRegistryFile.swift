@@ -45,6 +45,7 @@ extension RegistryManager {
             try registryData.write(to: tempZipURL)
             try FileManager.default.unzipItem(at: tempZipURL, to: installPath)
             try FileManager.default.removeItem(at: tempZipURL)
+            try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: registryJsonPath)
 
             try checksumData.write(to: checksumDestination)
             downloadError = nil
@@ -90,7 +91,7 @@ extension RegistryManager {
     @Sendable
     func download(from url: URL, attempt: Int = 1) async throws -> Data {
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await fetch(url)
 
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw RegistryManagerError.downloadFailed(
@@ -105,7 +106,7 @@ extension RegistryManager {
         } catch {
             if attempt <= 3 {
                 let delay = pow(2.0, Double(attempt))
-                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                try await backoff(delay)
                 return try await download(from: url, attempt: attempt + 1)
             } else {
                 throw RegistryManagerError.maxRetriesExceeded(url: url, lastError: error)
@@ -119,14 +120,9 @@ extension RegistryManager {
         let fileManager = FileManager.default
 
         // Update the file every 24 hours
-        let needsUpdate = !fileManager.fileExists(atPath: registryPath.path) || {
-            guard let attributes = try? fileManager.attributesOfItem(atPath: registryPath.path),
-                  let modificationDate = attributes[.modificationDate] as? Date else {
-                return true
-            }
-            let hoursSinceLastUpdate = Date().timeIntervalSince(modificationDate) / 3600
-            return hoursSinceLastUpdate >= 24
-        }()
+        let attributes = try? fileManager.attributesOfItem(atPath: registryPath.path)
+        let modificationDate = attributes?[.modificationDate] as? Date
+        let needsUpdate = modificationDate.map { Date().timeIntervalSince($0) / 3600 >= 24 } ?? true
 
         if needsUpdate {
             return nil
@@ -134,7 +130,9 @@ extension RegistryManager {
 
         do {
             let registryData = try Data(contentsOf: registryPath)
-            let items = try JSONDecoder().decode([RegistryItem].self, from: registryData)
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let items = try decoder.decode([RegistryItem].self, from: registryData)
             return items.filter { $0.categories.contains("LSP") }
         } catch {
             return nil

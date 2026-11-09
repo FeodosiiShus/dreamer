@@ -18,13 +18,17 @@ struct MergeConflictsMenuState: DynamicProperty {
 
         @ObservationIgnored private var statesObservation: Task<Void, Never>?
         @ObservationIgnored private var keyWindowCancellable: AnyCancellable?
+        @ObservationIgnored private let activeWorkspace: @MainActor () -> WorkspaceDocument?
+
+        init(activeWorkspace: @escaping @MainActor () -> WorkspaceDocument? = { MergeToolPresenter.activeWorkspace() }) {
+            self.activeWorkspace = activeWorkspace
+        }
 
         func start() {
             guard statesObservation == nil else { return }
             statesObservation = Task { [weak self] in
                 for await _ in Observations({ _ = MergeConflictsCenter.shared.states }) {
-                    guard let self else { return }
-                    refresh()
+                    self?.refresh()
                 }
             }
             keyWindowCancellable = NSApp.publisher(for: \.keyWindow)
@@ -42,7 +46,7 @@ struct MergeConflictsMenuState: DynamicProperty {
 
         @MainActor
         func refresh() {
-            guard let manager = MergeToolPresenter.activeWorkspace()?.sourceControlManager else {
+            guard let manager = activeWorkspace()?.sourceControlManager else {
                 set(false)
                 return
             }

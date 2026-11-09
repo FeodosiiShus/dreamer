@@ -24,7 +24,7 @@ struct MarkdownEditorWithPreview: View {
         SplitView(
             axis: store.splitAxis(for: url),
             dividerStyle: .editorDivider,
-            weights: weights(of: store)
+            weights: Self.weights(of: store)
         ) {
             if layout != .previewOnly {
                 CodeFileView(
@@ -53,7 +53,7 @@ struct MarkdownEditorWithPreview: View {
         }
     }
 
-    private func weights(of store: MarkdownPreviewLayoutStore) -> Binding<[CGFloat]> {
+    static func weights(of store: MarkdownPreviewLayoutStore) -> Binding<[CGFloat]> {
         Binding(
             get: { store.splitWeights },
             set: { newValue in

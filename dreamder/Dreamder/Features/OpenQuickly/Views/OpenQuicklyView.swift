@@ -34,27 +34,29 @@ struct OpenQuicklyView: View {
             image: Image(systemName: "magnifyingglass"),
             options: $openQuicklyViewModel.searchResults,
             text: $openQuicklyViewModel.query,
-            optionRowHeight: 40
-        ) { searchResult in
-            OpenQuicklyListItemView(
-                baseDirectory: openQuicklyViewModel.fileURL,
-                searchResult: searchResult
-            )
-        } preview: { searchResult in
-            OpenQuicklyPreviewView(item: CEWorkspaceFile(url: searchResult.fileURL))
-        } onRowClick: { searchResult in
-            guard let file = workspace.workspaceFileManager?.getFile(
-                searchResult.fileURL.relativePath,
-                createIfNotFound: true
-            ) else {
-                return
-            }
-            openFile(file)
-            openQuicklyViewModel.query = ""
-            onClose()
-        } onClose: {
-            onClose()
-        }
+            optionRowHeight: 40,
+            content: { searchResult in
+                OpenQuicklyListItemView(
+                    baseDirectory: openQuicklyViewModel.fileURL,
+                    searchResult: searchResult
+                )
+            },
+            preview: { searchResult in
+                OpenQuicklyPreviewView(item: CEWorkspaceFile(url: searchResult.fileURL))
+            },
+            onRowClick: { searchResult in
+                guard let file = workspace.workspaceFileManager?.getFile(
+                    searchResult.fileURL.relativePath,
+                    createIfNotFound: true
+                ) else {
+                    return
+                }
+                openFile(file)
+                openQuicklyViewModel.query = ""
+                onClose()
+            },
+            onClose: onClose
+        )
         .onChange(of: openQuicklyViewModel.query, initial: true) {
             fetchDebounce?.cancel()
             fetchDebounce = Task {

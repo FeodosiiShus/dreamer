@@ -15,12 +15,12 @@ LOGIC_SCOPES = ("pure", "viewModel", "io")
 ALL_SCOPES = LOGIC_SCOPES + ("view",)
 UNCLASSIFIED = "unclassified"
 
-TOTAL_TOLERANCE_PP = 1.0
-SCOPE_TOLERANCE_PP = 1.0
-FILE_FLOOR_PERCENT = 80.0
-FILE_TOLERANCE_PP = 5.0
-FILE_MINIMUM_LINES = 25
-NEW_FILE_MINIMUM_PERCENT = 70.0
+TOTAL_TOLERANCE_PP = 0.0
+SCOPE_TOLERANCE_PP = 0.0
+FILE_TOLERANCE_PP = 0.0
+FILE_MINIMUM_LINES = 1
+NEW_FILE_MINIMUM_PERCENT = 100.0
+TARGET_PERCENT = 100.0
 EPSILON = 1e-9
 
 EXIT_REGRESSION = 1
@@ -201,10 +201,10 @@ def check(snapshot, baseline):
     baseline_total = entry_percent(baseline["total"])
     if baseline_total - current_total > TOTAL_TOLERANCE_PP + EPSILON:
         violations.append(
-            f"total coverage {current_total:.2f}% is more than {TOTAL_TOLERANCE_PP} pp below baseline {baseline_total:.2f}%"
+            f"total coverage {current_total:.2f}% is below baseline {baseline_total:.2f}% (target {TARGET_PERCENT:.0f}%)"
         )
 
-    for scope in LOGIC_SCOPES:
+    for scope in ALL_SCOPES:
         baseline_scope = baseline["scopes"].get(scope)
         if baseline_scope is None:
             continue
@@ -212,7 +212,7 @@ def check(snapshot, baseline):
         reference = entry_percent(baseline_scope)
         if reference - current_scope > SCOPE_TOLERANCE_PP + EPSILON:
             violations.append(
-                f"scope {scope} coverage {current_scope:.2f}% is more than {SCOPE_TOLERANCE_PP} pp below baseline {reference:.2f}%"
+                f"scope {scope} coverage {current_scope:.2f}% is below baseline {reference:.2f}% (target {TARGET_PERCENT:.0f}%)"
             )
 
     baseline_files = baseline["files"]
@@ -220,17 +220,17 @@ def check(snapshot, baseline):
         previous = baseline_files.get(path)
         current_percent = entry_percent(entry)
         if previous is None:
-            if entry["scope"] in LOGIC_SCOPES and entry["covered"] * 100 < NEW_FILE_MINIMUM_PERCENT * entry["executable"]:
+            if entry["covered"] * 100 < NEW_FILE_MINIMUM_PERCENT * entry["executable"]:
                 violations.append(
-                    f"new {entry['scope']} file {path} has {current_percent:.1f}% coverage, minimum is {NEW_FILE_MINIMUM_PERCENT:.0f}%"
+                    f"new {entry['scope']} file {path} has {current_percent:.1f}% coverage, every new file must be fully covered"
                 )
             continue
         previous_percent = entry_percent(previous)
-        if entry["scope"] not in LOGIC_SCOPES or entry["executable"] < FILE_MINIMUM_LINES:
+        if entry["executable"] < FILE_MINIMUM_LINES:
             continue
-        if previous_percent >= FILE_FLOOR_PERCENT and previous_percent - current_percent > FILE_TOLERANCE_PP + EPSILON:
+        if previous_percent - current_percent > FILE_TOLERANCE_PP + EPSILON:
             violations.append(
-                f"{path} dropped from {previous_percent:.1f}% to {current_percent:.1f}% (limit {FILE_TOLERANCE_PP} pp for files at or above {FILE_FLOOR_PERCENT:.0f}%)"
+                f"{path} dropped from {previous_percent:.1f}% to {current_percent:.1f}%; coverage may only ratchet toward {TARGET_PERCENT:.0f}%"
             )
     return violations
 

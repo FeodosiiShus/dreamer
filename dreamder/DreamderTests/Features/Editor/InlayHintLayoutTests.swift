@@ -4,7 +4,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-@Suite
+@Suite(.uiGate)
 struct InlayHintLayoutTests {
     private func hint(_ label: TwoTypeOption<String, [InlayHintLabelPart]>, line: Int = 0, character: Int = 0) -> InlayHint {
         InlayHint(

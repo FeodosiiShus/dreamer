@@ -8,15 +8,10 @@
 import AppKit
 
 extension ProjectNavigatorViewController: NSOutlineViewDataSource {
-    /// Retrieves the children of a given item for the outline view, applying the current filter if necessary.
-    private func getOutlineViewItems(for item: CEWorkspaceFile) -> [CEWorkspaceFile] {
+    func visibleChildren(of item: CEWorkspaceFile) -> [CEWorkspaceFile] {
         let hidden = hiddenEntryNames
         if let cachedChildren = filteredContentChildren[item] {
-            return cachedChildren
-                .filter { !hidden.contains($0.name) }
-                .sorted { lhs, rhs in
-                    workspace?.sortFoldersOnTop == true ? lhs.isFolder && !rhs.isFolder : lhs.name < rhs.name
-                }
+            return sorted(cachedChildren.filter { !hidden.contains($0.name) }, in: item)
         }
 
         if let workspace, let children = workspace.workspaceFileManager?.childrenOfFile(item) {
@@ -31,35 +26,48 @@ extension ProjectNavigatorViewController: NSOutlineViewDataSource {
                 }
 
                 filteredContentChildren[item] = filteredChildren
-                return filteredChildren
+                return sorted(filteredChildren, in: item)
             }
 
-            return visibleChildren
-                .sorted { lhs, rhs in
-                    workspace.sortFoldersOnTop ? lhs.isFolder && !rhs.isFolder : lhs.name < rhs.name
-                }
+            return sorted(visibleChildren, in: item)
         }
 
         return []
     }
 
+    func outlineChildren(of item: CEWorkspaceFile) -> [CEWorkspaceFile] {
+        var children = visibleChildren(of: item)
+        if let pendingCreation, pendingCreation.folder == item {
+            children.insert(pendingCreation.placeholder, at: 0)
+        }
+        return children
+    }
+
+    private func sorted(_ items: [CEWorkspaceFile], in folder: CEWorkspaceFile) -> [CEWorkspaceFile] {
+        let mode = sortModes.mode(for: folder.url)
+        let foldersOnTop = workspace?.sortFoldersOnTop ?? true
+        return items.sorted {
+            ProjectNavigatorSorter.areInIncreasingOrder($0, $1, mode: mode, foldersOnTop: foldersOnTop)
+        }
+    }
+
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         if let item = item as? CEWorkspaceFile {
-            return getOutlineViewItems(for: item).count
+            return outlineChildren(of: item).count
         }
         return content.count
     }
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
         if let item = item as? CEWorkspaceFile {
-            return getOutlineViewItems(for: item)[index]
+            return outlineChildren(of: item)[index]
         }
         return content[index]
     }
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         if let item = item as? CEWorkspaceFile {
-            return item.isFolder
+            return item.isFolder && item != pendingCreation?.placeholder
         }
         return false
     }
@@ -77,13 +85,27 @@ extension ProjectNavigatorViewController: NSOutlineViewDataSource {
         proposedItem item: Any?,
         proposedChildIndex index: Int
     ) -> NSDragOperation {
+        dropOperation(
+            in: outlineView,
+            proposedItem: item,
+            proposedChildIndex: index,
+            sourceOperationMask: info.draggingSourceOperationMask
+        )
+    }
+
+    func dropOperation(
+        in outlineView: NSOutlineView,
+        proposedItem item: Any?,
+        proposedChildIndex index: Int,
+        sourceOperationMask: NSDragOperation
+    ) -> NSDragOperation {
         guard let fileItem = item as? CEWorkspaceFile else { return [] }
         // -1 index indicates that we are hovering over a row in outline view (folder or file)
         if index == -1 {
             if !fileItem.isFolder {
                 outlineView.setDropItem(fileItem.parent, dropChildIndex: index)
             }
-            return info.draggingSourceOperationMask == .copy ? .copy : .move
+            return sourceOperationMask == .copy ? .copy : .move
         }
         return []
     }
@@ -95,8 +117,15 @@ extension ProjectNavigatorViewController: NSOutlineViewDataSource {
         item: Any?,
         childIndex index: Int
     ) -> Bool {
-        guard let pasteboardItems = info.draggingPasteboard.readObjects(forClasses: [NSURL.self]) else { return false }
-        let fileItemURLS = pasteboardItems.compactMap { $0 as? URL }
+        acceptDrop(
+            of: info.draggingPasteboard.readObjects(forClasses: [NSURL.self])?.compactMap { $0 as? URL },
+            sourceOperationMask: info.draggingSourceOperationMask,
+            onto: item
+        )
+    }
+
+    func acceptDrop(of droppedURLs: [URL]?, sourceOperationMask: NSDragOperation, onto item: Any?) -> Bool {
+        guard let fileItemURLS = droppedURLs else { return false }
 
         guard let fileItemDestination = item as? CEWorkspaceFile else { return false }
         let destParentURL = fileItemDestination.url
@@ -109,18 +138,12 @@ extension ProjectNavigatorViewController: NSOutlineViewDataSource {
             }
 
             // Needs to come before call to .removeItem or else race condition occurs
-            var srcFileItem: CEWorkspaceFile? = workspace?.workspaceFileManager?.getFile(fileItemURL.path)
-            // If srcFileItem is nil, fileItemUrl is an external file url.
-            if srcFileItem == nil {
-                srcFileItem = CEWorkspaceFile(url: URL(fileURLWithPath: fileItemURL.path))
-            }
-
-            guard let srcFileItem else {
-                return false
-            }
+            let srcFileItem = workspace?.workspaceFileManager?.getFile(fileItemURL.path)
+                ?? CEWorkspaceFile(url: URL(fileURLWithPath: fileItemURL.path))
 
             if CEWorkspaceFile.fileManager.fileExists(atPath: destURL.path) {
-                let shouldReplace = replaceFileDialog(fileName: fileItemURL.lastPathComponent)
+                let shouldReplace = confirmReplace?(fileItemURL.lastPathComponent)
+                    ?? replaceFileDialog(fileName: fileItemURL.lastPathComponent)
                 guard shouldReplace else {
                     return false
                 }
@@ -131,7 +154,7 @@ extension ProjectNavigatorViewController: NSOutlineViewDataSource {
                     return false
                 }
             }
-            if info.draggingSourceOperationMask == .copy {
+            if sourceOperationMask == .copy {
                 self.copyFile(file: srcFileItem, to: destURL)
             } else {
                 self.moveFile(file: srcFileItem, to: destURL)

@@ -6,12 +6,8 @@ struct SettingsHeaderView: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            if let category = page.category,
-               let firstPage = category.pages.first,
-               category.rawValue != page.rawValue {
-                Button {
-                    onSelectCategoryPage(firstPage)
-                } label: {
+            if let category = page.category, category.rawValue != page.rawValue {
+                Button(action: selectCategoryPage) {
                     Text(category.rawValue)
                         .font(.system(size: Islands.uiFontSize, weight: .semibold))
                         .foregroundStyle(Islands.secondaryForeground)
@@ -30,5 +26,10 @@ struct SettingsHeaderView: View {
         }
         .padding(.horizontal, 16)
         .frame(height: 40)
+    }
+
+    func selectCategoryPage() {
+        guard let firstPage = page.category?.pages.first else { return }
+        onSelectCategoryPage(firstPage)
     }
 }

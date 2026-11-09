@@ -16,10 +16,6 @@ extension ProjectNavigatorViewController: NSOutlineViewDelegate {
         true
     }
 
-    func outlineView(_ outlineView: NSOutlineView, shouldShowOutlineCellForItem item: Any) -> Bool {
-        false
-    }
-
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
         NavigatorTableRowView()
     }
@@ -28,23 +24,26 @@ extension ProjectNavigatorViewController: NSOutlineViewDelegate {
         guard let tableColumn else { return nil }
 
         let frameRect = NSRect(x: 0, y: 0, width: tableColumn.width, height: rowHeight)
+        let file = item as? CEWorkspaceFile
+        let isPlaceholder = file != nil && file == pendingCreation?.placeholder
         let cell = ProjectNavigatorTableViewCell(
             frame: frameRect,
-            item: item as? CEWorkspaceFile,
+            item: file,
             delegate: self,
-            navigatorFilter: workspace?.navigatorFilter
+            navigatorFilter: workspace?.navigatorFilter,
+            exclusion: file.map { isPlaceholder ? .included : exclusion(for: $0) } ?? .included
         )
-        if let file = item as? CEWorkspaceFile {
-            let children = workspace?.workspaceFileManager?.childrenOfFile(file) ?? []
+        if let file {
+            let children = isPlaceholder ? [] : workspace?.workspaceFileManager?.childrenOfFile(file) ?? []
             cell.isExpandable = file.isFolder && !children.isEmpty
             cell.isExpanded = outlineView.isItemExpanded(file)
-            cell.onToggleDisclosure = { [weak outlineView] in
-                guard let outlineView else { return }
-                if outlineView.isItemExpanded(file) {
-                    outlineView.collapseItem(file)
-                } else {
-                    outlineView.expandItem(file)
-                }
+            cell.onToggleDisclosure = { [weak self] in self?.toggleExpansion(of: file) }
+            if isPlaceholder {
+                cell.creationEditing = ProjectNavigatorTableViewCell.CreationEditing(
+                    validate: { [weak self] in self?.creationErrorMessage(for: $0) },
+                    commit: { [weak self] in self?.commitCreation(named: $0) },
+                    cancel: { [weak self] in self?.cancelCreation() }
+                )
             }
         }
         return cell
@@ -61,7 +60,7 @@ extension ProjectNavigatorViewController: NSOutlineViewDelegate {
 
         guard let item = outlineView.item(atRow: selectedIndex) as? CEWorkspaceFile else { return }
 
-        if !item.isFolder && shouldSendSelectionUpdate {
+        if !item.isFolder && shouldSendSelectionUpdate && item != pendingCreation?.placeholder {
             shouldSendSelectionUpdate = false
             if workspace?.editorManager?.activeEditor.selectedTab?.file != item {
                 workspace?.editorManager?.activeEditor.openTab(file: item, asTemporary: true)
@@ -142,7 +141,7 @@ extension ProjectNavigatorViewController: NSOutlineViewDelegate {
         }
         // If the user has set "Reveal file on selection change" to on or it is forced to reveal,
         // we need to reveal the item before selecting the row.
-        if Settings.shared.preferences.general.revealFileOnFocusChange || forcesReveal {
+        if settings.preferences.general.revealFileOnFocusChange || forcesReveal {
             reveal(item)
         }
         let row = outlineView.row(forItem: item)
@@ -163,11 +162,11 @@ extension ProjectNavigatorViewController: NSOutlineViewDelegate {
             expandParent(item: parent)
         }
         let row = outlineView.row(forItem: fileItem)
-        shouldSendSelectionUpdate = false
-        outlineView.selectRowIndexes(.init(integer: row), byExtendingSelection: false)
-        shouldSendSelectionUpdate = true
-
         if row < 0 {
+            if hasLoadingAncestor(fileItem) {
+                pendingReveal = fileItem
+                return
+            }
             let alert = NSAlert()
             alert.messageText = NSLocalizedString(
                 "Could not find file",
@@ -176,6 +175,9 @@ extension ProjectNavigatorViewController: NSOutlineViewDelegate {
             alert.runModal()
             return
         } else {
+            shouldSendSelectionUpdate = false
+            outlineView.selectRowIndexes(.init(integer: row), byExtendingSelection: false)
+            shouldSendSelectionUpdate = true
             let visibleRect = scrollView.contentView.visibleRect
             let visibleRows = outlineView.rows(in: visibleRect)
             guard !visibleRows.contains(row) else {
@@ -196,7 +198,7 @@ extension ProjectNavigatorViewController: NSOutlineViewDelegate {
 
     /// Method for recursively expanding a file's parent directories.
     /// - Parameter item:
-    private func expandParent(item: CEWorkspaceFile) {
+    func expandParent(item: CEWorkspaceFile) {
         if let parent = item.parent as CEWorkspaceFile? {
             expandParent(item: parent)
         }

@@ -15,7 +15,7 @@ extension SettingsData {
     struct TextEditingSettings: Codable, Hashable, SearchableSettingsPage {
 
         var searchKeys: [String] {
-            var keys = [
+            let keys = [
                 "Prefer Indent Using",
                 "Tab Width",
                 "Wrap lines to editor width",
@@ -34,11 +34,18 @@ extension SettingsData {
                 "Reformat at Column",
                 "Show Reformatting Guide",
                 "Invisibles",
-                "Warning Characters"
+                "Warning Characters",
+                "System Cursor",
+                "Remove trailing spaces on",
+                "Keep trailing spaces on caret line",
+                "Ensure every saved file ends with a line break",
+                "Format on save",
+                "Inlay hints",
+                "Show inlay hints",
+                "Parameter name hints",
+                "Type hints",
+                "Return type hints"
             ]
-            if #available(macOS 14.0, *) {
-                keys.append("System Cursor")
-            }
             return keys.map { NSLocalizedString($0, comment: "") }
         }
 
@@ -97,6 +104,27 @@ extension SettingsData {
         /// Map of unicode character codes to a note about them
         var warningCharacters: WarningCharacters = .default
 
+        /// Which lines lose their trailing spaces when a file is saved
+        var stripTrailingSpaces: TrailingSpacesMode = .modifiedLines
+
+        /// Leave the trailing spaces of the line holding the caret alone while saving
+        var keepTrailingSpacesOnCaretLine: Bool = true
+
+        /// Append a line break to saved files that do not end with one
+        var ensureFinalNewline: Bool = false
+
+        var formatOnSave: Bool = false
+
+        var inlayHints: InlayHintSettings = .init()
+
+        var saveActionSettings: SaveActionSettings {
+            SaveActionSettings(
+                trailingSpaces: stripTrailingSpaces,
+                keepTrailingSpacesOnCaretLine: keepTrailingSpacesOnCaretLine,
+                ensureFinalNewline: ensureFinalNewline
+            )
+        }
+
         /// Default initializer
         init() {
             self.populateCommands()
@@ -139,11 +167,7 @@ extension SettingsData {
                 BracketPairEmphasis.self,
                 forKey: .bracketEmphasis
             ) ?? BracketPairEmphasis()
-            if #available(macOS 14, *) {
-                self.useSystemCursor = try container.decodeIfPresent(Bool.self, forKey: .useSystemCursor) ?? true
-            } else {
-                self.useSystemCursor = false
-            }
+            self.useSystemCursor = try container.decodeIfPresent(Bool.self, forKey: .useSystemCursor) ?? true
 
             self.showGutter = try container.decodeIfPresent(Bool.self, forKey: .showGutter) ?? true
             self.showMinimap = try container.decodeIfPresent(Bool.self, forKey: .showMinimap) ?? false
@@ -161,20 +185,30 @@ extension SettingsData {
                 WarningCharacters.self,
                 forKey: .warningCharacters
             ) ?? .default
+            self.stripTrailingSpaces = try container.decodeIfPresent(
+                TrailingSpacesMode.self,
+                forKey: .stripTrailingSpaces
+            ) ?? .modifiedLines
+            self.keepTrailingSpacesOnCaretLine = try container.decodeIfPresent(
+                Bool.self,
+                forKey: .keepTrailingSpacesOnCaretLine
+            ) ?? true
+            self.ensureFinalNewline = try container.decodeIfPresent(Bool.self, forKey: .ensureFinalNewline) ?? false
+            self.formatOnSave = try container.decodeIfPresent(Bool.self, forKey: .formatOnSave) ?? false
+            self.inlayHints = try container.decodeIfPresent(InlayHintSettings.self, forKey: .inlayHints) ?? .init()
 
             self.populateCommands()
         }
 
         /// Adds toggle-able preferences to the command palette via shared `CommandManager`
-        private func populateCommands() {
-            let mgr = CommandManager.shared
+        func populateCommands(manager mgr: CommandManager = .shared, settings: @escaping @MainActor () -> Settings = { .shared }) {
 
             mgr.addCommand(
                 name: "Toggle Type-Over Completion",
                 title: "Toggle Type-Over Completion",
                 id: "prefs.text_editing.type_over_completion",
                 command: {
-                    Settings[\.textEditing].enableTypeOverCompletion.toggle()
+                    settings().preferences.textEditing.enableTypeOverCompletion.toggle()
                 }
             )
 
@@ -183,7 +217,7 @@ extension SettingsData {
                 title: "Toggle Autocomplete Braces",
                 id: "prefs.text_editing.autocomplete_braces",
                 command: {
-                    Settings[\.textEditing].autocompleteBraces.toggle()
+                    settings().preferences.textEditing.autocompleteBraces.toggle()
                 }
             )
 
@@ -192,16 +226,16 @@ extension SettingsData {
                 title: "Toggle Word Wrap",
                 id: "prefs.text_editing.wrap_lines_to_editor_width",
                 command: {
-                    Settings[\.textEditing].wrapLinesToEditorWidth.toggle()
+                    settings().preferences.textEditing.wrapLinesToEditorWidth.toggle()
                 }
             )
 
             mgr.addCommand(name: "Toggle Minimap", title: "Toggle Minimap", id: "prefs.text_editing.toggle_minimap") {
-                Settings[\.textEditing].showMinimap.toggle()
+                settings().preferences.textEditing.showMinimap.toggle()
             }
 
             mgr.addCommand(name: "Toggle Gutter", title: "Toggle Gutter", id: "prefs.text_editing.toggle_gutter") {
-                Settings[\.textEditing].showGutter.toggle()
+                settings().preferences.textEditing.showGutter.toggle()
             }
 
             mgr.addCommand(
@@ -209,7 +243,7 @@ extension SettingsData {
                 title: "Toggle Folding Ribbon",
                 id: "prefs.text_editing.toggle_folding_ribbon"
             ) {
-                Settings[\.textEditing].showFoldingRibbon.toggle()
+                settings().preferences.textEditing.showFoldingRibbon.toggle()
             }
         }
 
@@ -342,16 +376,18 @@ extension SettingsData {
                 ?? NSFont.monospacedSystemFont(ofSize: size, weight: .medium)
         }
 
-        static let bundledFontsRegistered: Void = {
+        static let bundledFontsRegistered: Void = registerBundledFonts()
+
+        static func registerBundledFonts(from bundle: Bundle = .main) {
             let fileNames = [
                 "JetBrainsMono-Regular",
                 "JetBrainsMono-Bold",
                 "JetBrainsMono-Italic",
                 "JetBrainsMono-BoldItalic"
             ]
-            let urls = fileNames.compactMap { Bundle.main.url(forResource: $0, withExtension: "ttf") }
+            let urls = fileNames.compactMap { bundle.url(forResource: $0, withExtension: "ttf") }
             guard !urls.isEmpty else { return }
             CTFontManagerRegisterFontURLs(urls as CFArray, .process, true, nil)
-        }()
+        }
     }
 }

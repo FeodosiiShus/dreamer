@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import WelcomeWindow
 import AboutWindow
 
 @main
@@ -15,40 +14,17 @@ struct DreamderApp: App {
     let settings = Settings.shared
 
     init() {
+        DreamderHeadless.install()
         ShellEnvironment.shared.prepare()
 
-        // Register singleton services before anything else
-        ServiceContainer.register(
-            LSPService()
-        )
-
         _ = DreamderDocumentController.shared
-        ExtensionDiscovery.shared.start()
         NSMenuItem.swizzle()
         NSSplitViewItem.swizzle()
     }
 
     var body: some Scene {
         Group {
-            WelcomeWindow(
-                title: "Dreamder",
-                subtitleView: { WelcomeSubtitleView() },
-                actions: { dismissWindow in
-                    NewFileButton(dismissWindow: dismissWindow)
-                    GitCloneButton(dismissWindow: dismissWindow)
-                    OpenFileOrFolderButton(dismissWindow: dismissWindow)
-                },
-                onDrop: { url, _ in
-                    MainActor.assumeIsolated {
-                        DreamderDocumentController.shared.openDocument(at: url, onCompletion: {
-                            NSApp.windows.first { $0.identifier?.rawValue == DefaultSceneID.welcome }?.close()
-                        })
-                    }
-                }
-            )
-
-            ExtensionManagerWindow()
-
+            WelcomeScene()
             AboutWindow(
                 title: "Dreamder",
                 subtitleView: { AboutSubtitleView() },
@@ -63,6 +39,12 @@ struct DreamderApp: App {
             SettingsWindow()
                 .commands {
                     DreamderCommands()
+                    RefactorCommands()
+                    CodeCommands()
+                    ProblemsCommands()
+                    InlayHintCommands()
+                    StructureCommands()
+                    FindInFilesCommands()
                 }
         }
         .environment(\.settings, settings.preferences) // Add settings to each window environment
