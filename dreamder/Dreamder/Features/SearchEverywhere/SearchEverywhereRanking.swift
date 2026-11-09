@@ -62,13 +62,11 @@ nonisolated struct SearchEverywhereWeightComponent: Hashable, Sendable {
 
 nonisolated struct SearchEverywhereComposedWeight: Comparable, Sendable {
     let components: [SearchEverywhereWeightComponent]
-
-    var first: Int {
-        components.first?.weight ?? SearchEverywhereWeightKey.match.defaultWeight
-    }
+    let first: Int
 
     init(_ matchWeight: Int) {
         components = [SearchEverywhereWeightComponent(weight: matchWeight)]
+        first = matchWeight
     }
 
     init(match: Int, recency: Int) {
@@ -76,6 +74,7 @@ nonisolated struct SearchEverywhereComposedWeight: Comparable, Sendable {
             SearchEverywhereWeightComponent(weight: match),
             SearchEverywhereWeightComponent(key: .recency, weight: recency)
         ]
+        first = match
     }
 
     init?(components: [SearchEverywhereWeightComponent]) {
@@ -85,15 +84,20 @@ nonisolated struct SearchEverywhereComposedWeight: Comparable, Sendable {
             return nil
         }
         self.components = sorted
+        self.first = head.weight
     }
 
-    private init(sortedComponents: [SearchEverywhereWeightComponent]) {
+    private init(sortedComponents: [SearchEverywhereWeightComponent], first: Int) {
         components = sortedComponents
+        self.first = first
     }
 
     func with(_ component: SearchEverywhereWeightComponent) -> SearchEverywhereComposedWeight {
         let kept = components.filter { $0.key != component.key }
-        return SearchEverywhereComposedWeight(sortedComponents: (kept + [component]).sorted { $0.key < $1.key })
+        return SearchEverywhereComposedWeight(
+            sortedComponents: (kept + [component]).sorted { $0.key < $1.key },
+            first: component.key == .match ? component.weight : first
+        )
     }
 
     func compare(_ other: SearchEverywhereComposedWeight) -> Int {

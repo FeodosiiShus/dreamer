@@ -13,7 +13,7 @@ nonisolated struct LSPWorkspaceConfiguration: Sendable, Equatable {
             return settings.isEmpty ? nil : .hash(settings)
         }
         let path = section.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
-        return Self.lookup(path[...], in: settings)
+        return Self.lookup(ArraySlice(path), in: settings)
     }
 
     private static func lookup(_ path: ArraySlice<String>, in settings: [String: LSPAny]) -> LSPAny? {

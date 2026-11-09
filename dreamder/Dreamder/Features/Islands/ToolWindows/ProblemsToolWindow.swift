@@ -349,13 +349,17 @@ struct ProblemSeverityToggle: View {
                 .frame(width: 26, height: 26)
                 .background(
                     RoundedRectangle(cornerRadius: Islands.controlRadius)
-                        .fill(isHovering ? Islands.actionHover : (isOn ? Islands.selection : .clear))
+                        .fill(Self.background(isHovering: isHovering, isOn: isOn))
                 )
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help("Show \(group.title)")
         .onHover(perform: setHovering)
+    }
+
+    static func background(isHovering: Bool, isOn: Bool) -> Color {
+        isHovering ? Islands.actionHover : (isOn ? Islands.selection : .clear)
     }
 
     func setHovering(_ hovering: Bool) {

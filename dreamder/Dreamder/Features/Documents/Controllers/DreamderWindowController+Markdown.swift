@@ -36,9 +36,22 @@ struct MarkdownEditorTarget {
         return Self.ranges(of: editorInstance.cursorPositions, in: text)
     }
 
+    var caretOffset: Int {
+        if let first = textView?.selectionManager.textSelections.first { return first.range.location }
+        return Self.resolvedRanges(of: editorInstance.cursorPositions, in: text).first.location
+    }
+
     nonisolated static func ranges(of positions: [CursorPosition], in text: String) -> [NSRange] {
+        let resolved = resolvedRanges(of: positions, in: text)
+        return [resolved.first] + resolved.others
+    }
+
+    nonisolated private static func resolvedRanges(
+        of positions: [CursorPosition],
+        in text: String
+    ) -> (first: NSRange, others: [NSRange]) {
         let lines = MarkdownText(text).lines
-        let ranges = positions.compactMap { position -> NSRange? in
+        var ranges = positions.compactMap { position -> NSRange? in
             if position.range.location != NSNotFound {
                 return position.range
             }
@@ -47,23 +60,22 @@ struct MarkdownEditorTarget {
             let offset = min(line.start + max(position.start.column - 1, 0), line.contentEnd)
             return NSRange(location: offset, length: 0)
         }
-        return ranges.isEmpty ? [NSRange(location: 0, length: 0)] : ranges
+        guard !ranges.isEmpty else { return (NSRange(location: 0, length: 0), []) }
+        let first = ranges.removeFirst()
+        return (first, ranges)
     }
 
     func apply(_ result: MarkdownActionResult) {
-        let edits = result.edits.sorted { $0.range.location > $1.range.location }
         if let textView {
-            for edit in edits {
+            if let edit = result.edit {
                 textView.replaceCharacters(in: edit.range, with: edit.replacement)
             }
             textView.selectionManager.setSelectedRanges(result.selections)
             return
         }
-        if !edits.isEmpty {
+        if let edit = result.edit {
             storage.beginEditing()
-            for edit in edits {
-                storage.replaceCharacters(in: edit.range, with: edit.replacement)
-            }
+            storage.replaceCharacters(in: edit.range, with: edit.replacement)
             storage.endEditing()
             codeFile.updateChangeCount(.changeDone)
         }
@@ -217,8 +229,7 @@ final class MarkdownTablePopoverPresenter {
         )
         self.popover = popover
         if let textView = target.textView {
-            let offset = target.selections.first?.location ?? 0
-            let rect = textView.layoutManager.rectForOffset(offset) ?? textView.visibleRect
+            let rect = textView.layoutManager.rectForOffset(target.caretOffset) ?? textView.visibleRect
             popover.show(relativeTo: rect, of: textView, preferredEdge: .maxY)
         } else if let contentView = window?.contentView {
             popover.show(relativeTo: contentView.bounds, of: contentView, preferredEdge: .maxY)

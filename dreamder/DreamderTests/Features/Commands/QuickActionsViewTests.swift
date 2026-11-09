@@ -109,7 +109,7 @@ struct QuickActionsViewTests {
         }
         try await eventually(timeout: .seconds(30)) {
             hosted.layout()
-            return hosted.views(of: NSTableView.self).first?.selectedRow == 0
+            return labelTitles(in: hosted).contains(registration.title("Only"))
         }
         try fieldEditor(in: hosted).doCommand(by: #selector(NSResponder.insertNewline(_:)))
 

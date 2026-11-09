@@ -72,7 +72,7 @@ nonisolated struct RegistryItem: Codable, Sendable {
     func toDictionary() throws -> [String: Any] {
         let data = try JSONEncoder().encode(self)
         let jsonObject = try JSONSerialization.jsonObject(with: data)
-        return jsonObject as? [String: Any] ?? [:]
+        return [jsonObject].compactMap { $0 as? [String: Any] }.reduce([:]) { _, object in object }
     }
 }
 

@@ -47,6 +47,10 @@ struct SourceControlFetchView: View {
     }
 
     var projectName: String {
+        Self.projectName(of: workspace)
+    }
+
+    static func projectName(of workspace: WorkspaceDocument) -> String {
         workspace.workspaceFileManager?.folderUrl.lastPathComponent ?? "Empty"
     }
 

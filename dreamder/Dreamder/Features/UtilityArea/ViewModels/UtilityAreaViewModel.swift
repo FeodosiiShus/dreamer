@@ -127,8 +127,10 @@ class UtilityAreaViewModel {
         let id = UUID()
         let url = terminals[index].url
         let shell = terminals[index].shell
-        if let shellPid = TerminalCache.shared.getTerminalView(replacing)?.process.shellPid, shellPid > 0 {
-            kill(shellPid, SIGKILL)
+        if let process = TerminalCache.shared.getTerminalView(replacing)?.process,
+           process.running,
+           process.shellPid > 0 {
+            ProcessTree.send(SIGKILL, to: process.shellPid)
         }
 
         terminals[index] = UtilityAreaTerminal(

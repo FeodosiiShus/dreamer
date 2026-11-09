@@ -159,4 +159,86 @@ struct SearchEverywhereActionProviderTests {
         #expect(Set([first, sameID, other]).count == 2)
         #expect(first.hashValue == sameID.hashValue)
     }
+
+    @Test
+    func sectionKindsAndTabsHaveTheirDisplayTitles() {
+        #expect(
+            SearchEverywhereSectionKind.allCases.map(\.title)
+                == ["Recent Files", "Files", "Classes", "Symbols", "Actions", "Text"]
+        )
+        #expect(
+            SearchEverywhereTab.allCases.map(\.title)
+                == ["All", "Classes", "Files", "Symbols", "Actions", "Text"]
+        )
+    }
+
+    @Test
+    func tabsKnowTheirPositionAndCycleInBothDirectionsAcrossTheEnds() {
+        for (index, tab) in SearchEverywhereTab.allCases.enumerated() {
+            #expect(tab.position == index)
+            #expect(tab.cycled(by: 0) == tab)
+        }
+
+        #expect(SearchEverywhereTab.all.cycled(by: -1) == .text)
+        #expect(SearchEverywhereTab.text.cycled(by: 1) == .all)
+        #expect(SearchEverywhereTab.files.cycled(by: -8) == .all)
+        #expect(SearchEverywhereTab.classes.cycled(by: 2) == .symbols)
+    }
+
+    @Test
+    func anActionTitleIsTheLastMenuPathComponent() {
+        #expect(SearchEverywhereFixtures.action("File | Open Recent | Clear Menu").title == "Clear Menu")
+        #expect(SearchEverywhereFixtures.action("File | Open Recent | Clear Menu").menuPath == "File | Open Recent")
+    }
+
+    @Test
+    func anActionWithoutAMenuSeparatorIsItsOwnTitleAndHasNoMenuPath() {
+        let action = SearchEverywhereFixtures.action("Standalone")
+
+        #expect(action.title == "Standalone")
+        #expect(action.menuPath.isEmpty)
+    }
+
+    @Test
+    func aTopLevelMenuItemWithoutATitleFallsBackToItsSubmenuTitle() throws {
+        let target = MenuTarget()
+        let tools = NSMenu(title: "Tools")
+        tools.autoenablesItems = false
+        let run = NSMenuItem(title: "Run", action: #selector(MenuTarget.openDocument(_:)), keyEquivalent: "")
+        run.target = target
+        tools.addItem(run)
+        let mainMenu = NSMenu(title: "Main")
+        mainMenu.autoenablesItems = false
+        let top = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        top.submenu = tools
+        top.title = ""
+        mainMenu.addItem(top)
+
+        let actions = SearchEverywhereActionProvider.actions(mainMenu: mainMenu, commands: [])
+
+        let action = try #require(actions.first)
+        #expect(actions.count == 1)
+        #expect(action.path == "Tools | Run")
+        action.perform()
+        #expect(target.invocations == ["open"])
+    }
+
+    @Test
+    func registeredCommandsAreListedUnderTheCommandPrefixAndPerformTheirClosure() throws {
+        let target = MenuTarget()
+        let commands = [
+            Command(id: "toggle-thing", title: "Toggle Thing", closureWrapper: { target.invocations.append("command") })
+        ]
+
+        let actions = SearchEverywhereActionProvider.actions(mainMenu: NSMenu(title: "Main"), commands: commands)
+
+        let action = try #require(actions.first)
+        #expect(actions.count == 1)
+        #expect(action.identity == "command:toggle-thing")
+        #expect(action.path == "Command | Toggle Thing")
+        #expect(action.title == "Toggle Thing")
+        #expect(action.menuPath.isEmpty)
+        action.perform()
+        #expect(target.invocations == ["command"])
+    }
 }

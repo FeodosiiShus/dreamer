@@ -25,7 +25,7 @@ struct GitLogParsingTests {
         let output = record(
             hash: "aaaa0000bbbb1111",
             parents: "bbbb2222 cccc3333",
-            decoration: "HEAD -> main, origin/main",
+            decoration: "HEAD -> refs/heads/main, refs/remotes/origin/main",
             subject: "Merge branch 'feature'"
         )
 
@@ -99,12 +99,14 @@ struct GitLogParsingTests {
     @Test
     func parsesRefKinds() {
         let refs = GitClient.logGraphRefs(
-            from: "grafted, HEAD -> main, origin/main, origin/HEAD, tag: v1.0"
+            from: "grafted, HEAD -> refs/heads/main, refs/remotes/origin/main, refs/remotes/origin/HEAD, "
+                + "tag: refs/tags/v1.0, refs/heads/feature/login"
         )
-        #expect(refs.count == 3)
+        #expect(refs.count == 4)
         #expect(refs.contains(GitLogRef(name: "main", kind: .head)))
         #expect(refs.contains(GitLogRef(name: "origin/main", kind: .remote)))
         #expect(refs.contains(GitLogRef(name: "v1.0", kind: .tag)))
+        #expect(refs.contains(GitLogRef(name: "feature/login", kind: .branch)))
     }
 
     @Test

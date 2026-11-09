@@ -129,8 +129,8 @@ struct MarkdownBlockRendererCoverageTests {
             BlockCase(markdown: "<!", html: "<p>&lt;!</p>"),
             BlockCase(markdown: "<!1 x", html: "<p>&lt;!1 x</p>"),
             BlockCase(markdown: "<pre class=x>\ncode\n</pre>", html: "<pre class=x>\ncode\n</pre>"),
-            BlockCase(markdown: "<custom-tag>   ", html: "<custom-tag>   "),
-            BlockCase(markdown: "<custom-tag> text", html: "<p><custom-tag> text</p>")
+            BlockCase(markdown: "<custom-tag>   ", html: "   "),
+            BlockCase(markdown: "<custom-tag> text", html: "<p> text</p>")
         ])
     }
 

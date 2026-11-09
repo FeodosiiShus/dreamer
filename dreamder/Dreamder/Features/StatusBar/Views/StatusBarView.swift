@@ -42,7 +42,7 @@ struct StatusBarView: View {
                 projectURL: workspace.workspaceFileManager?.folderUrl ?? workspace.fileURL
             )
             Spacer(minLength: 12)
-            HStack(spacing: 10) {
+            HStack(spacing: StatusBarWidgetMetrics.widgetSpacing) {
                 StatusBarProgressIndicator(handler: workspace.taskNotificationHandler)
                 StatusBarCursorPositionLabel()
                 StatusBarLineEndSelector(document: tab?.file.fileDocument)
@@ -53,7 +53,7 @@ struct StatusBarView: View {
             .fixedSize()
             .layoutPriority(1)
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, StatusBarWidgetMetrics.barPadding)
         .frame(height: Self.height)
         .frame(maxWidth: .infinity)
         .background(Islands.glassIslandTint)
@@ -102,11 +102,10 @@ struct StatusBarProjectBreadcrumbs: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
-            Text(projectName)
-                .foregroundColor(Islands.secondaryForeground)
-                .lineLimit(1)
+        HStack(spacing: 0) {
+            StatusBarWidgetText(text: projectName)
                 .truncationMode(.middle)
+                .statusBarWidgetFrame()
             ForEach(folderNames.indices, id: \.self) { index in
                 separator
                 folderCrumb(
@@ -119,7 +118,6 @@ struct StatusBarProjectBreadcrumbs: View {
                 fileCrumb(file)
             }
         }
-        .font(Islands.smallFont)
         .frame(minWidth: 0, alignment: .leading)
         .clipped()
     }
@@ -134,14 +132,12 @@ struct StatusBarProjectBreadcrumbs: View {
     }
 
     private func folderCrumb(_ name: String, relativePath: String) -> some View {
-        Button(action: Self.revealing(relativePath: relativePath, projectURL: projectURL, workspace: workspace)) {
-            Text(name)
-                .foregroundColor(Islands.secondaryForeground)
-                .lineLimit(1)
+        StatusBarWidgetButton(
+            action: Self.revealing(relativePath: relativePath, projectURL: projectURL, workspace: workspace)
+        ) { hovering in
+            StatusBarWidgetText(text: name, isHovering: hovering)
                 .truncationMode(.middle)
-                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
         .help("Reveal in Project")
     }
 
@@ -169,20 +165,16 @@ struct StatusBarProjectBreadcrumbs: View {
     }
 
     private func fileCrumb(_ file: CEWorkspaceFile) -> some View {
-        Button(action: Self.revealingFile(workspace: workspace)) {
+        StatusBarWidgetButton(action: Self.revealingFile(workspace: workspace)) { hovering in
             HStack(spacing: 4) {
                 Image(IntelliJIcon.fileIcon(for: file.name))
                     .resizable()
                     .interpolation(.high)
-                    .frame(width: 14, height: 14)
-                Text(file.name)
-                    .foregroundColor(Islands.foreground)
-                    .lineLimit(1)
+                    .frame(width: StatusBarWidgetMetrics.iconSize, height: StatusBarWidgetMetrics.iconSize)
+                StatusBarWidgetText(text: file.name, isHovering: hovering)
                     .truncationMode(.middle)
             }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
         .help("Reveal in Project")
     }
 }

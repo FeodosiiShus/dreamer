@@ -27,14 +27,15 @@ struct ToolbarBranchPickerTests {
         repository: URL,
         settingsDirectory: URL,
         sourceControlEnabled: Bool = true,
-        withManager: Bool = true
+        withManager: Bool = true,
+        hover: MainToolbarHoverState = MainToolbarHoverState()
     ) throws -> Session {
         let workspace = try HostedViewFixture.makeWorkspace(in: repository)
         let manager = SourceControlManager(workspaceURL: repository, editorManager: EditorManager())
         let settings = Settings(baseURL: settingsDirectory)
         settings.preferences.sourceControl.general.sourceControlIsEnabled = sourceControlEnabled
         let hosted = try HostedViewFixture.hostInWorkspace(workspace, size: NSSize(width: 400, height: 200)) {
-            ToolbarBranchPicker(sourceControlManager: withManager ? manager : nil, settings: settings)
+            ToolbarBranchPicker(sourceControlManager: withManager ? manager : nil, settings: settings, hover: hover)
         }
         return Session(workspace: workspace, manager: manager, hosted: hosted)
     }
@@ -95,6 +96,32 @@ struct ToolbarBranchPickerTests {
                 }
 
                 #expect(session.hosted.renders())
+            }
+        }
+    }
+
+    @Test
+    func hoveringTheBranchWidgetPaintsTheToolbarHoverBackground() async throws {
+        try await withTempDir { repository in
+            try await withTempDir { settingsDirectory in
+                let expectedBranch = try await commitInitialFile(in: repository)
+                let hover = MainToolbarHoverState()
+                let session = try openSession(
+                    repository: repository,
+                    settingsDirectory: settingsDirectory,
+                    hover: hover
+                )
+                defer { session.close() }
+                try await eventually(timeout: .seconds(30)) {
+                    session.manager.currentBranch?.name == expectedBranch && session.hosted.renders()
+                }
+                try await session.hosted.settle(.milliseconds(100))
+                let idle = session.hosted.snapshot()
+
+                hover.setHovering(true)
+                try await session.hosted.settle(.milliseconds(100))
+
+                #expect(HostedView.pixelsDiffer(idle, session.hosted.snapshot()))
             }
         }
     }

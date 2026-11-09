@@ -120,4 +120,59 @@ struct RefactorCommandsTests {
             #expect(HostedView.pixelsDiffer(detached.snapshot(), attached.snapshot()))
         }
     }
+
+    @Test
+    func editorIntelligenceMenuTitlesAndGatingFollowTheActiveTab() async throws {
+        try await withTempDir { dir in
+            let workspace = try makeWorkspace(dir)
+            defer { workspace.close() }
+            let controller = makeCommandsBWindowController(workspace: workspace)
+            defer { controller.window?.close() }
+            let menu = CommandsACoverageSupport.host { EditorIntelligenceMenu(windowController: controller) }
+            defer { menu.close() }
+
+            #expect(menu.titles == ["Extend Selection", "Shrink Selection", "Parameter Info", "Code Folding"])
+            #expect(menu.enabledStates == [true, true, false, true])
+
+            try menu.click(titled: "Extend Selection")
+            try menu.click(titled: "Shrink Selection")
+            for _ in 0..<20 {
+                await Task.yield()
+            }
+
+            let folding = try #require(menu.item(titled: "Code Folding")?.submenu)
+            let foldingItems = CommandsACoverageMenu(menu: folding)
+            let expectedTitles = ["Collapse", "Expand", "Collapse All", "Expand All", "Collapse Comments"]
+            #expect(foldingItems.titles == expectedTitles)
+            for title in foldingItems.titles {
+                try foldingItems.click(titled: title)
+            }
+            for _ in 0..<20 {
+                await Task.yield()
+            }
+            #expect(menu.titles.count == 4)
+        }
+    }
+
+    @Test
+    func parameterInfoRequestRunsTheCommandWithoutALanguageServer() async throws {
+        try await withTempDir { dir in
+            let workspace = try makeWorkspace(dir)
+            defer { workspace.close() }
+            let controller = makeCommandsBWindowController(workspace: workspace)
+            defer { controller.window?.close() }
+            let menu = EditorIntelligenceMenu(windowController: controller)
+            let host = CommandsACoverageSupport.host { EditorIntelligenceMenu(windowController: controller) }
+            defer { host.close() }
+            #expect(host.item(titled: "Parameter Info")?.isEnabled == false)
+
+            menu.requestParameterInfo()
+            for _ in 0..<20 {
+                await Task.yield()
+            }
+
+            #expect(menu.hasEditor)
+            #expect(menu.hasLanguageServer == false)
+        }
+    }
 }

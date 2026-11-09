@@ -26,29 +26,18 @@ extension RegistryManager {
         }
 
         do {
-            // Make sure the extensions folder exists first
-            try FileManager.default.createDirectory(at: installPath, withIntermediateDirectories: true)
+            try RegistryChecksums(checksumData).verify(registryData, as: registryURL.lastPathComponent)
+        } catch {
+            handleUpdateError(error)
+            return
+        }
 
-            let tempZipURL = installPath.appending(path: "temp.zip")
-            let checksumDestination = installPath.appending(path: "checksums.txt")
-
-            // Delete existing zip data if it exists
-            if FileManager.default.fileExists(atPath: tempZipURL.path) {
-                try FileManager.default.removeItem(at: tempZipURL)
-            }
-            let registryJsonPath = installPath.appending(path: "registry.json").path
-            if FileManager.default.fileExists(atPath: registryJsonPath) {
-                try FileManager.default.removeItem(atPath: registryJsonPath)
-            }
-
-            // Write the zip data to a temporary file, then unzip
-            try registryData.write(to: tempZipURL)
-            try FileManager.default.unzipItem(at: tempZipURL, to: installPath)
-            try FileManager.default.removeItem(at: tempZipURL)
-            try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: registryJsonPath)
-
-            try checksumData.write(to: checksumDestination)
+        do {
+            try installRegistry(archive: registryData, checksums: checksumData)
             downloadError = nil
+        } catch let error as RegistryManagerError {
+            handleUpdateError(error)
+            return
         } catch {
             handleUpdateError(RegistryManagerError.writeFailed(error: error))
             return
@@ -63,6 +52,37 @@ extension RegistryManager {
         } catch {
             handleUpdateError(error)
         }
+    }
+
+    private func installRegistry(archive: Data, checksums: Data) throws {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: installPath, withIntermediateDirectories: true)
+
+        let staging = installPath.appending(path: Self.stagingDirectoryName, directoryHint: .isDirectory)
+        if fileManager.fileExists(atPath: staging.path(percentEncoded: false)) {
+            try fileManager.removeItem(at: staging)
+        }
+        try fileManager.createDirectory(at: staging, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: staging) }
+
+        let archiveURL = staging.appending(path: "registry.zip")
+        let extracted = staging.appending(path: "extracted", directoryHint: .isDirectory)
+        try archive.write(to: archiveURL)
+        try fileManager.unzipItem(at: archiveURL, to: extracted)
+
+        let stagedRegistry = extracted.appending(path: "registry.json")
+        guard fileManager.fileExists(atPath: stagedRegistry.path(percentEncoded: false)) else {
+            throw RegistryManagerError.failedToSaveRegistryCache
+        }
+
+        try checksums.write(to: installPath.appending(path: "checksums.txt"), options: .atomic)
+        let registryPath = installPath.appending(path: "registry.json")
+        let registryFile = registryPath.path(percentEncoded: false)
+        if fileManager.fileExists(atPath: registryFile) {
+            try fileManager.removeItem(at: registryPath)
+        }
+        try fileManager.moveItem(at: stagedRegistry, to: registryPath)
+        try? fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: registryFile)
     }
 
     func handleUpdateError(_ error: Error) {
@@ -81,6 +101,10 @@ extension RegistryManager {
                 logger.error("Failed to write files to disk: \(error.localizedDescription)")
             case .failedToSaveRegistryCache:
                 logger.error("Failed to read registry from cache after download and write.")
+            case let .checksumMissing(file):
+                logger.error("No checksum published for \(file); registry update rejected.")
+            case let .checksumMismatch(file):
+                logger.error("Checksum mismatch for \(file); registry update rejected.")
             }
         } else {
             logger.error("Unexpected registry error: \(error.localizedDescription)")

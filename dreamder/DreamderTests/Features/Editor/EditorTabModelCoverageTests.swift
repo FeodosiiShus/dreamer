@@ -122,40 +122,172 @@ struct EditorTabModelCoverageTests {
         #expect(Set([first, second, first]).count == 2)
     }
 
-    @Test
-    func aDeclinedCloseConfirmationKeepsTheEditedTabOpenAndAnAcceptedOneClosesIt() throws {
-        try withTempDir { dir in
-            let url = dir.appending(path: "edited.txt")
+    private struct EditedTabs {
+        let workspace: WorkspaceDocument
+        let editor: Editor
+        let files: [CEWorkspaceFile]
+        let documents: [CodeFileDocument]
+    }
+
+    private func makeEditedTabs(in directory: URL, names: [String], edited: Set<String>) throws -> EditedTabs {
+        let workspace = try HostedViewFixture.makeWorkspace(in: directory)
+        let editor = try #require(workspace.editorManager).activeEditor
+        editor.workspace = workspace
+        var files: [CEWorkspaceFile] = []
+        var documents: [CodeFileDocument] = []
+        for name in names {
+            let url = directory.appending(path: name)
             try "hello".write(to: url, atomically: true, encoding: .utf8)
-            let workspace = try HostedViewFixture.makeWorkspace(in: dir)
-            defer { workspace.close() }
-            let editor = try #require(workspace.editorManager).activeEditor
-            editor.workspace = workspace
             let file = CEWorkspaceFile(url: url)
             editor.openTab(file: file, asTemporary: false)
             let document = try #require(file.fileDocument)
-            document.updateChangeCount(.changeDone)
-            var asked = 0
-            document.closeConfirmation = { _ in
-                asked += 1
-                return false
+            document.autosavingInPlace = { false }
+            if edited.contains(name) {
+                document.content?.replaceCharacters(in: NSRange(location: 0, length: 0), with: "X")
+                document.updateChangeCount(.changeDone)
             }
+            files.append(file)
+            documents.append(document)
+        }
+        return EditedTabs(workspace: workspace, editor: editor, files: files, documents: documents)
+    }
 
-            editor.closeTab(file: file)
+    @Test
+    func aCancelledCloseKeepsTheEditedTabItsDocumentAndItsEdits() throws {
+        try withTempDir { dir in
+            let tabs = try makeEditedTabs(in: dir, names: ["edited.txt"], edited: ["edited.txt"])
+            defer { tabs.workspace.close() }
+            let confirmation = CloseConfirmationDouble()
+            confirmation.install(on: tabs.documents)
+            let file = try #require(tabs.files.first)
+            let document = try #require(tabs.documents.first)
 
-            #expect(asked == 1)
-            #expect(names(editor) == ["edited.txt"])
+            tabs.editor.closeTab(file: file)
+
+            #expect(confirmation.pendingCount == 1)
+            #expect(names(tabs.editor) == ["edited.txt"])
+            #expect(document.isDocumentEdited)
+
+            confirmation.answerNext(.cancel)
+
+            #expect(names(tabs.editor) == ["edited.txt"])
             #expect(file.fileDocument === document)
+            #expect(document.isDocumentEdited)
+            #expect(document.content?.string == "Xhello")
+        }
+    }
 
-            document.closeConfirmation = { _ in
-                asked += 1
-                return true
-            }
-            editor.closeTab(file: file)
+    @Test
+    func aSavedOrDiscardedCloseRemovesTheTabAndClosesTheDocumentOnlyAfterTheAnswer() throws {
+        try withTempDir { dir in
+            let tabs = try makeEditedTabs(in: dir, names: ["a.txt", "b.txt"], edited: ["a.txt", "b.txt"])
+            defer { tabs.workspace.close() }
+            let confirmation = CloseConfirmationDouble()
+            confirmation.install(on: tabs.documents)
+            let first = try #require(tabs.files.first)
+            let last = try #require(tabs.files.last)
+            let firstDocument = try #require(tabs.documents.first)
 
-            #expect(asked == 2)
-            #expect(editor.tabs.isEmpty)
-            #expect(file.fileDocument == nil)
+            tabs.editor.closeTab(file: first)
+            tabs.editor.closeTab(file: last)
+
+            #expect(confirmation.pendingCount == 2)
+            #expect(names(tabs.editor) == ["a.txt", "b.txt"])
+            #expect(firstDocument.isDocumentEdited)
+
+            confirmation.answerNext(.save)
+
+            #expect(names(tabs.editor) == ["b.txt"])
+            #expect(first.fileDocument == nil)
+            #expect(!DreamderDocumentController.shared.documents.contains { $0 === firstDocument })
+
+            confirmation.answerNext(.discard)
+
+            #expect(tabs.editor.tabs.isEmpty)
+            #expect(last.fileDocument == nil)
+        }
+    }
+
+    @Test
+    func askingToCloseATabWhoseConfirmationIsPendingDoesNotAskAgain() throws {
+        try withTempDir { dir in
+            let tabs = try makeEditedTabs(in: dir, names: ["edited.txt"], edited: ["edited.txt"])
+            defer { tabs.workspace.close() }
+            let confirmation = CloseConfirmationDouble()
+            confirmation.install(on: tabs.documents)
+            let file = try #require(tabs.files.first)
+            var results: [Bool] = []
+
+            tabs.editor.closeTab(file: file) { results.append($0) }
+            tabs.editor.closeTab(file: file) { results.append($0) }
+
+            #expect(confirmation.askedNames == ["edited.txt"])
+            #expect(results == [false])
+
+            confirmation.answerNext(.discard)
+
+            #expect(results == [false, true])
+            #expect(tabs.editor.tabs.isEmpty)
+        }
+    }
+
+    @Test
+    func closingSeveralTabsStopsAtTheFirstCancelledConfirmation() throws {
+        try withTempDir { dir in
+            let tabs = try makeEditedTabs(
+                in: dir,
+                names: ["a.txt", "b.txt", "c.txt"],
+                edited: ["b.txt"]
+            )
+            defer { tabs.workspace.close() }
+            let confirmation = CloseConfirmationDouble()
+            confirmation.install(on: tabs.documents)
+
+            tabs.editor.closeUnpinnedTabs()
+
+            #expect(names(tabs.editor) == ["b.txt", "c.txt"])
+            #expect(confirmation.pendingCount == 1)
+
+            confirmation.answerNext(.cancel)
+
+            #expect(names(tabs.editor) == ["b.txt", "c.txt"])
+            #expect(confirmation.askedNames == ["b.txt"])
+
+            tabs.editor.closeUnpinnedTabs()
+            confirmation.answerNext(.discard)
+
+            #expect(tabs.editor.tabs.isEmpty)
+            #expect(confirmation.askedNames == ["b.txt", "b.txt"])
+        }
+    }
+
+    @Test
+    func anAnswerArrivingAfterTheEditorIsGoneChangesNothing() throws {
+        try withTempDir { dir in
+            let tabs = try makeEditedTabs(in: dir, names: ["edited.txt"], edited: ["edited.txt"])
+            defer { tabs.workspace.close() }
+            let url = dir.appending(path: "orphan.txt")
+            try "orphan".write(to: url, atomically: true, encoding: .utf8)
+            let file = CEWorkspaceFile(url: url)
+            var orphan: Editor? = Editor()
+            weak let probe = orphan
+            orphan?.workspace = tabs.workspace
+            orphan?.openTab(file: file, asTemporary: false)
+            let document = try #require(file.fileDocument)
+            defer { document.close() }
+            document.autosavingInPlace = { false }
+            document.updateChangeCount(.changeDone)
+            let confirmation = CloseConfirmationDouble()
+            confirmation.install(on: [document])
+            var results: [Bool] = []
+
+            orphan?.closeTab(file: file) { results.append($0) }
+            orphan = nil
+            #expect(probe == nil)
+            confirmation.answerNext(.discard)
+
+            #expect(results == [false])
+            #expect(DreamderDocumentController.shared.documents.contains { $0 === document })
         }
     }
 }

@@ -76,7 +76,8 @@ final class PackageManagerInstallOperation: Identifiable {
     /// If non-nil, indicates that this operation has halted and requires confirmation.
     public private(set) var waitingForConfirmation: String?
 
-    private let shellClient: ShellClient
+    private let runner: any ProcessRunning
+    private let shellEnvironment: ShellEnvironment
     @ObservationIgnored
     private var operationTask: Task<Void, Error>?
     @ObservationIgnored
@@ -89,10 +90,16 @@ final class PackageManagerInstallOperation: Identifiable {
     /// - Parameters:
     ///   - package: The package to install.
     ///   - steps: The steps that make up the operation.
-    init(package: RegistryItem, steps: [PackageManagerInstallStep], shellClient: ShellClient = .live()) {
+    init(
+        package: RegistryItem,
+        steps: [PackageManagerInstallStep],
+        runner: any ProcessRunning = ProcessRunner(),
+        shellEnvironment: ShellEnvironment = .shared
+    ) {
         self.package = package
         self.steps = steps
-        self.shellClient = shellClient
+        self.runner = runner
+        self.shellEnvironment = shellEnvironment
     }
 
     func run() async throws {
@@ -138,7 +145,7 @@ final class PackageManagerInstallOperation: Identifiable {
             break
         }
 
-        let model = PackageManagerProgressModel(shellClient: shellClient)
+        let model = PackageManagerProgressModel(runner: runner, shellEnvironment: shellEnvironment)
 
         try Task.checkCancellation()
         accumulatedOutput.append(OutputItem(isStepDivider: true, contents: "Step \(currentStepIdx + 1): \(task.name)"))

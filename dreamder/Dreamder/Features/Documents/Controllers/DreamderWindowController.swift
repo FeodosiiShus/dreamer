@@ -31,6 +31,7 @@ final class DreamderWindowController: NSWindowController, NSToolbarDelegate, NSW
     @ObservationIgnored private var markdownClipboardOverride: (@Sendable () -> String?)?
     @ObservationIgnored var settings: Settings = .shared
     @ObservationIgnored var formatOnSaveTimeout: Duration = FormatOnSave.defaultTimeout
+    @ObservationIgnored var workspaceTrust: WorkspaceTrust = .shared
 
     var markdownClipboard: @Sendable () -> String? {
         get {
@@ -103,7 +104,11 @@ final class DreamderWindowController: NSWindowController, NSToolbarDelegate, NSW
 
     @IBAction func saveDocument(_ sender: Any) {
         guard let codeFile = getSelectedCodeFile() else { return }
-        let formatOnSave = FormatOnSave.live(timeout: formatOnSaveTimeout, settings: settings)
+        let formatOnSave = FormatOnSave.live(
+            service: makeFormattingService(),
+            timeout: formatOnSaveTimeout,
+            settings: settings
+        )
         if formatOnSave.shouldFormat(codeFile) {
             saveAfterFormatting(codeFile, formatOnSave: formatOnSave)
             return

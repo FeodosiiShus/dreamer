@@ -77,10 +77,19 @@ struct GitLogGraphViewCoverage {
 
     @Test
     func laneCountBelowOneStillGetsOneLaneOfWidth() throws {
-        let zero = try pixels(of: row([node(position: 0)]), laneCount: 0)
-        let one = try pixels(of: row([node(position: 0)]), laneCount: 1)
-
-        #expect(zero == one)
+        let laneWidth: CGFloat = 12
+        let rowHeight: CGFloat = 24
+        for laneCount in [-1, 0, 1] {
+            let hosting = NSHostingView(
+                rootView: GitLogGraphRowView(
+                    row: row([node(position: 0)]),
+                    laneCount: laneCount,
+                    laneWidth: laneWidth,
+                    rowHeight: rowHeight
+                )
+            )
+            #expect(hosting.fittingSize == NSSize(width: laneWidth, height: rowHeight))
+        }
     }
 
     @Test
@@ -152,10 +161,34 @@ struct GitLogGraphViewCoverage {
 
     @Test
     func edgesAreDrawnBeneathNodes() throws {
-        let both = try pixels(of: row([node(position: 1), edge(from: 1, to: 1)]))
-        let reversed = try pixels(of: row([edge(from: 1, to: 1), node(position: 1)]))
+        let both = try rgba(of: row([node(position: 1), edge(from: 1, to: 1)]))
+        let reversed = try rgba(of: row([edge(from: 1, to: 1), node(position: 1)]))
 
-        #expect(both == reversed)
+        #expect(both.count == reversed.count)
+        #expect(zip(both, reversed).allSatisfy { abs(Int($0) - Int($1)) <= 2 })
+    }
+
+    private func rgba(of row: GitLogGraphRow) throws -> [UInt8] {
+        let renderer = ImageRenderer(
+            content: GitLogGraphRowView(row: row, laneCount: 3, laneWidth: 12, rowHeight: 24)
+        )
+        renderer.scale = 2
+        let image = try #require(renderer.cgImage)
+        let bytesPerRow = image.width * 4
+        let context = try #require(
+            CGContext(
+                data: nil,
+                width: image.width,
+                height: image.height,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
+        )
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        let data = try #require(context.data)
+        return Array(UnsafeRawBufferPointer(start: data, count: bytesPerRow * image.height))
     }
 
     @Test

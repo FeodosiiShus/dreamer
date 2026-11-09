@@ -6,14 +6,6 @@ enum LSPFileOperations {
     typealias Client = LanguageServer<CodeFileDocument>
     typealias EditApplier = @MainActor (_ edit: WorkspaceEdit, _ client: Client) async -> ApplyWorkspaceEditResult
 
-    @discardableResult
-    static func fileMoved(from oldURL: URL, to newURL: URL) -> Task<Void, Never> {
-        Task { @MainActor in
-            await willRename(from: oldURL, to: newURL)
-            await didRename(from: oldURL, to: newURL)
-        }
-    }
-
     static func willRename(from oldURL: URL, to newURL: URL) async {
         await willRename(from: oldURL, to: newURL, service: .shared)
     }

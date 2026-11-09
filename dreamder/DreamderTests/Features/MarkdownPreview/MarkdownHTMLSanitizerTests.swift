@@ -44,4 +44,39 @@ struct MarkdownHTMLSanitizerTests {
         let html = MarkdownHTMLRenderer.bodyHTML(from: "<div onclick=\"evil()\">\nhi\n</div>")
         #expect(html == "<div>\nhi\n</div>")
     }
+
+    @Test
+    func dangerousRawHTMLNeverReachesTheRenderedBody() {
+        let markdown = """
+        <meta http-equiv="refresh" content="0;url=https://evil.example/">
+
+        <iframe src="https://evil.example/"></iframe>
+
+        <form action="https://evil.example/"><button>go</button></form>
+
+        <a href="javascript:alert(1)">js</a> <a href="java&#115;cript:alert(2)">js2</a>
+
+        <img src="x" onerror="alert(3)" srcset="https://evil.example/a.png 2x" \
+        style="background:url(https://evil.example/b.png)">
+
+        inline <object data="x"></object> and <embed src="x"> and <base href="file:///"> \
+        and <link rel="stylesheet" href="x"> end
+
+        <style>body { background: url(https://evil.example/c.png) }</style>
+
+        <svg><script>alert(4)</script></svg>
+        """
+
+        let html = MarkdownHTMLRenderer.bodyHTML(from: markdown)
+
+        for forbidden in [
+            "<meta", "<iframe", "<form", "<button", "<object", "<embed", "<base", "<link", "<style", "<svg",
+            "<script", "javascript:", "java&#115;", "onerror", "srcset", "style=", "evil.example/a.png",
+            "evil.example/b.png", "evil.example/c.png", "http-equiv"
+        ] {
+            #expect(!html.contains(forbidden), "\(forbidden)")
+        }
+        #expect(html.contains("<img src=\"x\">"))
+        #expect(html.contains("<a>js</a>"))
+    }
 }

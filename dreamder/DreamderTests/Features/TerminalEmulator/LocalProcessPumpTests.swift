@@ -40,6 +40,22 @@ private func deliverLinesLikeAShell(to pump: LocalProcessPump, lines: Int) async
 }
 
 @MainActor
+private final class WeakTerminalViewBox {
+    weak var view: CELocalShellTerminalView?
+}
+
+@MainActor
+private func pumpOutlivingItsView() -> (pump: LocalProcessPump, box: WeakTerminalViewBox) {
+    let box = WeakTerminalViewBox()
+    let pump = autoreleasepool { () -> LocalProcessPump in
+        let view = terminalCoverageView()
+        box.view = view
+        return view.processPump
+    }
+    return (pump, box)
+}
+
+@MainActor
 @Suite(.uiGate)
 struct LocalProcessPumpTests {
     @Test
@@ -97,5 +113,18 @@ struct LocalProcessPumpTests {
         #expect(terminalCoverageText(view).contains("from-the-pump"))
         #expect(delegate.exitCodes == [3])
         #expect(view.processPump.takeEvents().isEmpty)
+    }
+
+    @Test
+    func aPumpOutlivingItsViewReportsAnEmptyWindowAndStillBuffersOutput() async throws {
+        let (pump, box) = pumpOutlivingItsView()
+        try await eventually { box.view == nil }
+
+        let size = pump.getWindowSize()
+        pump.dataReceived(slice: [7, 8][...])
+
+        #expect(size.ws_row == 0)
+        #expect(size.ws_col == 0)
+        #expect(pump.takeEvents() == [.data([7, 8])])
     }
 }

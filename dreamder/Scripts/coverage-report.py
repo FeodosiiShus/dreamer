@@ -15,13 +15,7 @@ LOGIC_SCOPES = ("pure", "viewModel", "io")
 ALL_SCOPES = LOGIC_SCOPES + ("view",)
 UNCLASSIFIED = "unclassified"
 
-TOTAL_TOLERANCE_PP = 0.0
-SCOPE_TOLERANCE_PP = 0.0
-FILE_TOLERANCE_PP = 0.0
-FILE_MINIMUM_LINES = 1
-NEW_FILE_MINIMUM_PERCENT = 100.0
 TARGET_PERCENT = 100.0
-EPSILON = 1e-9
 
 EXIT_REGRESSION = 1
 EXIT_CONFIGURATION = 2
@@ -189,7 +183,11 @@ def render_text(snapshot):
     return "\n".join(lines)
 
 
-def check(snapshot, baseline):
+def below_target(entry):
+    return entry["covered"] * 100 < TARGET_PERCENT * entry["executable"]
+
+
+def check(snapshot):
     violations = []
     files = snapshot["files"]
 
@@ -197,40 +195,14 @@ def check(snapshot, baseline):
     for path in unclassified:
         violations.append(f"unclassified file (add it to Scripts/coverage-scopes.json): {path}")
 
-    current_total = entry_percent(snapshot["total"])
-    baseline_total = entry_percent(baseline["total"])
-    if baseline_total - current_total > TOTAL_TOLERANCE_PP + EPSILON:
-        violations.append(
-            f"total coverage {current_total:.2f}% is below baseline {baseline_total:.2f}% (target {TARGET_PERCENT:.0f}%)"
-        )
+    total = snapshot["total"]
+    if below_target(total):
+        violations.append(f"total coverage {entry_percent(total):.2f}% is below {TARGET_PERCENT:.0f}%")
 
-    for scope in ALL_SCOPES:
-        baseline_scope = baseline["scopes"].get(scope)
-        if baseline_scope is None:
-            continue
-        current_scope = entry_percent(snapshot["scopes"][scope])
-        reference = entry_percent(baseline_scope)
-        if reference - current_scope > SCOPE_TOLERANCE_PP + EPSILON:
-            violations.append(
-                f"scope {scope} coverage {current_scope:.2f}% is below baseline {reference:.2f}% (target {TARGET_PERCENT:.0f}%)"
-            )
-
-    baseline_files = baseline["files"]
     for path, entry in sorted(files.items()):
-        previous = baseline_files.get(path)
-        current_percent = entry_percent(entry)
-        if previous is None:
-            if entry["covered"] * 100 < NEW_FILE_MINIMUM_PERCENT * entry["executable"]:
-                violations.append(
-                    f"new {entry['scope']} file {path} has {current_percent:.1f}% coverage, every new file must be fully covered"
-                )
-            continue
-        previous_percent = entry_percent(previous)
-        if entry["executable"] < FILE_MINIMUM_LINES:
-            continue
-        if previous_percent - current_percent > FILE_TOLERANCE_PP + EPSILON:
+        if below_target(entry):
             violations.append(
-                f"{path} dropped from {previous_percent:.1f}% to {current_percent:.1f}%; coverage may only ratchet toward {TARGET_PERCENT:.0f}%"
+                f"{path} has {entry_percent(entry):.1f}% coverage ({entry['covered']}/{entry['executable']} lines), every file must be {TARGET_PERCENT:.0f}%"
             )
     return violations
 
@@ -300,7 +272,7 @@ def main():
     parser = argparse.ArgumentParser(description="Per-file and per-scope line coverage of the Dreamder app sources.")
     parser.add_argument("bundle", nargs="?", default=DEFAULT_BUNDLE)
     parser.add_argument("--json", metavar="OUT", help="write total, scopes and files as JSON")
-    parser.add_argument("--check", action="store_true", help="fail when coverage regresses against the baseline")
+    parser.add_argument("--check", action="store_true", help="fail when any file or the total is below 100%% line coverage")
     parser.add_argument("--summary", action="store_true", help="append a markdown summary to $GITHUB_STEP_SUMMARY, or print it")
     parser.add_argument("--write-baseline", action="store_true", help="write the baseline JSON from this run")
     parser.add_argument("--scopes", default=DEFAULT_SCOPES)
@@ -322,7 +294,7 @@ def main():
             print(f"\nWrote {arguments.json}")
 
     baseline = None
-    if arguments.check or arguments.summary:
+    if arguments.summary:
         baseline = read_json(arguments.baseline, "baseline")
         if baseline is not None:
             validate_baseline(baseline, arguments.baseline)
@@ -330,28 +302,15 @@ def main():
     violations = None
     exit_code = 0
     if arguments.check:
-        if baseline is None:
-            print(
-                f"error: baseline {os.path.relpath(arguments.baseline, ROOT)} not found; "
-                "generate it with `make coverage-baseline` and commit it",
-                file=sys.stderr,
-            )
-            exit_code = EXIT_CONFIGURATION
-        elif baseline.get("toolchain") not in (None, toolchain_identifier()):
-            print(
-                f"Coverage check skipped: baseline was written with {baseline['toolchain']}, "
-                f"this run uses {toolchain_identifier()}; line counts differ between toolchains"
-            )
+        violations = check(snapshot)
+        if violations:
+            print(f"Coverage check failed ({len(violations)} violation{'s' if len(violations) != 1 else ''}):")
+            for violation in violations:
+                print(f"  {violation}")
+            exit_code = EXIT_REGRESSION
         else:
-            violations = check(snapshot, baseline)
-            if violations:
-                print(f"Coverage check failed ({len(violations)} violation{'s' if len(violations) != 1 else ''}):")
-                for violation in violations:
-                    print(f"  {violation}")
-                exit_code = EXIT_REGRESSION
-            else:
-                total = snapshot["total"]
-                print(f"Coverage check passed: total {entry_percent(total):.2f}%, logic {entry_percent(logic_totals(snapshot)):.2f}%")
+            total = snapshot["total"]
+            print(f"Coverage check passed: total {entry_percent(total):.2f}%, logic {entry_percent(logic_totals(snapshot)):.2f}%")
 
     if arguments.summary:
         markdown = render_summary(snapshot, baseline, violations)

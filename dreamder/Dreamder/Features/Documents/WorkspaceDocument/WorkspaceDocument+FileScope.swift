@@ -2,9 +2,9 @@ import Foundation
 import Observation
 
 extension WorkspaceDocument {
-    func configureFileScope(rootURL: URL) {
+    func configureFileScope(rootURL: URL, settings: Settings = .shared) {
         let scope = WorkspaceFileScope(rootURL: rootURL)
-        scope.setIgnoreGlobs(Settings[\.search].ignoreGlobPatterns.map(\.value))
+        scope.setIgnoreGlobs(settings.preferences.search.ignoreGlobPatterns.map(\.value))
         scope.startWatching()
         fileScope = scope
         symbolIndex = SearchEverywhereSymbolIndex(scope: scope)

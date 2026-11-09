@@ -8,16 +8,12 @@ nonisolated struct MarkdownTextEdit: Equatable, Sendable {
 nonisolated struct MarkdownActionResult: Equatable, Sendable {
     let text: String
     let selections: [NSRange]
-    let edits: [MarkdownTextEdit]
+    let edit: MarkdownTextEdit?
 
     init(original: [UInt16], updated: [UInt16], selections: [NSRange]) {
         self.text = String(decoding: updated, as: UTF16.self)
         self.selections = selections
-        if let edit = Self.minimalEdit(from: original, to: updated) {
-            self.edits = [edit]
-        } else {
-            self.edits = []
-        }
+        self.edit = Self.minimalEdit(from: original, to: updated)
     }
 
     static func minimalEdit(from original: [UInt16], to updated: [UInt16]) -> MarkdownTextEdit? {
@@ -46,13 +42,11 @@ nonisolated struct MarkdownActionResult: Equatable, Sendable {
     }
 
     func applied(to original: String) -> String {
-        let units = Array(original.utf16)
-        var result = units
-        for edit in edits {
-            let range = edit.range.location..<(edit.range.location + edit.range.length)
-            result.replaceSubrange(range, with: Array(edit.replacement.utf16))
-        }
-        return String(decoding: result, as: UTF16.self)
+        guard let edit else { return original }
+        var units = Array(original.utf16)
+        let range = edit.range.location..<(edit.range.location + edit.range.length)
+        units.replaceSubrange(range, with: Array(edit.replacement.utf16))
+        return String(decoding: units, as: UTF16.self)
     }
 }
 

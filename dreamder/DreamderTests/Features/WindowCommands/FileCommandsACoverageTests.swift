@@ -150,8 +150,10 @@ struct FileCommandsACoverageTests {
 
         try menu.click(0)
         try menu.click(1)
+        try menu.click(2)
 
-        #expect(recorder.received == ["openWorkspaceSettings(_:)", "saveDocument(_:)"])
+        #expect(menu.titles == ["Workspace Settings", "Trust Project\u{2026}", "Save"])
+        #expect(recorder.received == ["openWorkspaceSettings(_:)", "trustProject(_:)", "saveDocument(_:)"])
     }
 
     @Test
@@ -164,9 +166,10 @@ struct FileCommandsACoverageTests {
 
         try menu.click(0)
         try menu.click(1)
+        try menu.click(2)
 
         #expect(menu.titles.first == "Workspace Settings")
-        #expect(menu.enabledStates == [false, true])
+        #expect(menu.enabledStates == [false, false, true])
         #expect(recorder.received == ["saveDocument(_:)"])
     }
 

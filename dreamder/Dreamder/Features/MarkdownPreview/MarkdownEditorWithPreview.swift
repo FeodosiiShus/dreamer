@@ -36,8 +36,13 @@ struct MarkdownEditorWithPreview: View {
                 .splitPaneMinLength(Self.minimumPaneLength)
             }
             if layout != .editorOnly {
-                MarkdownPreviewPane(model: model, scrollState: scrollSync.scrollState, store: store)
-                    .splitPaneMinLength(Self.minimumPaneLength)
+                MarkdownPreviewPane(
+                    model: model,
+                    scrollState: scrollSync.scrollState,
+                    store: store,
+                    links: .live(workspace: workspace)
+                )
+                .splitPaneMinLength(Self.minimumPaneLength)
             }
         }
         .task {
@@ -69,13 +74,15 @@ private struct MarkdownPreviewPane: View {
     let model: MarkdownPreviewModel
     let scrollState: MarkdownPreviewScrollState
     let store: MarkdownPreviewLayoutStore
+    let links: MarkdownPreviewLinks
 
     var body: some View {
         MarkdownPreviewWebView(
             bodyHTML: model.bodyHTML,
             baseURL: model.baseURL,
             palette: MarkdownPreviewPalette.current(),
-            followOffset: store.isAutoScrollEnabled ? scrollState.sourceOffset : nil
+            followOffset: store.isAutoScrollEnabled ? scrollState.sourceOffset : nil,
+            links: links
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

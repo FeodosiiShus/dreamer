@@ -40,6 +40,7 @@ nonisolated final class DirectoryEventStream: Sendable {
     private let streamRef: Mutex<FSEventStreamRef?>
     private let callback: EventCallback
     private let debounceDuration: TimeInterval
+    let exclusionPaths: [String]
 
     struct Event: Sendable {
         let path: String
@@ -61,6 +62,7 @@ nonisolated final class DirectoryEventStream: Sendable {
         callback: @escaping EventCallback
     ) {
         self.debounceDuration = debounceDuration
+        self.exclusionPaths = exclusionPaths
         self.callback = callback
         self.streamRef = Mutex(nil)
         streamRef.withLock { stream in
@@ -150,6 +152,10 @@ nonisolated final class DirectoryEventStream: Sendable {
             }
             ref = nil
         }
+    }
+
+    var isRunning: Bool {
+        streamRef.withLock { $0 != nil }
     }
 
     /// Handler for the fs event stream.

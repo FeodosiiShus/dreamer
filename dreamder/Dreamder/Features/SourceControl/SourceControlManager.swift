@@ -122,14 +122,16 @@ final class SourceControlManager {
 
     init(
         workspaceURL: URL,
-        editorManager: EditorManager
+        editorManager: EditorManager,
+        gitClient: GitClient? = nil
     ) {
         self.workspaceURL = workspaceURL
         self.editorManager = editorManager
         let location = Self.repositoryLocation(of: workspaceURL)
         let components = location?.prefix?.split(separator: "/") ?? []
-        repositoryURL = components.reduce(workspaceURL) { url, _ in url.deletingLastPathComponent() }
-        gitClient = GitClient(
+        let repositoryURL = components.reduce(workspaceURL) { url, _ in url.deletingLastPathComponent() }
+        self.repositoryURL = repositoryURL
+        self.gitClient = gitClient ?? GitClient(
             directoryURL: repositoryURL,
             shellClient: currentWorld.shellClient,
             scopePath: location?.prefix

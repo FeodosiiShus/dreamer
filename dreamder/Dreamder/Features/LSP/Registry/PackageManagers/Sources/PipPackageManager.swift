@@ -21,10 +21,10 @@ final class PipPackageManager: PackageManagerProtocol {
             throw PackageManagerError.invalidConfiguration
         }
 
-        let packagePath = installationDirectory.appending(path: source.entryName)
+        let packagePath = try RegistryInputValidation.child(of: installationDirectory, named: source.entryName)
         return [
             initialize(in: packagePath),
-            runPipInstall(source, in: packagePath),
+            try runPipInstall(source, in: packagePath),
             updateRequirements(in: packagePath),
             verifyInstallation(source, in: packagePath)
         ]
@@ -32,11 +32,11 @@ final class PipPackageManager: PackageManagerProtocol {
 
     func isInstalled(method installationMethod: InstallationMethod) -> PackageManagerInstallStep {
         PackageManagerInstallStep(name: "", confirmation: .none) { model in
-            let pipCommands = ["pip3 --version", "python3 -m pip --version"]
+            let pipCommands = [["pip3", "--version"], ["python3", "-m", "pip", "--version"]]
             var didFindPip = false
             for command in pipCommands {
                 do {
-                    let versionOutput = try await model.runCommand(command)
+                    let versionOutput = try await model.run(command)
                     let versionPattern = #"pip \d+\.\d+"#
                     let output = versionOutput.reduce(into: "") {
                         $0 += $1.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -71,7 +71,7 @@ final class PipPackageManager: PackageManagerProtocol {
     func initialize(in packagePath: URL) -> PackageManagerInstallStep {
         PackageManagerInstallStep(name: "Initialize Directory Structure", confirmation: .none) { model in
             try model.createDirectoryStructure(for: packagePath)
-            try await model.executeInDirectory(in: packagePath.path(percentEncoded: false), ["python -m venv venv"])
+            try await model.run(["python", "-m", "venv", "venv"], in: packagePath)
 
             let requirementsPath = packagePath.appending(path: "requirements.txt")
             if !FileManager.default.fileExists(atPath: requirementsPath.path) {
@@ -82,8 +82,19 @@ final class PipPackageManager: PackageManagerProtocol {
 
     // MARK: - Pip Install
 
-    func runPipInstall(_ source: PackageSource, in packagePath: URL) -> PackageManagerInstallStep {
+    func runPipInstall(_ source: PackageSource, in packagePath: URL) throws -> PackageManagerInstallStep {
         let pipCommand = getPipCommand(in: packagePath)
+        var requirement = try RegistryInputValidation.argument(source.pkgName)
+        if let extras = source.options["extra"] {
+            let validatedExtras = try RegistryInputValidation.argument(extras)
+            requirement += "[\(validatedExtras)]"
+        }
+        if source.version.lowercased() != "latest" {
+            let version = try RegistryInputValidation.argument(source.version)
+            requirement += "==\(version)"
+        }
+        let arguments = pipCommand + ["install", requirement]
+
         return PackageManagerInstallStep(
             name: "Install Package Using pip",
             confirmation: .required(
@@ -91,15 +102,7 @@ final class PipPackageManager: PackageManagerProtocol {
                 + "\nAllow Dreamder to install this package?"
             )
         ) { model in
-            var requirement = source.pkgName
-            if let extras = source.options["extra"] {
-                requirement += "[\(extras)]"
-            }
-            if source.version.lowercased() != "latest" {
-                requirement += "==\(source.version)"
-            }
-
-            try await model.executeInDirectory(in: packagePath.path, [pipCommand, "install", requirement])
+            try await model.run(arguments, in: packagePath)
         }
     }
 
@@ -114,10 +117,7 @@ final class PipPackageManager: PackageManagerProtocol {
         ) { model in
             let requirementsPath = packagePath.appending(path: "requirements.txt")
 
-            let freezeOutput = try await model.executeInDirectory(
-                in: packagePath.path(percentEncoded: false),
-                ["\(pipCommand)", "freeze"]
-            )
+            let freezeOutput = try await model.run(pipCommand + ["freeze"], in: packagePath)
 
             model.status("Writing requirements to requirements.txt")
             let requirementsContent = freezeOutput.joined(separator: "\n") + "\n"
@@ -133,10 +133,7 @@ final class PipPackageManager: PackageManagerProtocol {
             name: "Verify Installation",
             confirmation: .none
         ) { model in
-            let output = try await model.executeInDirectory(
-                in: packagePath.path(percentEncoded: false),
-                ["\(pipCommand)", "list", "--format=freeze"]
-            )
+            let output = try await model.run(pipCommand + ["list", "--format=freeze"], in: packagePath)
 
             // Normalize package names for comparison
             let normalizedPackageHyphen = source.pkgName.replacingOccurrences(of: "_", with: "-").lowercased()
@@ -156,10 +153,10 @@ final class PipPackageManager: PackageManagerProtocol {
         }
     }
 
-    private func getPipCommand(in packagePath: URL) -> String {
-        let venvPip = "venv/bin/pip"
-        return FileManager.default.fileExists(atPath: packagePath.appending(path: venvPip).path)
-        ? venvPip
-        : "python3 -m pip"
+    private func getPipCommand(in packagePath: URL) -> [String] {
+        let venvPip = packagePath.appending(path: "venv/bin/pip")
+        return FileManager.default.fileExists(atPath: venvPip.path)
+        ? [venvPip.path]
+        : ["python3", "-m", "pip"]
     }
 }

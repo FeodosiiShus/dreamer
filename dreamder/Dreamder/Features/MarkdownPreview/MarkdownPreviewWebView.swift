@@ -7,9 +7,10 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
     let baseURL: URL?
     let palette: MarkdownPreviewPalette
     let followOffset: Int?
+    let links: MarkdownPreviewLinks
 
     func makeCoordinator() -> Coordinator {
-        Coordinator()
+        Coordinator(links: links)
     }
 
     func makeNSView(context: Context) -> WKWebView {
@@ -31,7 +32,8 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
-        private let openExternal: @MainActor (URL) -> Void
+        private var links: MarkdownPreviewLinks
+        private var awaitsInitialNavigation = false
         private var loadedBaseURL: URL?
         private var loadedPalette: MarkdownPreviewPalette?
         private var loadedBody: String?
@@ -40,16 +42,13 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
         private var appliedFollowOffset: Int?
         private var isPageLoaded = false
 
-        init(openExternal: @escaping @MainActor (URL) -> Void = { Coordinator.openInWorkspace($0) }) {
-            self.openExternal = openExternal
+        init(links: MarkdownPreviewLinks) {
+            self.links = links
             super.init()
         }
 
-        static func openInWorkspace(_ url: URL) {
-            _ = NSWorkspace.shared.open(url)
-        }
-
         func show(_ view: MarkdownPreviewWebView, in webView: WKWebView) {
+            links = view.links
             currentBody = view.bodyHTML
             followOffset = view.followOffset
             if loadedBaseURL != view.baseURL || loadedPalette != view.palette || loadedBody == nil {
@@ -79,6 +78,7 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
         }
 
         private func load(_ body: String, baseURL: URL?, palette: MarkdownPreviewPalette, in webView: WKWebView) {
+            awaitsInitialNavigation = true
             loadedBaseURL = baseURL
             loadedPalette = palette
             loadedBody = body
@@ -108,23 +108,28 @@ struct MarkdownPreviewWebView: NSViewRepresentable {
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
         ) {
-            guard navigationAction.navigationType == .linkActivated,
-                  let url = navigationAction.request.url else {
-                decisionHandler(.allow)
+            guard navigationAction.navigationType == .linkActivated else {
+                decisionHandler(consumesInitialNavigation(of: navigationAction) ? .allow : .cancel)
                 return
             }
+            decisionHandler(.cancel)
+            guard let url = navigationAction.request.url else { return }
 
             if let fragment = url.fragment,
                let baseURL = loadedBaseURL,
                url.scheme == baseURL.scheme,
                url.path == baseURL.path {
-                decisionHandler(.cancel)
                 scroll(toAnchor: fragment, in: webView)
                 return
             }
 
-            decisionHandler(.cancel)
-            openExternal(url)
+            links.handle(url)
+        }
+
+        private func consumesInitialNavigation(of navigationAction: WKNavigationAction) -> Bool {
+            guard navigationAction.navigationType == .other, awaitsInitialNavigation else { return false }
+            awaitsInitialNavigation = false
+            return true
         }
 
         private func scroll(toAnchor fragment: String, in webView: WKWebView) {

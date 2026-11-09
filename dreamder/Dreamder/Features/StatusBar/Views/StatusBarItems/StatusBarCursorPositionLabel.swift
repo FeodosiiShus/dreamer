@@ -23,6 +23,7 @@ struct StatusBarCursorPositionLabel: View {
                 Text("").accessibilityLabel("No Selection")
             }
         }
+        .statusBarWidgetFrame()
         .fixedSize()
         .accessibilityIdentifier("CursorPositionLabel")
         .accessibilityAddTraits(.updatesFrequently)
@@ -48,14 +49,13 @@ struct StatusBarCursorPositionLabel: View {
         }
 
         var body: some View {
-            Text(Self.label(
-                for: cursorPositions,
-                modifierKeys: ShortcutModifiers(modifierKeys).eventModifiers,
-                lineCount: getLines
-            ))
-                .font(Islands.smallFont)
-                .foregroundColor(Islands.secondaryForeground)
-                .lineLimit(1)
+            StatusBarWidgetText(
+                text: Self.label(
+                    for: cursorPositions,
+                    modifierKeys: ShortcutModifiers(modifierKeys).eventModifiers,
+                    lineCount: getLines
+                )
+            )
         }
 
         /// Finds the lines contained by a range in the currently selected document.

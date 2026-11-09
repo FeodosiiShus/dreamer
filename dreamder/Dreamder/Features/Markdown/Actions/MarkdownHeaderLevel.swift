@@ -109,7 +109,7 @@ nonisolated enum MarkdownHeaderLevel {
             }
         }
         let result = buffer.resultWithSettledSelections()
-        return result.edits.isEmpty ? nil : result
+        return result.edit == nil ? nil : result
     }
 
     private static func lineSpan(document: MarkdownDocument, selection: NSRange) -> (start: Int, end: Int)? {

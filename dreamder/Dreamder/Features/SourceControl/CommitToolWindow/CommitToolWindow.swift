@@ -7,7 +7,7 @@ struct CommitToolWindow: View {
 
     @State private var viewModel: CommitToolWindowViewModel
 
-    private let makeAlert: @MainActor () -> NSAlert
+    let makeAlert: @MainActor () -> NSAlert
 
     init() {
         self.init(viewModel: CommitToolWindowViewModel(), makeAlert: NSAlert.init)

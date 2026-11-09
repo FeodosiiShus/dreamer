@@ -43,7 +43,7 @@ extension CEWorkspaceFileManagerObserver {
 /// ``CEWorkspaceFileManagerObserver`` protocol. Use the ``CEWorkspaceFileManager/addObserver(_:)``
 /// and ``CEWorkspaceFileManager/removeObserver(_:)`` to add or remove observers. Observers are kept as weak references.
 final class CEWorkspaceFileManager {
-    let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "CEWorkspaceFileManager")
+    let logger = EditorLogging.logger(category: "CEWorkspaceFileManager")
     private(set) var fileManager: FileManager
     private(set) var ignoredFilesAndFolders: Set<String>
 
@@ -96,18 +96,31 @@ final class CEWorkspaceFileManager {
             await self?.processFileSystemEvents(events)
         }
         eventBatcher = batcher
-        fsEventStream = DirectoryEventStream(
-            directory: self.folderUrl.path,
-            exclusionPaths: exclusionPolicy().streamExclusionPaths()
-        ) { events in
-            batcher.submit(events)
-        }
+        fsEventStream = makeEventStream(batcher: batcher)
 
         Task { [weak self] in
             guard let sourceControlManager = self?.sourceControlManager else { return }
             await sourceControlManager.validate()
             await sourceControlManager.refreshAllChangedFiles()
         }
+    }
+
+    private func makeEventStream(batcher: FileEventBatcher) -> DirectoryEventStream {
+        DirectoryEventStream(
+            directory: folderUrl.path,
+            exclusionPaths: exclusionPolicy().streamExclusionPaths()
+        ) { events in
+            batcher.submit(events)
+        }
+    }
+
+    func refreshEventStream() {
+        guard let batcher = eventBatcher,
+              let current = fsEventStream,
+              current.isRunning,
+              exclusionPolicy().streamExclusionPaths() != current.exclusionPaths else { return }
+        current.cancel()
+        fsEventStream = makeEventStream(batcher: batcher)
     }
 
     // MARK: - Public API

@@ -154,20 +154,45 @@ struct CodeFileDocumentCoverageTests {
     }
 
     @Test
-    func closingAnEditedDocumentAsksTheConfirmationAndReportsItsDecision() {
+    func aConfirmationAnsweredLaterReportsItsDecisionOnlyWhenItIsGiven() {
         let document = CodeFileDocument()
         defer { document.close() }
+        document.autosavingInPlace = { false }
         document.updateChangeCount(.changeDone)
         let recorder = DocumentCloseRecorder()
         let context = ContextToken()
-        var decisions = [false, true]
-        document.closeConfirmation = { _ in decisions.removeFirst() }
+        let confirmation = CloseConfirmationDouble()
+        confirmation.install(on: [document])
 
         document.canClose(withDelegate: recorder, shouldClose: DocumentCloseRecorder.selector, contextInfo: context.raw)
         document.canClose(withDelegate: recorder, shouldClose: DocumentCloseRecorder.selector, contextInfo: context.raw)
+
+        #expect(recorder.calls.isEmpty)
+        #expect(confirmation.pendingCount == 2)
+
+        confirmation.answerNext(.cancel)
+        confirmation.answerNext(.discard)
 
         #expect(recorder.calls.map(\.shouldClose) == [false, true])
         #expect(recorder.calls.allSatisfy { $0.document === document && $0.contextInfo == context.raw })
+        #expect(document.isDocumentEdited)
+    }
+
+    @Test
+    func savingThroughTheConfirmationCleansTheDocument() {
+        let document = CodeFileDocument()
+        defer { document.close() }
+        document.autosavingInPlace = { false }
+        document.updateChangeCount(.changeDone)
+        let recorder = DocumentCloseRecorder()
+        let confirmation = CloseConfirmationDouble()
+        confirmation.install(on: [document])
+
+        document.canClose(withDelegate: recorder, shouldClose: DocumentCloseRecorder.selector, contextInfo: nil)
+        confirmation.answerNext(.save)
+
+        #expect(recorder.calls.map(\.shouldClose) == [true])
+        #expect(!document.isDocumentEdited)
     }
 
     @Test
@@ -176,16 +201,26 @@ struct CodeFileDocumentCoverageTests {
         defer { document.close() }
         let recorder = DocumentCloseRecorder()
         let context = ContextToken()
-        var asked = 0
-        document.closeConfirmation = { _ in
-            asked += 1
-            return false
-        }
+        let confirmation = CloseConfirmationDouble(answering: .cancel)
+        confirmation.install(on: [document])
 
         document.canClose(withDelegate: recorder, shouldClose: DocumentCloseRecorder.selector, contextInfo: context.raw)
 
         try await eventually(timeout: .seconds(30)) { recorder.calls.count == 1 }
         #expect(recorder.calls.first?.shouldClose == true)
-        #expect(asked == 0)
+        #expect(confirmation.askedNames.isEmpty)
+    }
+
+    @Test
+    func aDocumentWithItsOwnWindowIsInUseOutsideEveryWorkspace() throws {
+        try withTempDir { directory in
+            let document = try makeDocument(in: directory)
+            defer { document.close() }
+            let workspace = WorkspaceDocument()
+            #expect(!document.isInUse(outside: workspace))
+
+            document.addWindowController(NSWindowController())
+            #expect(document.isInUse(outside: workspace))
+        }
     }
 }

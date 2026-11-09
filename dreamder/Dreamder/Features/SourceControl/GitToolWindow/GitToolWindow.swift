@@ -27,15 +27,10 @@ struct GitToolWindow: View {
                     ToolWindowTab(title: "Shelf", isSelected: model.pane == .shelf, action: model.showShelf)
                 },
                 actions: {
-                    ToolWindowActionButton(
-                        icon: "general/refresh",
-                        help: "Refresh",
-                        action: { Task { await model.refresh(manager: sourceControlManager) } }
-                    )
-                    ToolWindowActionButton(
-                        icon: "general/hide",
-                        help: "Hide",
-                        action: { workspace.toolWindowManager.hide(.git) }
+                    GitToolWindowActions(
+                        model: model,
+                        manager: sourceControlManager,
+                        toolWindows: workspace.toolWindowManager
                     )
                 }
             )
@@ -143,11 +138,42 @@ struct GitPaneDivider: View {
             .frame(width: 1)
             .frame(width: 7)
             .contentShape(Rectangle())
-            .onHover { Self.cursor(isHovering: $0).set() }
+            .onHover(perform: hover)
             .gesture(
                 DragGesture(minimumDistance: 1)
-                    .onChanged { width = drag.resolvedWidth(width, translation: $0.translation.width) }
-                    .onEnded { _ in drag.end() }
+                    .onChanged(reading(\.translation, into: dragChanged))
+                    .onEnded(discarding(dragEnded))
             )
+    }
+
+    func hover(_ isHovering: Bool) {
+        Self.cursor(isHovering: isHovering).set()
+    }
+
+    func dragChanged(_ translation: CGSize) {
+        width = drag.resolvedWidth(width, translation: translation.width)
+    }
+
+    func dragEnded() {
+        drag.end()
+    }
+}
+
+struct GitToolWindowActions: View {
+    let model: GitToolWindowModel
+    let manager: SourceControlManager
+    let toolWindows: ToolWindowManager
+
+    var body: some View {
+        ToolWindowActionButton(icon: "general/refresh", help: "Refresh", action: startRefresh)
+        ToolWindowActionButton(icon: "general/hide", help: "Hide", action: hide)
+    }
+
+    func startRefresh() {
+        Task { await model.refresh(manager: manager) }
+    }
+
+    func hide() {
+        toolWindows.hide(.git)
     }
 }

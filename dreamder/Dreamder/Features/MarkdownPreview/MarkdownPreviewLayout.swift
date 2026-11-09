@@ -102,7 +102,7 @@ final class MarkdownPreviewLayoutStore {
         }
     }
 
-    @ObservationIgnored private let storage: MarkdownPreviewStateStorage?
+    @ObservationIgnored private weak var storage: MarkdownPreviewStateStorage?
     @ObservationIgnored private let settings: Settings
 
     init(storage: MarkdownPreviewStateStorage?, settings: Settings = .shared) {

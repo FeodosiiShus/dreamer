@@ -1,10 +1,15 @@
 import AppKit
 
 extension DreamderWindowController {
+    func makeFormattingService() -> FormattingService {
+        let trust = workspaceTrust
+        return FormattingService(isWorkspaceTrusted: { trust.isTrusted($0) })
+    }
+
     @IBAction func reformatCode(_ sender: Any?) {
         guard let codeFile = getSelectedCodeFile() else { return }
         Task { @MainActor in
-            await FormattingService().reformatCode(codeFile)
+            await makeFormattingService().reformatCode(codeFile)
         }
     }
 

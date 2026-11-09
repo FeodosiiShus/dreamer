@@ -28,6 +28,11 @@ final class EditorTabStripModel {
     var closeButtonGestureActive = false
     var revealedTabID: TabID?
     var viewportFrame: CGRect = .zero
+    var isHoveringHiddenTabsButton = false
+
+    func setHoveringHiddenTabsButton(_ hovering: Bool) {
+        isHoveringHiddenTabsButton = hovering
+    }
 
     func synchronizeTabs(with editor: Editor) {
         openedTabs = editor.tabs.map(\.file.id)
@@ -186,17 +191,14 @@ struct EditorTabs: View {
         Menu {
             EditorHiddenTabsMenuContent(hidden: hidden, strip: strip, editor: editor, editorManager: editorManager)
         } label: {
-            Image("general/chevronDown")
-                .resizable()
-                .frame(width: 16, height: 16)
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
+            EditorTabBarAccessoryIcon(icon: "general/chevronDown", isHovering: strip.isHoveringHiddenTabsButton)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
         .padding(.trailing, 2)
         .help("Show Hidden Tabs")
+        .onHover(perform: strip.setHoveringHiddenTabsButton)
     }
 
     var body: some View {

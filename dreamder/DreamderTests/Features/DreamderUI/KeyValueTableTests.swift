@@ -38,13 +38,13 @@ struct KeyValueTableHarness<Trailing: View>: View {
 @MainActor
 @Suite(.uiGate)
 struct KeyValueTableTests {
-    private func sampleModel(_ entries: [String: String] = ["b": "2", "a": "1", "c": "3"]) -> KeyValueTableModel {
+    func sampleModel(_ entries: [String: String] = ["b": "2", "a": "1", "c": "3"]) -> KeyValueTableModel {
         let model = KeyValueTableModel()
         model.reload(from: entries)
         return model
     }
 
-    private func itemsBinding(_ box: KeyValueItemsBox) -> Binding<[String: String]> {
+    func itemsBinding(_ box: KeyValueItemsBox) -> Binding<[String: String]> {
         Bindable(box).items
     }
 

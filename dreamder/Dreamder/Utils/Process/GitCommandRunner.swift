@@ -50,6 +50,10 @@ actor GitWriteGate {
     private var isLocked = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
+    var pendingWaiters: Int {
+        waiters.count
+    }
+
     func acquire() async {
         if !isLocked {
             isLocked = true
@@ -235,7 +239,7 @@ nonisolated struct GitCommandRunner: Sendable {
     }
 
     static func environment(from source: [String: String], readOnly: Bool) -> [String: String] {
-        var environment = ProcessEnvironment.sanitized(source)
+        var environment = ProcessEnvironment.sanitizedForGit(source)
         environment["GIT_TERMINAL_PROMPT"] = "0"
         environment["LC_MESSAGES"] = "C"
         environment.removeValue(forKey: "LC_ALL")

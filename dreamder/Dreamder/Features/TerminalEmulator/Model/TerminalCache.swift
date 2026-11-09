@@ -38,6 +38,6 @@ final class TerminalCache {
     /// Remove any view associated with the terminal id.
     /// - Parameter id: The ID of the terminal.
     func removeCachedView(_ id: UUID) {
-        terminals[id] = nil
+        terminals.removeValue(forKey: id)?.terminateSession()
     }
 }

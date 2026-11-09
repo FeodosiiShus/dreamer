@@ -13,6 +13,7 @@ import XCTest
 final class CEWorkspaceFileManagerUnitTests: XCTestCase {
     let typeOfExtensions = ["json", "txt", "swift", "js", "py", "md"]
     var directory: URL!
+    var generator = SeededRandomNumberGenerator(seed: 0xF11E_5EED)
 
     class DummyObserver: CEWorkspaceFileManagerObserver {
         var completion: (() -> Void)?
@@ -35,7 +36,7 @@ final class CEWorkspaceFileManagerUnitTests: XCTestCase {
     }
 
     func testListFile() throws {
-        let randomCount = Int.random(in: 1 ... 100)
+        let randomCount = Int.random(in: 1 ... 100, using: &generator)
         let files = generateRandomFiles(amount: randomCount)
         try files.forEach {
             let fakeData = Data("fake string".utf8)
@@ -88,17 +89,18 @@ final class CEWorkspaceFileManagerUnitTests: XCTestCase {
     }
 
     func generateRandomFiles(amount: Int) -> [String] {
-        [String](repeating: "", count: amount)
-            .map { _ in
-                let fileName = randomString(length: Int.random(in: 1 ... 100))
-                let fileExtension = typeOfExtensions[Int.random(in: 0 ..< typeOfExtensions.count)]
-                return "\(fileName).\(fileExtension)"
-            }
+        var names: [String] = []
+        while names.count < amount {
+            let fileName = randomString(length: Int.random(in: 1 ... 100, using: &generator))
+            let fileExtension = typeOfExtensions[Int.random(in: 0 ..< typeOfExtensions.count, using: &generator)]
+            names.append("\(fileName).\(fileExtension)")
+        }
+        return names
     }
 
     func randomString(length: Int) -> String {
-        let letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-        return String((0 ..< length).map { _ in letters.randomElement()! })
+        let letters = Array("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+        return String((0 ..< length).map { _ in letters[Int.random(in: 0 ..< letters.count, using: &generator)] })
     }
 
     func testGetFile() throws {

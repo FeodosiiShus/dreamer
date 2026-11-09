@@ -26,36 +26,57 @@ final class Settings {
 
     @ObservationIgnored private var pendingSave: Task<Void, Never>?
 
+    @ObservationIgnored private var savedPreferences: SettingsData = .init()
+
+    @ObservationIgnored private let clock: any Clock<Duration>
+
+    static let saveDebounce: Duration = .seconds(2)
+
     private convenience init() {
         self.init(baseURL: Self.defaultBaseURL(), drivesAutosavePreference: true)
     }
 
-    init(baseURL: URL, drivesAutosavePreference: Bool = false) {
+    init(baseURL: URL, drivesAutosavePreference: Bool = false, clock: any Clock<Duration> = ContinuousClock()) {
         self.baseURL = baseURL
         self.drivesAutosavePreference = drivesAutosavePreference
+        self.clock = clock
         self.preferences = .init()
         self.preferences = loadSettings()
+        self.savedPreferences = preferences
+        applyAutosavePreference()
 
         self.storeTask = Task { [weak self] in
-            for await data in Observations({ [weak self] in self?.preferences }) {
-                guard !Task.isCancelled, let self, let data else { return }
-                self.scheduleSave(of: data)
+            for await _ in Observations({ [weak self] in self?.preferences }) {
+                guard !Task.isCancelled, let self else { return }
+                self.scheduleSave()
             }
         }
     }
 
     isolated deinit {
         storeTask?.cancel()
-        pendingSave?.cancel()
+        flushPendingSave()
     }
 
-    private func scheduleSave(of data: SettingsData) {
+    private func scheduleSave() {
         pendingSave?.cancel()
-        pendingSave = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(2))
+        pendingSave = Task { [weak self, clock] in
+            try? await Task.sleep(for: Self.saveDebounce, clock: clock)
             guard !Task.isCancelled else { return }
-            try? self?.savePreferences(data)
+            self?.flushPendingSave()
         }
+    }
+
+    func flushPendingSave() {
+        pendingSave?.cancel()
+        pendingSave = nil
+        guard preferences != savedPreferences else { return }
+        try? savePreferences(preferences)
+    }
+
+    private func applyAutosavePreference() {
+        guard drivesAutosavePreference else { return }
+        AutosavePreference.isEnabled.withLock { $0 = preferences.general.isAutoSaveOn }
     }
 
     static subscript<T>(_ path: WritableKeyPath<SettingsData, T>, suite: Settings = .shared) -> T {
@@ -72,8 +93,7 @@ final class Settings {
     /// Changes are saved automatically.
     var preferences: SettingsData {
         didSet {
-            guard drivesAutosavePreference else { return }
-            AutosavePreference.isEnabled.withLock { $0 = preferences.general.isAutoSaveOn }
+            applyAutosavePreference()
         }
     }
 
@@ -98,10 +118,11 @@ final class Settings {
     /// Save``Settings`` model to
     /// `~/Library/Application Support/Dreamder/settings.json`
     private func savePreferences(_ data: SettingsData) throws {
-        let data = try JSONEncoder().encode(data)
-        let json = try JSONSerialization.jsonObject(with: data)
+        let encoded = try JSONEncoder().encode(data)
+        let json = try JSONSerialization.jsonObject(with: encoded)
         let prettyJSON = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted])
         try prettyJSON.write(to: settingsURL, options: .atomic)
+        savedPreferences = data
     }
 
     /// Default instance of the `FileManager`

@@ -4,7 +4,7 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SOURCES = os.path.join(ROOT, "Dreamder")
+SOURCE_DIRECTORIES = tuple(os.path.join(ROOT, name) for name in ("Dreamder", "OpenWithDreamder"))
 ALLOWLIST = os.path.join(ROOT, "Scripts", "crash-guard-allowlist.txt")
 
 TOKEN = re.compile(r'//|/\*|#*"""|#*"|#+/')
@@ -159,11 +159,12 @@ def findings_for(sanitized):
 
 
 def swift_files():
-    for directory, directories, names in os.walk(SOURCES):
-        directories.sort()
-        for name in sorted(names):
-            if name.endswith(".swift"):
-                yield os.path.join(directory, name)
+    for source in SOURCE_DIRECTORIES:
+        for directory, directories, names in os.walk(source):
+            directories.sort()
+            for name in sorted(names):
+                if name.endswith(".swift"):
+                    yield os.path.join(directory, name)
 
 
 def load_allowlist():

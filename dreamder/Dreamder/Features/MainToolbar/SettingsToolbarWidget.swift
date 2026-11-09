@@ -18,14 +18,16 @@ struct SettingsToolbarWidget: View {
     }
 
     var body: some View {
-        MainToolbarIconContent(icon: "general/settings", isHovering: hover.isHovering)
-            .background(MainToolbarMenuAnchorView(anchor: menuAnchor))
-            .onTapGesture(perform: showMenu)
-            .onHover(perform: hover.setHovering)
-            .help("Settings")
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Settings")
-            .accessibilityAddTraits(.isButton)
-            .fixedSize()
+        Button(action: showMenu) {
+            MainToolbarIconContent(icon: "general/settings_20")
+        }
+        .buttonStyle(.actionButton(look: .mainToolbarButton, isHovering: hover.isHovering))
+        .background(MainToolbarMenuAnchorView(anchor: menuAnchor))
+        .onHover(perform: hover.setHovering)
+        .help("Settings")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Settings")
+        .accessibilityAddTraits(.isButton)
+        .fixedSize()
     }
 }

@@ -96,7 +96,7 @@ struct ActiveTaskTerminalViewCoverageTests {
 
     @Test
     func aFailingTaskMarksItselfAsFailedAndSaysSo() async throws {
-        try await withTerminalCoverageSettings({ $0.useShellIntegration = false }) {
+        try await withTerminalCoverageSettings(shellIntegration: false) {
             let task = fixture.makeTask(command: "exit 3")
             let activeTask = CEActiveTask(task: task)
 
@@ -139,5 +139,39 @@ struct ActiveTaskTerminalViewCoverageTests {
 
         try await eventually { activeTask.status == .failed }
         #expect(view.getBufferAsString().contains("Failed to run Coverage Task"))
+    }
+
+    @Test
+    func aFinishedTaskHasNoProcessLeftToSignal() async throws {
+        try await withTerminalCoverageSettings(shellIntegration: false) {
+            let activeTask = CEActiveTask(task: fixture.makeTask(command: "echo done-$((1+1))"))
+
+            activeTask.run(workspaceURL: nil, shell: .zsh)
+
+            try await eventually { activeTask.status == .finished }
+            let output = try #require(activeTask.output)
+            #expect(output.runningPID() == nil)
+            #expect(output.getBufferAsString().contains("done-2"))
+        }
+    }
+
+    @Test
+    func aTaskFinishesEvenWhenALeftoverProcessKeepsTheTerminalOpen() async throws {
+        try await withTerminalCoverageSettings(shellIntegration: false) {
+            let task = fixture.makeTask(command: "trap '' HUP; sleep 600 & echo child-pid-$!-end")
+            let activeTask = CEActiveTask(task: task)
+            let view = CEActiveTaskTerminalView(activeTask: activeTask)
+            view.drainPollInterval = .milliseconds(1)
+            view.drainStallRounds = 5
+            activeTask.output = view
+
+            activeTask.run(workspaceURL: nil, shell: .zsh)
+
+            try await eventually { TasksCoverageProcessProbe.announcedPID(in: view.getBufferAsString()) != nil }
+            let child = try #require(TasksCoverageProcessProbe.announcedPID(in: view.getBufferAsString()))
+            defer { kill(child, SIGKILL) }
+            try await eventually { activeTask.status == .finished }
+            #expect(view.getBufferAsString().contains("Finished running Coverage Task."))
+        }
     }
 }

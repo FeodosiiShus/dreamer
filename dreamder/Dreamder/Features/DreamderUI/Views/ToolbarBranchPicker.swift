@@ -4,15 +4,21 @@ import Combine
 struct ToolbarBranchPicker: View {
     private let sourceControlManager: SourceControlManager?
     private let settings: Settings
+    private let hover: MainToolbarHoverState
 
-    init(sourceControlManager: SourceControlManager?, settings: Settings = .shared) {
+    init(
+        sourceControlManager: SourceControlManager?,
+        settings: Settings = .shared,
+        hover: MainToolbarHoverState = MainToolbarHoverState()
+    ) {
         self.sourceControlManager = sourceControlManager
         self.settings = settings
+        self.hover = hover
     }
 
     var body: some View {
         if let sourceControlManager {
-            ToolbarBranchPickerContent(sourceControlManager: sourceControlManager, settings: settings)
+            ToolbarBranchPickerContent(sourceControlManager: sourceControlManager, settings: settings, hover: hover)
         }
     }
 }
@@ -23,15 +29,21 @@ private struct ToolbarBranchPickerContent: View {
     @Environment(WorkspaceDocument.self) private var workspace
 
     @State private var anchor = ToolbarPopupAnchor()
-    @State private var isHovering = false
+    @State private var hover: MainToolbarHoverState
+
+    init(sourceControlManager: SourceControlManager, settings: Settings, hover: MainToolbarHoverState) {
+        self.sourceControlManager = sourceControlManager
+        self.settings = settings
+        _hover = State(initialValue: hover)
+    }
 
     var body: some View {
         if sourceControlManager.isGitRepository {
             Button(action: presentBranches) {
                 label
             }
-            .buttonStyle(.plain)
-            .onHover { isHovering = $0 }
+            .buttonStyle(.actionButton(look: .mainToolbarDropdown, isHovering: hover.isHovering))
+            .onHover(perform: hover.setHovering)
             .help(sourceControlManager.currentBranch?.name ?? "No branch")
             .background(ToolbarPopupAnchorView(anchor: anchor))
             .task {
@@ -53,27 +65,12 @@ private struct ToolbarBranchPickerContent: View {
     }
 
     private var label: some View {
-        HStack(spacing: 6) {
+        MainToolbarDropdownLabel(text: sourceControlManager.currentBranch?.name ?? "No branch") {
             Image("vcs/branch")
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 16, height: 16)
-            Text(sourceControlManager.currentBranch?.name ?? "No branch")
-                .font(Islands.uiFont)
-                .foregroundColor(Islands.foreground)
-                .lineLimit(1)
-            Image("general/chevronDown")
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 12, height: 12)
         }
-        .padding(.horizontal, 6)
-        .frame(height: Islands.toolbarControlHeight)
-        .background {
-            RoundedRectangle(cornerRadius: Islands.controlRadius)
-                .fill(isHovering ? Islands.actionHover : Color.clear)
-        }
-        .contentShape(Rectangle())
     }
 
     private func presentBranches() {

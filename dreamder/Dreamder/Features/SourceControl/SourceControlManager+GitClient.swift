@@ -206,12 +206,9 @@ extension SourceControlManager {
     /// Refresh branches for a specific remote
     func refreshRemoteBranches(remote: GitRemote) async throws {
         let branches = try await getRemoteBranches(remote: remote.name)
-        if let index = remotes.firstIndex(of: remote) {
-            await MainActor.run {
-                remotes[index].branches = branches
-            }
+        if let index = remotes.firstIndex(where: { $0.name == remote.name }) {
+            remotes[index].branches = branches
         }
-
     }
 
     /// Get branches for a specific remote

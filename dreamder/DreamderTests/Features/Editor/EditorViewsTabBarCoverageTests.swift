@@ -14,17 +14,56 @@ private final class EditorViewsSelectorRecorder {
 
 @MainActor
 private final class EditorLayoutProbe {
-    var subLayout: EditorLayoutView.SubEditorLayoutView?
+    var subLayout: EditorLayoutView.SubEditorLayoutView<EditorLayoutProbePane>?
+    var tokens: [Editor.ID: UUID] = [:]
+    var appeared: [Editor.ID] = []
+    var disappeared: [Editor.ID] = []
+
+    func record(_ layout: EditorLayout, token: UUID) {
+        if case .one(let editor) = layout {
+            tokens[editor.id] = token
+        }
+    }
+
+    func appear(_ layout: EditorLayout) {
+        if case .one(let editor) = layout {
+            appeared.append(editor.id)
+        }
+    }
+
+    func disappear(_ layout: EditorLayout) {
+        if case .one(let editor) = layout {
+            disappeared.append(editor.id)
+        }
+    }
+}
+
+private struct EditorLayoutProbePane: View {
+    let layout: EditorLayout
+    let probe: EditorLayoutProbe
+    @State private var token = UUID()
+
+    var body: some View {
+        recordedPane()
+    }
+
+    private func recordedPane() -> some View {
+        probe.record(layout, token: token)
+        return Color.clear
+            .onAppear { probe.appear(layout) }
+            .onDisappear { probe.disappear(layout) }
+    }
 }
 
 private struct EditorLayoutProbeView: View {
     let data: SplitViewData
     let probe: EditorLayoutProbe
-    @FocusState private var focus: Editor?
 
     var body: some View {
-        let subLayout = EditorLayoutView.SubEditorLayoutView(data: data, focus: $focus)
-        Color.clear.onAppear {
+        let subLayout = EditorLayoutView.SubEditorLayoutView(data: data) { layout in
+            EditorLayoutProbePane(layout: layout, probe: probe)
+        }
+        subLayout.onAppear {
             probe.subLayout = subLayout
         }
     }
@@ -70,7 +109,15 @@ struct EditorLayoutViewTabBarCoverageTests {
         (0..<count).map { _ in Editor() }
     }
 
-    private func hostProbe(for data: SplitViewData) async throws -> (HostedView, EditorLayoutView.SubEditorLayoutView) {
+    private struct HostedProbe {
+        let hosted: HostedView
+        let subLayout: EditorLayoutView.SubEditorLayoutView<EditorLayoutProbePane>
+        let probe: EditorLayoutProbe
+    }
+
+    private func hostProbe(
+        for data: SplitViewData
+    ) async throws -> HostedProbe {
         let probe = EditorLayoutProbe()
         let hosted = HostedViewFixture.host(size: NSSize(width: 200, height: 100)) {
             EditorLayoutProbeView(data: data, probe: probe)
@@ -80,14 +127,16 @@ struct EditorLayoutViewTabBarCoverageTests {
             return probe.subLayout != nil
         }
         let subLayout = try #require(probe.subLayout)
-        return (hosted, subLayout)
+        return HostedProbe(hosted: hosted, subLayout: subLayout, probe: probe)
     }
 
     @Test
     func verticalSplitMarksOnlyTheOuterEditorsAsTouchingTheToolbarEdges() async throws {
         let editors = makeEditors(3)
         let data = SplitViewData(.vertical, editorLayouts: editors.map { .one($0) })
-        let (hosted, subLayout) = try await hostProbe(for: data)
+        let hostedProbe = try await hostProbe(for: data)
+        let hosted = hostedProbe.hosted
+        let subLayout = hostedProbe.subLayout
         defer { hosted.close() }
 
         var first = VerticalEdge.Set.all
@@ -106,9 +155,13 @@ struct EditorLayoutViewTabBarCoverageTests {
     func singleEditorAndHorizontalSplitsKeepEveryEdge() async throws {
         let single = SplitViewData(.vertical, editorLayouts: makeEditors(1).map { .one($0) })
         let horizontal = SplitViewData(.horizontal, editorLayouts: makeEditors(2).map { .one($0) })
-        let (singleHosted, singleLayout) = try await hostProbe(for: single)
+        let singleProbe = try await hostProbe(for: single)
+        let singleHosted = singleProbe.hosted
+        let singleLayout = singleProbe.subLayout
         defer { singleHosted.close() }
-        let (horizontalHosted, horizontalLayout) = try await hostProbe(for: horizontal)
+        let horizontalProbe = try await hostProbe(for: horizontal)
+        let horizontalHosted = horizontalProbe.hosted
+        let horizontalLayout = horizontalProbe.subLayout
         defer { horizontalHosted.close() }
 
         var singleEdges = VerticalEdge.Set.all
@@ -124,7 +177,9 @@ struct EditorLayoutViewTabBarCoverageTests {
     func splitActionInsertsTheNewEditorNextToTheSourceEditor() async throws {
         let editors = makeEditors(2)
         let data = SplitViewData(.vertical, editorLayouts: editors.map { .one($0) })
-        let (hosted, subLayout) = try await hostProbe(for: data)
+        let hostedProbe = try await hostProbe(for: data)
+        let hosted = hostedProbe.hosted
+        let subLayout = hostedProbe.subLayout
         defer { hosted.close() }
         let newEditor = Editor()
 
@@ -133,6 +188,44 @@ struct EditorLayoutViewTabBarCoverageTests {
         #expect(data.editorLayouts.count == 3)
         #expect(data.getFlattened().map(\.id) == [editors[0].id, newEditor.id, editors[1].id])
         #expect(newEditor.parent === data)
+    }
+
+    @Test
+    func closingTheFirstOfThreeSplitsKeepsTheRemainingPanesStateWithTheirEditors() async throws {
+        let editors = makeEditors(3)
+        let data = SplitViewData(.horizontal, editorLayouts: editors.map { .one($0) })
+        let hostedProbe = try await hostProbe(for: data)
+        let hosted = hostedProbe.hosted
+        let probe = hostedProbe.probe
+        defer { hosted.close() }
+        try await eventually(timeout: .seconds(5)) {
+            hosted.layout()
+            return probe.tokens.count == 3
+        }
+        let tokensBefore = probe.tokens
+
+        data.closeEditor(with: editors[0].id)
+
+        try await eventually(timeout: .seconds(5)) {
+            hosted.layout()
+            return !probe.disappeared.isEmpty
+        }
+        #expect(probe.disappeared == [editors[0].id])
+        #expect(probe.appeared.count == 3)
+        #expect(probe.tokens[editors[1].id] == tokensBefore[editors[1].id])
+        #expect(probe.tokens[editors[2].id] == tokensBefore[editors[2].id])
+    }
+
+    @Test
+    func layoutIdentityFollowsTheEditorOrTheSplitContainer() {
+        let editor = Editor()
+        let other = Editor()
+        let nested = SplitViewData(.vertical, editorLayouts: [.one(other)])
+
+        #expect(EditorLayout.one(editor).id == .editor(editor.id))
+        #expect(EditorLayout.one(editor).id != EditorLayout.one(other).id)
+        #expect(EditorLayout.vertical(nested).id == .split(ObjectIdentifier(nested)))
+        #expect(EditorLayout.horizontal(nested).id == EditorLayout.vertical(nested).id)
     }
 }
 

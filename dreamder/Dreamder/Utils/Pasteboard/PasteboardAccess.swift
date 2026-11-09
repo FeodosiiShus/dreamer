@@ -30,13 +30,11 @@ extension NSPasteboard: PasteboardStoring {}
 final class SystemPasteboard: PasteboardAccess {
     static let cutMarkerType = NSPasteboard.PasteboardType("dev.dreamder.projectNavigator.cut")
 
-    private let injectedBoard: (any PasteboardStoring)?
+    private let board: any PasteboardStoring
 
-    init(board: (any PasteboardStoring)? = nil) {
-        injectedBoard = board
+    init(board: any PasteboardStoring = NSPasteboard.general) {
+        self.board = board
     }
-
-    private var board: any PasteboardStoring { injectedBoard ?? NSPasteboard.general }
 
     var plainText: String? {
         board.string(forType: .string)

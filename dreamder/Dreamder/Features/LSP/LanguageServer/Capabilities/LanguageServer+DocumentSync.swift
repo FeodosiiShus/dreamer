@@ -17,7 +17,7 @@ extension LanguageServer {
             guard resolveOpenCloseSupport(), let content = getIsolatedDocumentContent(document) else {
                 return
             }
-            logger.debug("Opening Document \(content.uri, privacy: .private)")
+            logger.info("Opening Document \(content.uri, privacy: .private)")
 
             openFiles.addDocument(document, for: self)
 
@@ -43,7 +43,7 @@ extension LanguageServer {
     func closeDocument(_ uri: String) async throws {
         do {
             guard resolveOpenCloseSupport(), let document = openFiles.document(for: uri) else { return }
-            logger.debug("Closing document \(uri, privacy: .private)")
+            logger.info("Closing document \(uri, privacy: .private)")
 
             lspCache.invalidate(uri: uri)
             openFiles.removeDocument(for: uri)
@@ -82,7 +82,7 @@ extension LanguageServer {
     /// - Throws: Throws errors produced by the language server connection.
     func documentChanged(uri: String, changes: [DocumentChange]) async throws {
         do {
-            logger.debug("Document updated, \(uri, privacy: .private)")
+            logger.info("Document updated, \(uri, privacy: .private)")
             lspCache.invalidate(uri: uri)
             guard let document = openFiles.document(for: uri) else { return }
 

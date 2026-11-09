@@ -31,18 +31,15 @@ extension NSDocumentController: AppDocumentControlling {}
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "dev.dreamder.Dreamder",
-        category: "AppDelegate"
-    )
+    private let logger = EditorLogging.logger(category: "AppDelegate")
 
-    @Environment(\.openWindow)
-    var openWindow
+    static weak var current: AppDelegate?
+    private var pendingScenes: [SceneID] = []
 
     var documentsController: any AppDocumentControlling = NSDocumentController.shared
     var defaults: UserDefaults = .standard
     var settings: Settings = .shared
-    var languageServiceOverride: LSPService?
+    var languageService: () -> LSPService = { LSPService.shared }
     var replyToTerminate: (Bool) -> Void = { NSApplication.shared.reply(toApplicationShouldTerminate: $0) }
     var reopenDocument: (URL) -> Void = { url in
         DreamderDocumentController.shared.reopenDocument(
@@ -53,7 +50,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppDelegate.synchronizeWindowTitle(of: document)
         }
     }
-    var sceneOpenerOverride: ((SceneID) -> Void)?
+    var sceneOpener: (@MainActor (SceneID) -> Void)?
+    var fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     var applicationWindows: () -> [NSWindow] = { NSApp.windows }
     var finderExtensionDefaults: () -> UserDefaults? = { UserDefaults(suiteName: "dev.dreamder.Dreamder.shared") }
     var finderExtensionPollInterval: Duration = .seconds(1)
@@ -151,10 +149,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Handle urls with the form `dreamder://file/{filepath}:{line}:{column}`
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
-            let file = URL(fileURLWithPath: url.path).path.split(separator: ":")
-            let filePath = URL(fileURLWithPath: String(file[0]))
-            let line = file.count > 1 ? Int(file[1]) ?? 0 : 0
-            let column = file.count > 2 ? Int(file[2]) ?? 1 : 1
+            let request = Self.fileOpenRequest(from: url, fileExists: fileExists)
+            let filePath = URL(fileURLWithPath: request.path)
+            let line = request.line
+            let column = request.column
 
             documentsController
                 .openDocument(withContentsOf: filePath, display: true) { document, _, error in
@@ -171,46 +169,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: - Should Terminate
-
-    /// Defers the application terminate message until we've finished cleanup.
-    ///
-    /// All paths _must_ call `NSApplication.shared.reply(toApplicationShouldTerminate: true)` as soon as possible.
-    ///
-    /// The two things needing deferring are:
-    /// - Language server cancellation
-    /// - Outstanding document changes.
-    ///
-    /// Things that don't need deferring (happen immediately):
-    /// - Task termination.
-    /// These are called immediately if no documents need closing, and are called by
-    /// ``documentController(_:didCloseAll:contextInfo:)`` if there are documents we need to defer for.
-    ///
-    /// See ``terminateLanguageServers()`` and ``documentController(_:didCloseAll:contextInfo:)`` for deferring tasks.
-    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        let projects: [String] = documentsController.documents
-            .compactMap { ($0 as? WorkspaceDocument)?.fileURL?.path }
-
-        defaults.set(projects, forKey: AppDelegate.recoverWorkspacesKey)
-
-        let areAllDocumentsClean = documentsController.documents.allSatisfy { !$0.isDocumentEdited }
-        guard areAllDocumentsClean else {
-            documentsController.closeAllDocuments(
-                withDelegate: self,
-                didCloseAllSelector: #selector(documentController(_:didCloseAll:contextInfo:)),
-                contextInfo: nil
-            )
-            // `documentController(_:didCloseAll:contextInfo:)` will call `terminateLanguageServers()`
-            return .terminateLater
-        }
-
-        terminateTasks()
-        terminateLanguageServers()
-        return .terminateLater
+    nonisolated struct FileOpenRequest: Equatable {
+        let path: String
+        let line: Int
+        let column: Int
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        false
+    nonisolated static func fileOpenRequest(from url: URL, fileExists: (String) -> Bool) -> FileOpenRequest {
+        let fullPath = URL(fileURLWithPath: url.path).path
+        let parts = fullPath.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+        let existingLength = (1...parts.count).reversed().first { length in
+            fileExists(parts[..<length].joined(separator: ":"))
+        }
+        let pathLength = existingLength ?? pathLengthWithoutNumericSuffix(of: parts)
+        let suffix = parts[pathLength...]
+        return FileOpenRequest(
+            path: parts[..<pathLength].joined(separator: ":"),
+            line: suffix.first.flatMap { Int($0) } ?? 0,
+            column: suffix.dropFirst().first.flatMap { Int($0) } ?? 1
+        )
+    }
+
+    private nonisolated static func pathLengthWithoutNumericSuffix(of parts: [String]) -> Int {
+        var length = parts.count
+        while length > 1, parts.count - length < 2, Int(parts[length - 1]) != nil {
+            length -= 1
+        }
+        return length
     }
 
     // MARK: - Open windows
@@ -224,11 +209,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func openScene(_ id: SceneID) {
-        if let sceneOpenerOverride {
-            sceneOpenerOverride(id)
-        } else {
-            openWindow(sceneID: id)
+        guard let sceneOpener else {
+            if !tryFocusWindow(id: id) {
+                pendingScenes.append(id)
+            }
+            return
         }
+        sceneOpener(id)
+    }
+
+    func installSceneOpener(_ opener: @escaping @MainActor (SceneID) -> Void) {
+        Self.current = self
+        sceneOpener = opener
+        let pending = pendingScenes
+        pendingScenes = []
+        pending.forEach(opener)
+    }
+
+    static func openScene(_ id: SceneID) {
+        current?.openScene(id)
     }
 
     /// Tries to focus a window with specified sceneId
@@ -267,15 +266,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Register enableOpenInCE (enable Open In Dreamder
         defaults.register(defaults: ["enableOpenInCE": true])
 
-        if let filesToOpen = defaults.string(forKey: "openInCEFiles") {
-            let files = filesToOpen.split(separator: ";")
+        guard defaults.object(forKey: Self.finderExtensionFilesKey) != nil else { return }
 
-            for filePath in files {
-                reopenDocument(URL(fileURLWithPath: String(filePath)))
-            }
-
-            defaults.removeObject(forKey: "openInCEFiles")
+        let files = defaults.stringArray(forKey: Self.finderExtensionFilesKey) ?? []
+        for filePath in files where !filePath.isEmpty {
+            reopenDocument(URL(fileURLWithPath: filePath))
         }
+
+        defaults.removeObject(forKey: Self.finderExtensionFilesKey)
     }
 
     /// Enable window size restoring on app relaunch after quitting.
@@ -283,74 +281,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // This enables window restoring on normal quit (instead of only on force-quit).
         UserDefaults.standard.setValue(true, forKey: "NSQuitAlwaysKeepsWindows")
     }
-
-    // MARK: NSDocumentController delegate
-
-    @objc
-    func documentController(_ docController: NSDocumentController, didCloseAll: Bool, contextInfo: Any) {
-        if didCloseAll {
-            terminateTasks()
-            terminateLanguageServers()
-        }
-    }
-
-    /// Terminates running language servers. Used during app termination to ensure resources are freed.
-    private func terminateLanguageServers() {
-        let timeout = languageServerShutdownTimeout
-        Task { @MainActor in
-            let service = self.languageServiceOverride ?? LSPService.shared
-            let task = TaskNotificationModel(
-                id: "appdelegate.terminate_language_servers",
-                title: "Stopping Language Servers",
-                message: "Stopping running language server processes...",
-                isLoading: true
-            )
-
-            if !service.languageClients.isEmpty {
-                TaskNotificationHandler.postTask(action: .create, model: task)
-            }
-
-            try? await withTimeout(
-                duration: timeout,
-                onTimeout: {
-                    // Stop-gap measure to ensure we don't hang on CMD-Q
-                    await service.killAllServers()
-                },
-                operation: {
-                    await service.stopAllServers()
-                }
-            )
-
-            TaskNotificationHandler.postTask(action: .delete, model: task)
-            self.replyToTerminate(true)
-        }
-    }
-
-    /// Terminates all running tasks. Used during app termination to ensure resources are freed.
-    private func terminateTasks() {
-        let task = TaskNotificationModel(
-            id: "appdelegate.terminate_tasks",
-            title: "Terminating Tasks",
-            message: "Interrupting all running tasks before quitting...",
-            isLoading: true
-        )
-
-        let taskManagers = documentsController.documents
-            .compactMap({ $0 as? WorkspaceDocument })
-            .compactMap({ $0.taskManager })
-
-        if taskManagers.reduce(0, { $0 + $1.activeTasks.count }) > 0 {
-            TaskNotificationHandler.postTask(action: .create, model: task)
-        }
-
-        taskManagers.forEach { manager in
-            manager.stopAllTasks()
-        }
-
-        TaskNotificationHandler.postTask(action: .delete, model: task)
-    }
 }
 
 extension AppDelegate {
     static let recoverWorkspacesKey = "recover.workspaces"
+    static let finderExtensionFilesKey = "openInCEFiles"
 }

@@ -155,7 +155,7 @@ final class DreamderUtilsExtensionsUnitTests: XCTestCase {
             "文件和表情符号_🚀.txt",
             "rapport_avec_emoji_🎨.pptx",
             // 255 characters (exactly the maximum)
-            String((0..<255).map({ _ in "abcd".randomElement() ?? Character("") }))
+            String(repeating: "abcd", count: 63) + "abc"
         ]
 
         for validCase in validCases {
@@ -172,7 +172,7 @@ final class DreamderUtilsExtensionsUnitTests: XCTestCase {
             "Hell\0 World!",
             "export:2024-04-12.txt",
             // 256 characters (1 too long)
-            String((0..<256).map({ _ in "abcd".randomElement() ?? Character("") }))
+            String(repeating: "abcd", count: 64)
         ]
 
         for invalidCase in invalidCases {

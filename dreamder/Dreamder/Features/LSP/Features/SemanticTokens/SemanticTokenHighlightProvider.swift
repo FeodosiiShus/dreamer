@@ -77,7 +77,7 @@ final class SemanticTokenHighlightProvider<
             do {
                 try await documentDidChange()
             } catch {
-                semanticTokenLogger.debug("Semantic token refresh failed: \(error)")
+                semanticTokenLogger.error("Semantic token refresh failed: \(error)")
             }
         }
     }

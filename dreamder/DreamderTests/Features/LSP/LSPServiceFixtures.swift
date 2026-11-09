@@ -27,6 +27,7 @@ final class LSPServiceExitSignalingConnection: ServerConnection, Sendable {
     let scripted: ScriptedServerConnection
     private let onExit: @Sendable () -> Void
     private let shutdownError: (any Error)?
+    private let shutdownGate: LSPServiceGate?
 
     var eventSequence: EventSequence {
         scripted.eventSequence
@@ -35,10 +36,12 @@ final class LSPServiceExitSignalingConnection: ServerConnection, Sendable {
     init(
         scripted: ScriptedServerConnection,
         shutdownError: (any Error)? = nil,
+        shutdownGate: LSPServiceGate? = nil,
         onExit: @escaping @Sendable () -> Void
     ) {
         self.scripted = scripted
         self.shutdownError = shutdownError
+        self.shutdownGate = shutdownGate
         self.onExit = onExit
     }
 
@@ -50,8 +53,11 @@ final class LSPServiceExitSignalingConnection: ServerConnection, Sendable {
     }
 
     func sendRequest<Response: Decodable & Sendable>(_ request: ClientRequest) async throws -> Response {
-        if request.method == .shutdown, let shutdownError {
-            throw shutdownError
+        if request.method == .shutdown {
+            await shutdownGate?.wait()
+            if let shutdownError {
+                throw shutdownError
+            }
         }
         return try await scripted.sendRequest(request)
     }
@@ -157,6 +163,7 @@ final class LSPServiceFixture {
     var binary: LanguageServerBinary? = LanguageServerBinary(execPath: "/fake/language-server", args: ["--stdio"], env: nil)
     var createFailure: (any Error)?
     var shutdownFailure: (any Error)?
+    var shutdownGate: LSPServiceGate?
     var discoveryGate: LSPServiceGate?
     var createGate: LSPServiceGate?
     var terminatesOnExit = true
@@ -224,7 +231,8 @@ final class LSPServiceFixture {
         let signalsExit = terminatesOnExit
         let connection = LSPServiceExitSignalingConnection(
             scripted: scripted,
-            shutdownError: shutdownFailure
+            shutdownError: shutdownFailure,
+            shutdownGate: shutdownGate
         ) {
             if signalsExit {
                 continuation.yield()

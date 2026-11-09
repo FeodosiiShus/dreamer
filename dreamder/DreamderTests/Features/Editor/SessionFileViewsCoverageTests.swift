@@ -34,7 +34,7 @@ struct SessionFileViewsCoverageTests {
     }
 
     @Test
-    func requestedTriggerCharactersAreAppliedToTheLiveControllerWithTheDefaultCallback() async throws {
+    func requestedTriggerCharactersAreCommittedAfterTheControllerExistsWithTheDefaultCallback() async throws {
         try await withTempDir { directory in
             let fixture = try makeFixture(in: directory)
             let session = CodeFileViewSession(editorInstance: fixture.editorInstance, codeFile: fixture.document)
@@ -47,9 +47,7 @@ struct SessionFileViewsCoverageTests {
             let immediate = session.completionTriggerCharacters(requested: triggers)
             #expect(immediate.isEmpty)
 
-            try await eventually {
-                sessionReference.controller?.configuration.peripherals.codeSuggestionTriggerCharacters == triggers
-            }
+            try await eventually { session.completionTriggerCharacters(requested: triggers) == triggers }
             #expect(session.completionTriggerCharacters(requested: triggers) == triggers)
             withExtendedLifetime(session) {}
         }

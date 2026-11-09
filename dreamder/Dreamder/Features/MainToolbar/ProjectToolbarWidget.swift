@@ -29,27 +29,16 @@ struct ProjectToolbarWidget: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
-            ProjectBadge(name: projectName)
-            Text(projectName)
-                .font(Islands.uiFont)
-                .foregroundColor(Islands.foreground)
-                .lineLimit(1)
-            Image("general/chevronDown")
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 12, height: 12)
+        Button(action: showMenu) {
+            MainToolbarDropdownLabel(text: projectName) {
+                ProjectBadge(name: projectName)
+            }
         }
-        .padding(.leading, 6)
-        .padding(.trailing, 10)
-        .frame(height: Islands.toolbarControlHeight)
-        .mainToolbarGlass(isHovering: hover.isHovering)
+        .buttonStyle(.actionButton(look: .mainToolbarDropdown, isHovering: hover.isHovering))
         .background(MainToolbarMenuAnchorView(anchor: menuAnchor))
-        .contentShape(Capsule())
-        .onTapGesture(perform: showMenu)
         .onHover(perform: hover.setHovering)
         .help("Project")
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Project")
         .accessibilityValue(projectName)
         .accessibilityAddTraits(.isButton)
@@ -91,7 +80,7 @@ private struct ProjectBadge: View {
     var body: some View {
         RoundedRectangle(cornerRadius: 4)
             .fill(color)
-            .frame(width: 20, height: 20)
+            .frame(width: MainToolbarMetrics.projectAvatarSize, height: MainToolbarMetrics.projectAvatarSize)
             .overlay {
                 Text(initials)
                     .font(.system(size: 9, weight: .bold))

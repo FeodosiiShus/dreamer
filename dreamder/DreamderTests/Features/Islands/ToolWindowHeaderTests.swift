@@ -66,6 +66,25 @@ struct ToolWindowHeaderTests {
     }
 
     @Test
+    func actionButtonsUseTheDisabledTintWhenDisabled() async throws {
+        let enabledIcon = try await host { ToolWindowActionButton(icon: "general/hide", help: "Hide") {} }
+        defer { enabledIcon.close() }
+        let disabledIcon = try await host {
+            ToolWindowActionButton(icon: "general/hide", help: "Hide") {}.disabled(true)
+        }
+        defer { disabledIcon.close() }
+        let enabledSystem = try await host { ToolWindowActionButton(systemImage: "gear", help: "Gear") {} }
+        defer { enabledSystem.close() }
+        let disabledSystem = try await host {
+            ToolWindowActionButton(systemImage: "gear", help: "Gear") {}.disabled(true)
+        }
+        defer { disabledSystem.close() }
+
+        #expect(HostedView.pixelsDiffer(enabledIcon.snapshot(), disabledIcon.snapshot()))
+        #expect(HostedView.pixelsDiffer(enabledSystem.snapshot(), disabledSystem.snapshot()))
+    }
+
+    @Test
     func glassSurfacesFollowTheBackgroundImageSetting() async throws {
         let (defaults, suiteName) = try makeIsolatedDefaults()
         defer { removeIsolatedDefaults(defaults, suiteName: suiteName) }

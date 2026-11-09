@@ -8,7 +8,10 @@ struct GitRefreshErrorPropagationTests {
     private func makeWorkspaceOutsideAnyRepository(_ directory: URL) throws -> (WorkspaceDocument, SourceControlManager) {
         let workspace = try HostedViewFixture.makeWorkspace(in: directory)
         let editorManager = try #require(workspace.editorManager)
-        let manager = SourceControlManager(workspaceURL: directory, editorManager: editorManager)
+        let (client, _) = ScmFakeGit.client(directory: directory) { _ in
+            ScmFakeGit.failure("fatal: not a git repository (or any of the parent directories): .git")
+        }
+        let manager = SourceControlManager(workspaceURL: directory, editorManager: editorManager, gitClient: client)
         workspace.sourceControlManager = manager
         return (workspace, manager)
     }

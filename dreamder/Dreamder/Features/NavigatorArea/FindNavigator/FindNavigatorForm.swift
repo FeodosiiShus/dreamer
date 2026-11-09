@@ -279,8 +279,12 @@ struct FindMultilineField: View {
         self.currentModifiers = currentModifiers
     }
 
-    static func activeModifiers() -> NSEvent.ModifierFlags {
-        NSApp.currentEvent?.modifierFlags ?? []
+    static func activeModifiers(event: NSEvent? = NSApp.currentEvent) -> NSEvent.ModifierFlags {
+        event?.modifierFlags ?? []
+    }
+
+    static func borderColor(isFocused: Bool) -> Color {
+        isFocused ? Islands.accent : Islands.popupBorder
     }
 
     func submitOnReturn() -> KeyPress.Result {
@@ -327,7 +331,7 @@ struct FindMultilineField: View {
         }
         .overlay {
             RoundedRectangle(cornerRadius: Islands.controlRadius)
-                .stroke(focus.wrappedValue ? Islands.accent : Islands.popupBorder, lineWidth: 1)
+                .stroke(Self.borderColor(isFocused: focus.wrappedValue), lineWidth: 1)
         }
     }
 }

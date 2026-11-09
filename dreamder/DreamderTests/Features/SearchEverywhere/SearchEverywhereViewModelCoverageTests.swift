@@ -4,7 +4,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-private final class ActionCounter {
+final class ActionCounter {
     var performed = 0
     var dismissals = 0
 }
@@ -14,7 +14,7 @@ private final class ActionCounter {
 struct SearchEverywhereViewModelCoverageTests {
     private static let previewKey = "dreamder.searchEverywhere.showPreview"
 
-    private func makeModel(
+    func makeModel(
         workspace: WorkspaceDocument?,
         mode: SearchEverywhereMode = .everywhere,
         actions: [SearchEverywhereAction] = []
@@ -205,48 +205,6 @@ struct SearchEverywhereViewModelCoverageTests {
 
             model.query = "zzzzqqq"
             try await eventually { model.flatItems.isEmpty }
-        }
-    }
-
-    @Test
-    func recentFilesOfAWorkspaceWithoutAFolderMatchByFileName() async throws {
-        try await withTempDir { dir in
-            let workspace = WorkspaceDocument()
-            let file = dir.appending(path: "Standalone.swift")
-            try "struct Standalone {}\n".write(to: file, atomically: true, encoding: .utf8)
-            let editorManager = try #require(workspace.editorManager)
-            editorManager.openTab(item: CEWorkspaceFile(url: file))
-            let model = try makeModel(workspace: workspace, mode: .recentFiles)
-
-            model.start(on: .files)
-
-            #expect(model.flatItems.map(\.title) == ["Standalone.swift"])
-            #expect(model.flatItems.map(\.detail) == [""])
-
-            model.query = "stand"
-            try await eventually { model.flatItems.map(\.title) == ["Standalone.swift"] }
-
-            model.query = "zzzzqqq"
-            try await eventually { model.flatItems.isEmpty }
-        }
-    }
-
-    @Test
-    func textResultsOfAScopeWithoutAFolderShowTheBareFileName() async throws {
-        try await withTempDir { dir in
-            try touch(dir, "Notes.md", "first\nthe needle line\n")
-            let workspace = WorkspaceDocument()
-            workspace.fileScope = WorkspaceFileScope(rootURL: dir)
-            defer { workspace.tearDownFileScope() }
-            let model = try makeModel(workspace: workspace)
-            model.start(on: .text)
-
-            model.query = "needle"
-
-            try await eventually { !model.flatItems.isEmpty }
-            let item = try #require(model.flatItems.first)
-            #expect(item.detail == "Notes.md:2")
-            #expect(item.kind == .text)
         }
     }
 }

@@ -7,12 +7,13 @@
 
 import Foundation
 
-enum PackageManagerError: Error, LocalizedError {
+nonisolated enum PackageManagerError: Error, LocalizedError {
     case unknown
     case packageManagerNotInstalled
     case initializationFailed(String)
     case installationFailed(String)
     case invalidConfiguration
+    case unsafeValue(String)
 
     var errorDescription: String? {
         switch self {
@@ -26,6 +27,8 @@ enum PackageManagerError: Error, LocalizedError {
             "Package installation failed."
         case .invalidConfiguration:
             "The package registry contained an invalid installation configuration."
+        case .unsafeValue(let value):
+            "The package registry contained a value that is not allowed: \(value)"
         }
     }
 
@@ -40,6 +43,8 @@ enum PackageManagerError: Error, LocalizedError {
         case .installationFailed(let string):
             string
         case .invalidConfiguration:
+            nil
+        case .unsafeValue:
             nil
         }
     }

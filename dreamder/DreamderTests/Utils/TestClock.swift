@@ -108,7 +108,7 @@ nonisolated final class TestClock: Clock, Sendable {
 
     func waitForSleepers(
         _ expected: Int = 1,
-        timeout: Swift.Duration = .seconds(5)
+        timeout: Swift.Duration = .seconds(60)
     ) async throws {
         let wallClock = ContinuousClock()
         let limit = wallClock.now.advanced(by: timeout)

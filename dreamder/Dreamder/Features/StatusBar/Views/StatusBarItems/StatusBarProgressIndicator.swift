@@ -45,11 +45,17 @@ struct StatusBarProgressPopover: View {
 
 struct StatusBarProgressIndicator: View {
     let handler: TaskNotificationHandler
+    private let isHovering: Bool
 
     @State private var presenter: StatusBarProgressPresenter
 
-    init(handler: TaskNotificationHandler, presenter: StatusBarProgressPresenter = StatusBarProgressPresenter()) {
+    init(
+        handler: TaskNotificationHandler,
+        presenter: StatusBarProgressPresenter = StatusBarProgressPresenter(),
+        isHovering: Bool = false
+    ) {
         self.handler = handler
+        self.isHovering = isHovering
         self._presenter = State(initialValue: presenter)
     }
 
@@ -72,25 +78,18 @@ struct StatusBarProgressIndicator: View {
         let current = model
         Group {
             if let first = current.first {
-                Button(action: presenter.toggle) {
+                StatusBarWidgetButton(isHovering: isHovering, action: presenter.toggle) { hovering in
                     HStack(spacing: 6) {
-                        Text(first.title)
-                            .font(Islands.smallFont)
-                            .foregroundStyle(Islands.secondaryForeground)
-                            .lineLimit(1)
+                        StatusBarWidgetText(text: first.title, isHovering: hovering)
                             .truncationMode(.tail)
                             .frame(maxWidth: 200, alignment: .trailing)
                         StatusBarProgressBar(notification: first)
                             .frame(width: 60)
                         if let counter = current.counterText {
-                            Text(counter)
-                                .font(Islands.smallFont)
-                                .foregroundStyle(Islands.secondaryForeground)
+                            StatusBarWidgetText(text: counter, isHovering: hovering)
                         }
                     }
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
                 .help(current.summaryHelp)
                 .popover(isPresented: popoverBinding, arrowEdge: .top, content: popoverContent)
                 .accessibilityIdentifier("StatusBarProgress")

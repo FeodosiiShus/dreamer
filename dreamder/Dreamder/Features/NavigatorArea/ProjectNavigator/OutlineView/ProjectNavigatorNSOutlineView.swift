@@ -46,17 +46,20 @@ final class ProjectNavigatorNSOutlineView: NSOutlineView, NSMenuItemValidation {
 
     @objc
     func copy(_ sender: Any?) {
-        controller?.copyToClipboard(controller?.selectedFiles ?? [])
+        guard let controller else { return }
+        controller.copyToClipboard(controller.selectedFiles)
     }
 
     @objc
     func cut(_ sender: Any?) {
-        controller?.cutToClipboard(controller?.selectedFiles ?? [])
+        guard let controller else { return }
+        controller.cutToClipboard(controller.selectedFiles)
     }
 
     @objc
     func paste(_ sender: Any?) {
-        controller?.pasteFromClipboard(into: controller?.selectedFiles.first)
+        guard let controller else { return }
+        controller.pasteFromClipboard(into: controller.selectedFiles.first)
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {

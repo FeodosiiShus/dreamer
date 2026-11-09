@@ -10,7 +10,7 @@ import CodeEditSymbols
 
 struct FeatureIcon: View {
     private let content: IconContent
-    private let color: Color?
+    private let background: AnyShapeStyle
     private let size: CGFloat
 
     init(
@@ -19,7 +19,7 @@ struct FeatureIcon: View {
         size: CGFloat? = nil
     ) {
         self.content = .symbol(symbol)
-        self.color = color ?? .accentColor
+        self.background = AnyShapeStyle((color ?? .accentColor).gradient)
         self.size = size ?? 20
     }
 
@@ -30,7 +30,7 @@ struct FeatureIcon: View {
         size: CGFloat? = nil
     ) {
         self.content = .text(text, textColor: textColor)
-        self.color = color ?? .accentColor
+        self.background = AnyShapeStyle((color ?? .accentColor).gradient)
         self.size = size ?? 20
     }
 
@@ -39,7 +39,7 @@ struct FeatureIcon: View {
         size: CGFloat? = nil
     ) {
         self.content = .image(image)
-        self.color = nil
+        self.background = AnyShapeStyle(Islands.islandRaised)
         self.size = size ?? 20
     }
 
@@ -79,15 +79,6 @@ struct FeatureIcon: View {
                 y: size / 40
             )
             .frame(width: size, height: size)
-    }
-
-    private var background: AnyShapeStyle {
-        switch content {
-        case .symbol, .text:
-            return AnyShapeStyle((color ?? .accentColor).gradient)
-        case .image:
-            return AnyShapeStyle(Islands.islandRaised)
-        }
     }
 }
 

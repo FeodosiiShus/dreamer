@@ -16,10 +16,9 @@ nonisolated extension PackageSourceParser {
         guard let firstCharacter = pkgString.first, firstCharacter != "?" else { return .unknown }
 
         // Split into package@version and parameters
-        let components = pkgString.split(separator: "?", maxSplits: 1)
-        guard let packageVersionString = components.first else { return .unknown }
-        let packageVersion = String(packageVersionString)
-        let parameters = components.count > 1 ? String(components[1]) : ""
+        let components = splitOnFirst(pkgString, separator: "?")
+        let packageVersion = String(components.head)
+        let parameters = components.tail.map(String.init) ?? ""
 
         let (packageName, version) = parseNPMPackageNameAndVersion(packageVersion)
 
@@ -66,10 +65,10 @@ nonisolated extension PackageSourceParser {
 
         if packageVersion.contains("@") && !packageVersion.hasPrefix("@") {
             // Regular package with version: package@1.0.0
-            let parts = packageVersion.split(separator: "@", maxSplits: 1)
-            packageName = parts.first.map(String.init) ?? packageVersion
-            if parts.count > 1 {
-                version = String(parts[1])
+            let parts = splitOnFirst(Substring(packageVersion), separator: "@")
+            packageName = String(parts.head)
+            if let versionPart = parts.tail {
+                version = String(versionPart)
             }
         } else if packageVersion.hasPrefix("@") {
             // Scoped package: @org/package@1.0.0

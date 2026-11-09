@@ -18,10 +18,10 @@ final class CargoPackageManager: PackageManagerProtocol {
         guard case .standardPackage(let source) = installationMethod else {
             throw PackageManagerError.invalidConfiguration
         }
-        let packagePath = installationDirectory.appending(path: source.entryName)
+        let packagePath = try RegistryInputValidation.child(of: installationDirectory, named: source.entryName)
         return [
             initialize(in: packagePath),
-            runCargoInstall(source, in: packagePath)
+            try runCargoInstall(source, in: packagePath)
         ]
     }
 
@@ -30,7 +30,7 @@ final class CargoPackageManager: PackageManagerProtocol {
             name: "",
             confirmation: .none
         ) { model in
-            let versionOutput = try await model.runCommand("cargo --version")
+            let versionOutput = try await model.run(["cargo", "--version"])
             let output = versionOutput.reduce(into: "") {
                 $0 += $1.trimmingCharacters(in: .whitespacesAndNewlines)
             }
@@ -50,9 +50,32 @@ final class CargoPackageManager: PackageManagerProtocol {
         }
     }
 
-    func runCargoInstall(_ source: PackageSource, in packagePath: URL) -> PackageManagerInstallStep {
+    func runCargoInstall(_ source: PackageSource, in packagePath: URL) throws -> PackageManagerInstallStep {
         let qualifiedPackageName = "\(source.pkgName)@\(source.version)"
 
+        var cargoArgs = ["cargo", "install", "--root", "."]
+        if let gitRef = source.gitReference, let repoUrl = source.repositoryUrl {
+            cargoArgs.append(contentsOf: ["--git", try RegistryInputValidation.httpsURL(repoUrl)])
+            switch gitRef {
+            case .tag(let tag):
+                cargoArgs.append(contentsOf: ["--tag", try RegistryInputValidation.argument(tag)])
+            case .revision(let rev):
+                cargoArgs.append(contentsOf: ["--rev", try RegistryInputValidation.argument(rev)])
+            }
+        } else {
+            let name = try RegistryInputValidation.argument(source.pkgName)
+            let version = try RegistryInputValidation.argument(source.version)
+            cargoArgs.append("\(name)@\(version)")
+        }
+
+        if let features = source.options["features"] {
+            cargoArgs.append(contentsOf: ["--features", try RegistryInputValidation.argument(features)])
+        }
+        if source.options["locked"] == "true" {
+            cargoArgs.append("--locked")
+        }
+
+        let arguments = cargoArgs
         return PackageManagerInstallStep(
             name: "Install Package Using cargo",
             confirmation: .required(
@@ -60,29 +83,7 @@ final class CargoPackageManager: PackageManagerProtocol {
                 + "\nAllow Dreamder to install this package?"
             )
         ) { model in
-            var cargoArgs = ["cargo", "install", "--root", "."]
-
-            // If this is a git-based package
-            if let gitRef = source.gitReference, let repoUrl = source.repositoryUrl {
-                cargoArgs.append(contentsOf: ["--git", repoUrl])
-                switch gitRef {
-                case .tag(let tag):
-                    cargoArgs.append(contentsOf: ["--tag", tag])
-                case .revision(let rev):
-                    cargoArgs.append(contentsOf: ["--rev", rev])
-                }
-            } else {
-                cargoArgs.append(qualifiedPackageName)
-            }
-
-            if let features = source.options["features"] {
-                cargoArgs.append(contentsOf: ["--features", features])
-            }
-            if source.options["locked"] == "true" {
-                cargoArgs.append("--locked")
-            }
-
-            try await model.executeInDirectory(in: packagePath.path(percentEncoded: false), cargoArgs)
+            try await model.run(arguments, in: packagePath)
         }
     }
 }

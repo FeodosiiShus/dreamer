@@ -35,6 +35,28 @@ struct CEWorkspaceFileCoverageTests {
     }
 
     @Test
+    func anUnknownSystemSymbolFallsBackToTheDocumentSymbol() {
+        let known = CEWorkspaceFile.systemSymbolImage(named: "folder")
+        let fallback = CEWorkspaceFile.systemSymbolImage(named: "dreamder.no.such.symbol")
+
+        #expect(known.accessibilityDescription == "folder")
+        #expect(fallback.accessibilityDescription == "doc")
+    }
+
+    @Test
+    func withoutAnySystemSymbolTheIconIsEmpty() {
+        var asked: [String] = []
+
+        let image = CEWorkspaceFile.systemSymbolImage(named: "anything") { name in
+            asked.append(name)
+            return nil
+        }
+
+        #expect(asked == ["anything", "doc"])
+        #expect(image.size == .zero)
+    }
+
+    @Test
     func swiftUIIconRendersForCustomAndSystemSymbols() {
         for path in ["/tmp/data.json", "/tmp/App.swift"] {
             let renderer = ImageRenderer(content: file(path).icon.frame(width: 16, height: 16))

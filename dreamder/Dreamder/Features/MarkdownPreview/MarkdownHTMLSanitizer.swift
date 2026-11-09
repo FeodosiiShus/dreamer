@@ -129,126 +129,224 @@ nonisolated enum MarkdownHTMLTag {
 }
 
 nonisolated enum MarkdownHTMLSanitizer {
+    static let allowedElements: Set<String> = [
+        "a", "abbr", "article", "aside", "b", "bdo", "blockquote", "br", "caption", "center", "cite", "code", "col",
+        "colgroup", "dd", "del", "details", "dfn", "div", "dl", "dt", "em", "figcaption", "figure", "footer",
+        "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "i", "img", "input", "ins", "kbd", "li", "main", "mark",
+        "nav", "ol", "p", "pre", "q", "rp", "rt", "ruby", "s", "samp", "section", "small", "span", "strike",
+        "strong", "sub", "summary", "sup", "table", "tbody", "td", "tfoot", "th", "thead", "time", "tr", "tt", "u",
+        "ul", "var", "wbr"
+    ]
+
+    static let contentDroppedElements: Set<String> = ["script", "style"]
+
+    static let globalAttributes: Set<String> = [
+        "id", "class", "title", "lang", "dir", "align", "valign", "width", "height", "role", "md-src-pos"
+    ]
+
+    static let elementAttributes: [String: Set<String>] = [
+        "a": ["href"],
+        "img": ["src", "alt"],
+        "td": ["colspan", "rowspan", "scope", "headers", "abbr", "nowrap"],
+        "th": ["colspan", "rowspan", "scope", "headers", "abbr", "nowrap"],
+        "table": ["border", "cellpadding", "cellspacing", "summary"],
+        "col": ["span"],
+        "colgroup": ["span"],
+        "ol": ["start", "reversed", "type"],
+        "li": ["value"],
+        "input": ["type", "checked", "disabled"],
+        "details": ["open"],
+        "time": ["datetime"],
+        "ins": ["datetime"],
+        "del": ["datetime"]
+    ]
+
+    static let linkSchemes: Set<String> = ["http", "https", "mailto"]
+    static let imageSchemes: Set<String> = ["http", "https"]
+
+    private struct Attribute {
+        let name: String
+        let value: String
+        let text: String
+    }
+
     static func sanitize(_ html: String) -> String {
-        removingEventHandlers(removingScriptElements(html))
-    }
-
-    static func removingScriptElements(_ html: String) -> String {
         let characters = Array(html)
         var result = ""
         var index = 0
         while index < characters.count {
-            guard characters[index] == "<",
-                  let tag = MarkdownHTMLTag.parse(characters, at: index),
-                  !tag.isClosing,
-                  tag.name.lowercased() == "script" else {
-                result.append(characters[index])
+            let character = characters[index]
+            guard character == "<" else {
+                result.append(character)
                 index += 1
                 continue
             }
-            if tag.text.hasSuffix("/>") {
-                index = tag.endIndex + 1
+            guard let tag = MarkdownHTMLTag.parse(characters, at: index) else {
+                result += startsMarkup(characters, after: index) ? "&lt;" : "<"
+                index += 1
                 continue
             }
-            var search = tag.endIndex + 1
-            var closingEnd: Int?
-            while search < characters.count {
-                if characters[search] == "<",
-                   let closing = MarkdownHTMLTag.parse(characters, at: search),
-                   closing.isClosing,
-                   closing.name.lowercased() == "script" {
-                    closingEnd = closing.endIndex
-                    break
-                }
-                search += 1
+            let element = tag.name.lowercased()
+            if tag.name.hasPrefix("#") {
+                result += specialMarkup(tag)
+            } else if contentDroppedElements.contains(element) {
+                index = tag.isClosing ? tag.endIndex : endOfDroppedElement(characters, opening: tag, element: element)
+            } else if allowedElements.contains(element) {
+                result += tag.isClosing ? tag.text : sanitizedStartTag(tag, element: element)
             }
-            index = closingEnd.map { $0 + 1 } ?? characters.count
+            index = max(index, tag.endIndex) + 1
         }
         return result
     }
 
-    static func removingEventHandlers(_ html: String) -> String {
-        let characters = Array(html)
-        var result = ""
-        var index = 0
-        while index < characters.count {
-            guard characters[index] == "<",
-                  let tag = MarkdownHTMLTag.parse(characters, at: index) else {
-                result.append(characters[index])
-                index += 1
-                continue
-            }
-            result += strippingEventHandlers(from: tag.text)
-            index = tag.endIndex + 1
-        }
-        return result
+    private static func startsMarkup(_ characters: [Character], after index: Int) -> Bool {
+        guard index + 1 < characters.count else { return false }
+        let next = characters[index + 1]
+        return (next.isASCII && next.isLetter) || next == "/" || next == "!" || next == "?"
     }
 
-    static func strippingEventHandlers(from tag: String) -> String {
-        let characters = Array(tag)
-        var index = 1
-        if index < characters.count, characters[index] == "/" {
-            index += 1
+    private static func endOfDroppedElement(
+        _ characters: [Character],
+        opening: MarkdownHTMLTag.ParsedTag,
+        element: String
+    ) -> Int {
+        if opening.text.hasSuffix("/>") {
+            return opening.endIndex
         }
-        guard index < characters.count, MarkdownHTMLTag.isAttributeNameStart(characters[index]) else {
-            return tag
+        var search = opening.endIndex + 1
+        while search < characters.count {
+            if characters[search] == "<",
+               let closing = MarkdownHTMLTag.parse(characters, at: search),
+               closing.isClosing,
+               closing.name.lowercased() == element {
+                return closing.endIndex
+            }
+            search += 1
         }
-        while index < characters.count, MarkdownHTMLTag.isAttributeNameCharacter(characters[index]) {
-            index += 1
-        }
+        return characters.count
+    }
 
-        var result = String(characters[0..<index])
+    private static func specialMarkup(_ tag: MarkdownHTMLTag.ParsedTag) -> String {
+        let text = Array(tag.text)
+        switch tag.name {
+        case "#comment":
+            let body = String(text.dropFirst(4).dropLast(3))
+            let isSafe = !body.hasPrefix(">") && !body.hasPrefix("->") && !body.contains("--!>")
+            return isSafe ? tag.text : ""
+        case "#declaration":
+            return tag.text
+        default:
+            return text.dropLast().contains(">") ? "" : tag.text
+        }
+    }
+
+    private static func sanitizedStartTag(_ tag: MarkdownHTMLTag.ParsedTag, element: String) -> String {
+        let characters = Array(tag.text)
+        var index = 1 + tag.name.count
+        var kept = String(characters[0..<index])
+        var isCheckbox = false
+        var tail = ""
         while index < characters.count {
             let whitespaceStart = index
-            while index < characters.count, characters[index].isWhitespace {
-                index += 1
-            }
-            guard index < characters.count else {
-                result += String(characters[whitespaceStart...])
+            index = skipWhitespace(in: characters, from: index)
+            guard index < characters.count, characters[index] != ">", characters[index] != "/" else {
+                tail = String(characters[whitespaceStart...])
                 break
             }
-            if characters[index] == ">" || characters[index] == "/" {
-                result += String(characters[whitespaceStart...])
-                break
-            }
-
             let nameStart = index
+            index += 1
             while index < characters.count, MarkdownHTMLTag.isAttributeNameCharacter(characters[index]) {
                 index += 1
             }
-            guard index > nameStart else {
-                result += String(characters[whitespaceStart...])
-                break
-            }
             let name = String(characters[nameStart..<index]).lowercased()
-            while index < characters.count, characters[index].isWhitespace {
-                index += 1
+            let value = attributeValue(in: characters, index: &index)
+            let attribute = Attribute(name: name, value: value, text: String(characters[whitespaceStart..<index]))
+            guard isAllowed(attribute, on: element) else { continue }
+            if name == "type", value.lowercased() == "checkbox" {
+                isCheckbox = true
             }
-            if index < characters.count, characters[index] == "=" {
-                index += 1
-                while index < characters.count, characters[index].isWhitespace {
-                    index += 1
-                }
-                if index < characters.count, characters[index] == "\"" || characters[index] == "'" {
-                    let quote = characters[index]
-                    index += 1
-                    while index < characters.count, characters[index] != quote {
-                        index += 1
-                    }
-                    if index < characters.count {
-                        index += 1
-                    }
-                } else {
-                    while index < characters.count, !characters[index].isWhitespace, characters[index] != ">" {
-                        index += 1
-                    }
-                }
-            }
+            kept += attribute.text
+        }
+        if element == "input", !isCheckbox {
+            return ""
+        }
+        return kept + tail
+    }
 
-            if name.hasPrefix("on") {
-                continue
+    private static func skipWhitespace(in characters: [Character], from start: Int) -> Int {
+        var index = start
+        while index < characters.count, characters[index].isWhitespace {
+            index += 1
+        }
+        return index
+    }
+
+    private static func attributeValue(in characters: [Character], index: inout Int) -> String {
+        let lookahead = skipWhitespace(in: characters, from: index)
+        guard lookahead < characters.count, characters[lookahead] == "=" else { return "" }
+        index = skipWhitespace(in: characters, from: lookahead + 1)
+        if index < characters.count, characters[index] == "\"" || characters[index] == "'" {
+            let quote = characters[index]
+            index += 1
+            let valueStart = index
+            while index < characters.count, characters[index] != quote {
+                index += 1
             }
-            result += String(characters[whitespaceStart..<index])
+            let value = String(characters[valueStart..<index])
+            index = min(index + 1, characters.count)
+            return value
+        }
+        let valueStart = index
+        while index < characters.count, !characters[index].isWhitespace, characters[index] != ">" {
+            index += 1
+        }
+        return String(characters[valueStart..<index])
+    }
+
+    private static func isAllowed(_ attribute: Attribute, on element: String) -> Bool {
+        if attribute.name.hasPrefix("aria-") {
+            return true
+        }
+        guard globalAttributes.contains(attribute.name) || elementAttributes[element]?.contains(attribute.name) == true
+        else { return false }
+        switch (element, attribute.name) {
+        case ("a", "href"):
+            return isSafeURL(attribute.value, schemes: linkSchemes, allowsInlineImages: false)
+        case ("img", "src"):
+            return isSafeURL(attribute.value, schemes: imageSchemes, allowsInlineImages: true)
+        default:
+            return true
+        }
+    }
+
+    static func isSafeURL(_ value: String, schemes: Set<String>, allowsInlineImages: Bool) -> Bool {
+        let compact = String(
+            decodingEntities(value).unicodeScalars
+                .filter { $0.value > 0x20 && $0.value != 0x7F }
+                .map(Character.init)
+        )
+        let prefix = compact.prefix { !"/?#".contains($0) }
+        guard !prefix.contains("&") else { return false }
+        guard let colon = prefix.firstIndex(of: ":") else { return true }
+        let scheme = prefix[..<colon].lowercased()
+        if schemes.contains(scheme) {
+            return true
+        }
+        return allowsInlineImages && scheme == "data" && compact.lowercased().hasPrefix("data:image/")
+    }
+
+    private static func decodingEntities(_ value: String) -> String {
+        let characters = Array(value)
+        var result = ""
+        var index = 0
+        while index < characters.count {
+            if characters[index] == "&", let entity = MarkdownHTMLEntities.decode(characters, at: index) {
+                result += entity.text
+                index = entity.end
+            } else {
+                result.append(characters[index])
+                index += 1
+            }
         }
         return result
     }

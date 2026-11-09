@@ -156,7 +156,7 @@ nonisolated struct ConsoleFileLinkDetector: Sendable {
     }
 
     private static func looksLikeFile(_ path: String) -> Bool {
-        let component = path.lastIndex(of: "/").map { path[path.index(after: $0)...] } ?? path[...]
+        let component = path.lastIndex(of: "/").map { path[path.index(after: $0)...] } ?? Substring(path)
         guard !component.isEmpty else { return false }
         if path.contains("/") { return component.contains { $0.isLetter } }
         guard let dot = component.lastIndex(of: ".") else { return false }

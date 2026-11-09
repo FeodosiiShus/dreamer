@@ -27,6 +27,7 @@ struct CEActiveTaskCoverageTests {
         let cases: [(Int32, CETaskStatus)] = [
             (0, .finished),
             (2, .notRunning),
+            (9, .notRunning),
             (15, .notRunning),
             (130, .notRunning),
             (143, .notRunning),
@@ -74,7 +75,8 @@ struct CEActiveTaskCoverageTests {
         let expectations: [(Int32, String)] = [
             (0, "Finished Running Coverage Task"),
             (2, "Coverage Task cancelled"),
-            (9, "Failed Running Coverage Task")
+            (9, "Coverage Task cancelled"),
+            (3, "Failed Running Coverage Task")
         ]
         for (terminationStatus, title) in expectations {
             let activeTask = CEActiveTask(task: fixture.makeTask(command: "true"))

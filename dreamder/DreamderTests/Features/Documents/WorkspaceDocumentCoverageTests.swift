@@ -4,52 +4,54 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-private final class ConfirmationLog {
-    var fileNames: [String] = []
-}
-
-@MainActor
 @Suite(.serialized, .uiGate)
 struct WorkspaceDocumentCoverageTests {
     @MainActor
-    private struct Harness {
+    struct Harness {
         let workspace: WorkspaceDocument
+        let files: [CEWorkspaceFile]
         let documents: [CodeFileDocument]
 
         func close() {
-            documents.forEach { $0.close() }
             workspace.close()
+            if let url = workspace.fileURL {
+                UserDefaults.standard.removeObject(forKey: WorkspaceDocument.workspaceStateKey(for: url))
+            }
         }
 
-        func markEdited(confirming log: ConfirmationLog, accepting: Bool) {
+        func markEdited(using confirmation: CloseConfirmationDouble) {
             for document in documents {
+                document.autosavingInPlace = { false }
+                document.content?.replaceCharacters(in: NSRange(location: 0, length: 0), with: "X")
                 document.updateChangeCount(.changeDone)
-                document.closeConfirmation = { edited in
-                    log.fileNames.append(edited.fileURL?.lastPathComponent ?? "")
-                    if accepting {
-                        edited.updateChangeCount(.changeCleared)
-                    }
-                    return accepting
-                }
             }
+            confirmation.install(on: documents)
         }
     }
 
-    private func makeHarness(in directory: URL, names: [String]) throws -> Harness {
+    func makeHarness(in directory: URL, names: [String]) throws -> Harness {
         for name in names {
             try "text of \(name)\n".write(to: directory.appending(path: name), atomically: true, encoding: .utf8)
         }
         let workspace = WorkspaceDocument()
         try workspace.read(from: directory, ofType: "")
         let manager = try #require(workspace.editorManager)
+        var files: [CEWorkspaceFile] = []
         var documents: [CodeFileDocument] = []
         for name in names {
             let path = directory.appending(path: name).path(percentEncoded: false)
             let file = try #require(workspace.workspaceFileManager?.getFile(path, createIfNotFound: true))
             manager.openTab(item: file)
+            files.append(file)
             documents.append(try #require(file.fileDocument))
         }
-        return Harness(workspace: workspace, documents: documents)
+        return Harness(workspace: workspace, files: files, documents: documents)
+    }
+
+    private func openDocuments(for url: URL) -> [CodeFileDocument] {
+        DreamderDocumentController.shared.documents
+            .compactMap { $0 as? CodeFileDocument }
+            .filter { $0.fileURL?.standardizedFileURL == url.standardizedFileURL }
     }
 
     @Test
@@ -58,7 +60,7 @@ struct WorkspaceDocumentCoverageTests {
             let workspace = WorkspaceDocument()
             try workspace.read(from: directory, ofType: "")
             let workspaceURL = try #require(workspace.fileURL)
-            let stateKey = "workspaceState-\(workspaceURL.absoluteString)"
+            let stateKey = WorkspaceDocument.workspaceStateKey(for: workspaceURL)
             let stored = NSRect(x: 40, y: 60, width: 1000, height: 700)
             workspace.addToWorkspaceState(key: .workspaceWindowSize, value: NSStringFromRect(stored))
 
@@ -71,6 +73,50 @@ struct WorkspaceDocumentCoverageTests {
             }
             #expect(window.frame.size == stored.size)
         }
+    }
+
+    @Test
+    func theStateKeyIsBuiltFromTheStandardizedUrl() {
+        let url = URL(filePath: "/work/./a/../b/", directoryHint: .isDirectory)
+        let key = WorkspaceDocument.workspaceStateKey(for: url)
+
+        #expect(key == "workspaceState-file:///work/b/")
+    }
+
+    @Test
+    func aWorkspaceWithoutALocationKeepsItsStateInMemoryAndPersistsNothing() throws {
+        let (defaults, suiteName) = try makeIsolatedDefaults()
+        defer { removeIsolatedDefaults(defaults, suiteName: suiteName) }
+        let first = WorkspaceDocument()
+        let second = WorkspaceDocument()
+        first.stateDefaults = defaults
+        second.stateDefaults = defaults
+
+        first.addToWorkspaceState(key: .workspaceWindowSize, value: "stored")
+
+        #expect(first.getFromWorkspaceState(.workspaceWindowSize) as? String == "stored")
+        #expect(second.getFromWorkspaceState(.workspaceWindowSize) == nil)
+        #expect(!defaults.dictionaryRepresentation().keys.contains { $0.hasPrefix("workspaceState-") })
+
+        first.addToWorkspaceState(key: .workspaceWindowSize, value: nil)
+
+        #expect(first.getFromWorkspaceState(.workspaceWindowSize) == nil)
+    }
+
+    @Test
+    func aWorkspaceWithALocationPersistsItsStateInTheInjectedDefaults() throws {
+        let (defaults, suiteName) = try makeIsolatedDefaults()
+        defer { removeIsolatedDefaults(defaults, suiteName: suiteName) }
+        let location = URL(filePath: "/work/injected", directoryHint: .isDirectory)
+        let workspace = WorkspaceDocument()
+        workspace.fileURL = location
+        workspace.stateDefaults = defaults
+
+        workspace.addToWorkspaceState(key: .workspaceWindowSize, value: "stored")
+
+        let stored = defaults.object(forKey: WorkspaceDocument.workspaceStateKey(for: location)) as? [String: Any]
+        #expect(workspace.getFromWorkspaceState(.workspaceWindowSize) as? String == "stored")
+        #expect(stored?[WorkspaceStateKey.workspaceWindowSize.rawValue] as? String == "stored")
     }
 
     @Test
@@ -98,133 +144,79 @@ struct WorkspaceDocumentCoverageTests {
     }
 
     @Test
-    func theCloseDecisionIsStoredThroughTheContextPointer() {
-        let workspace = WorkspaceDocument()
-        let context = ContextToken(initial: true)
-
-        workspace.document(NSDocument(), shouldClose: false, contextInfo: context.raw)
-        #expect(context.pointer.pointee == false)
-
-        workspace.document(NSDocument(), shouldClose: true, contextInfo: context.raw)
-        #expect(context.pointer.pointee == true)
-    }
-
-    @Test
-    func everyEditedFileIsConfirmedAndTheDelegateLearnsTheWorkspaceIsClean() throws {
+    func closingAWorkspaceClosesItsDocumentsAndReopeningLeavesOneDocumentPerUrl() throws {
         try withTempDir { directory in
-            let harness = try makeHarness(in: directory, names: ["a.txt", "b.txt"])
-            defer { harness.close() }
-            let log = ConfirmationLog()
-            harness.markEdited(confirming: log, accepting: true)
-            let recorder = DocumentCloseRecorder()
-            let context = ContextToken()
+            let url = directory.appending(path: "a.txt")
+            let first = try makeHarness(in: directory, names: ["a.txt"])
+            #expect(openDocuments(for: url).count == 1)
 
-            harness.workspace.shouldCloseWindowController(
-                NSWindowController(),
-                delegate: recorder,
-                shouldClose: DocumentCloseRecorder.selector,
-                contextInfo: context.raw
-            )
+            first.close()
 
-            #expect(log.fileNames.sorted() == ["a.txt", "b.txt"])
-            #expect(recorder.calls.map(\.shouldClose) == [true])
-            #expect(recorder.calls.first?.document === harness.workspace)
-            #expect(recorder.calls.first?.contextInfo == context.raw)
+            #expect(openDocuments(for: url).isEmpty)
+            #expect(first.files.allSatisfy { $0.fileDocument == nil })
+
+            let second = try makeHarness(in: directory, names: ["a.txt"])
+            defer { second.close() }
+
+            #expect(openDocuments(for: url).count == 1)
+            #expect(openDocuments(for: url).first === second.documents.first)
         }
     }
 
     @Test
-    func cancellingTheFirstConfirmationStopsAskingAndKeepsTheWorkspaceOpen() throws {
-        try withTempDir { directory in
-            let harness = try makeHarness(in: directory, names: ["a.txt", "b.txt"])
-            defer { harness.close() }
-            let log = ConfirmationLog()
-            harness.markEdited(confirming: log, accepting: false)
-            let recorder = DocumentCloseRecorder()
-            let context = ContextToken()
-
-            harness.workspace.shouldCloseWindowController(
-                NSWindowController(),
-                delegate: recorder,
-                shouldClose: DocumentCloseRecorder.selector,
-                contextInfo: context.raw
-            )
-
-            #expect(log.fileNames.count == 1)
-            #expect(recorder.calls.map(\.shouldClose) == [false])
-        }
-    }
-
-    @Test
-    func aWorkspaceWithoutEditedFilesAsksNothingAndMayClose() throws {
+    func loadingTheSameUrlTwiceReusesTheOpenDocument() throws {
         try withTempDir { directory in
             let harness = try makeHarness(in: directory, names: ["a.txt"])
             defer { harness.close() }
-            let log = ConfirmationLog()
-            harness.documents.forEach { document in
-                document.closeConfirmation = { edited in
-                    log.fileNames.append(edited.fileURL?.lastPathComponent ?? "")
-                    return false
-                }
-            }
-            let recorder = DocumentCloseRecorder()
-            let context = ContextToken()
+            let url = directory.appending(path: "a.txt")
+            let another = CEWorkspaceFile(url: url)
 
-            harness.workspace.shouldCloseWindowController(
-                NSWindowController(),
-                delegate: recorder,
-                shouldClose: DocumentCloseRecorder.selector,
-                contextInfo: context.raw
-            )
+            try another.loadCodeFile()
 
-            #expect(log.fileNames.isEmpty)
-            #expect(recorder.calls.map(\.shouldClose) == [true])
+            #expect(another.fileDocument === harness.documents.first)
+            #expect(openDocuments(for: url).count == 1)
         }
     }
 
     @Test
-    func aWorkspaceWithoutAnEditorManagerReportsThatItCannotClose() throws {
+    func aDocumentStaysOpenWhileAnotherOpenWorkspaceStillShowsIt() throws {
+        try withTempDir { directory in
+            let url = directory.appending(path: "a.txt")
+            let first = try makeHarness(in: directory, names: ["a.txt"])
+            let second = try makeHarness(in: directory, names: ["a.txt"])
+            defer { second.close() }
+            let document = try #require(first.documents.first)
+            let secondDocument = try #require(second.documents.first)
+            DreamderDocumentController.shared.addDocument(first.workspace)
+            DreamderDocumentController.shared.addDocument(second.workspace)
+
+            #expect(document === secondDocument)
+            #expect(document.isInUse(outside: first.workspace))
+            #expect(first.workspace.isShowing(document))
+
+            let firstFile = try #require(first.files.first)
+            try #require(first.workspace.editorManager).activeEditor.closeTab(file: firstFile)
+
+            #expect(openDocuments(for: url).count == 1)
+
+            first.close()
+
+            #expect(openDocuments(for: url).count == 1)
+            #expect(!document.isInUse(outside: second.workspace))
+        }
+    }
+
+    @Test
+    func aClosedWorkspaceShowsNoDocument() throws {
         try withTempDir { directory in
             let harness = try makeHarness(in: directory, names: ["a.txt"])
-            defer { harness.close() }
-            harness.workspace.editorManager = nil
-            let recorder = DocumentCloseRecorder()
-            let context = ContextToken()
+            let document = try #require(harness.documents.first)
+            #expect(harness.workspace.isShowing(document))
 
-            harness.workspace.shouldCloseWindowController(
-                NSWindowController(),
-                delegate: recorder,
-                shouldClose: DocumentCloseRecorder.selector,
-                contextInfo: context.raw
-            )
+            harness.close()
 
-            #expect(recorder.calls.map(\.shouldClose) == [false])
-        }
-    }
-
-    @Test
-    func aCloseRequestWithoutContextInfoIsHandledByTheSystem() async throws {
-        try await withTempDir { directory in
-            let workspace = WorkspaceDocument()
-            try workspace.read(from: directory, ofType: "")
-            workspace.makeWindowControllers()
-            let controller = try #require(workspace.windowControllers.first)
-            controller.window?.isReleasedWhenClosed = false
-            defer {
-                controller.window?.close()
-                workspace.close()
-            }
-            let recorder = DocumentCloseRecorder()
-
-            workspace.shouldCloseWindowController(
-                controller,
-                delegate: recorder,
-                shouldClose: DocumentCloseRecorder.selector,
-                contextInfo: nil
-            )
-
-            try await eventually(timeout: .seconds(30)) { recorder.calls.count == 1 }
-            #expect(recorder.calls.first?.shouldClose == true)
+            #expect(harness.workspace.editorManager == nil)
+            #expect(!harness.workspace.isShowing(document))
         }
     }
 }

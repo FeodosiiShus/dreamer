@@ -23,4 +23,28 @@ struct PressActionsTests {
         #expect(HostedView.pixelsDiffer(plain, withRelease) == false)
         #expect(HostedView.pixelsDiffer(plain, pressOnly) == false)
     }
+
+    @Test
+    func dragChangeFiresPressAndDragEndFiresReleaseWhenProvided() {
+        let counter = PressCounter()
+        let withRelease = PressActions(
+            onPress: { counter.presses += 1 },
+            onRelease: { counter.releases += 1 }
+        )
+        let pressOnly = PressActions(onPress: { counter.presses += 1 })
+
+        withRelease.pressChanged(0)
+        withRelease.pressEnded(0)
+        pressOnly.pressChanged(0)
+        pressOnly.pressEnded(0)
+
+        #expect(counter.presses == 2)
+        #expect(counter.releases == 1)
+    }
+}
+
+@MainActor
+private final class PressCounter {
+    var presses = 0
+    var releases = 0
 }

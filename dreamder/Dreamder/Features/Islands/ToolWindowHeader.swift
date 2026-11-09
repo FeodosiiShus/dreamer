@@ -16,19 +16,22 @@ struct ToolWindowHeader<Tabs: View, Actions: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 0) {
             Text(title)
-                .font(Islands.headerTitleFont)
+                .font(Islands.toolWindowTitleFont)
                 .foregroundStyle(Islands.foreground)
                 .lineLimit(1)
                 .fixedSize()
+                .padding(.leading, Islands.headerLabelLeadingInset)
+                .padding(.trailing, Islands.headerLabelTrailingInset)
             tabs
-            Spacer(minLength: 8)
-            HStack(spacing: 2) {
+            Spacer(minLength: 0)
+            HStack(spacing: 0) {
                 actions
             }
+            .padding(.leading, Islands.headerToolbarLeadingInset)
+            .padding(.trailing, Islands.headerToolbarTrailingInset)
         }
-        .padding(.horizontal, 12)
         .frame(height: Islands.toolWindowHeaderHeight)
     }
 }
@@ -62,11 +65,11 @@ struct ToolWindowTab: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, Islands.headerTabHorizontalInset)
         .frame(height: Islands.tabPillHeight)
         .background(
-            RoundedRectangle(cornerRadius: Islands.controlRadius)
-                .fill(isSelected ? Islands.actionHover : (isHovering ? Islands.hover : .clear))
+            RoundedRectangle(cornerRadius: Islands.tabPillRadius, style: .continuous)
+                .fill(isSelected ? Islands.actionPressed : (isHovering ? Islands.actionHover : .clear))
         )
         .contentShape(Rectangle())
         .onTapGesture(perform: action)
@@ -85,6 +88,9 @@ struct ToolWindowActionButton: View {
     let action: () -> Void
 
     @State private var isHovering = false
+
+    @Environment(\.isEnabled)
+    private var isEnabled
 
     init(systemImage: String, help: String, action: @escaping () -> Void) {
         self.systemImage = systemImage
@@ -105,22 +111,18 @@ struct ToolWindowActionButton: View {
             Group {
                 if let icon {
                     Image(icon)
+                        .renderingMode(isEnabled ? .original : .template)
                         .resizable()
-                        .frame(width: 16, height: 16)
+                        .frame(width: Islands.actionIconSize, height: Islands.actionIconSize)
+                        .foregroundStyle(Islands.disabledForeground)
                 } else if let systemImage {
                     Image(systemName: systemImage)
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Islands.secondaryForeground)
+                        .foregroundStyle(isEnabled ? Islands.secondaryForeground : Islands.disabledForeground)
                 }
             }
-            .frame(width: 26, height: 26)
-            .background(
-                RoundedRectangle(cornerRadius: Islands.controlRadius)
-                    .fill(isHovering ? Islands.actionHover : .clear)
-            )
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.actionButton(look: .toolWindowAction, isHovering: isHovering))
         .help(help)
         .onHover(perform: setHovering)
     }
@@ -172,11 +174,6 @@ struct GlassSurface: ViewModifier {
         content
             .background(tint.opacity(tintOpacity), in: shape)
             .glassEffect(.regular, in: shape)
-            .overlay {
-                shape
-                    .strokeBorder(Islands.glassBorder, lineWidth: 1)
-                    .allowsHitTesting(false)
-            }
             .environment(\.colorScheme, .dark)
     }
 }

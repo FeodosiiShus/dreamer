@@ -66,7 +66,7 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
         for event in processPump.takeEvents() {
             switch event {
             case .data(let bytes):
-                dataReceived(slice: bytes[...])
+                dataReceived(slice: ArraySlice(bytes))
             case .terminated(let exitCode):
                 processTerminated(process, exitCode: exitCode)
             }
@@ -76,7 +76,6 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
     var systemShell: () -> String = { Shell.autoDetectDefaultShell() }
     var shellIntegrationBundle: Bundle = .main
     var settings: Settings = SettingsScope.current ?? .shared
-    private var startedShellPid: pid_t = 0
 
     override public init(frame: CGRect) {
         super.init(frame: frame)
@@ -88,14 +87,20 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
         setup()
     }
 
-    isolated deinit {
-        if startedShellPid > 0, process.running {
-            kill(startedShellPid, SIGHUP)
-        }
-    }
+    var terminationEscalationDelay: Duration = .seconds(3)
 
-    func adoptPseudoTerminal() {
-        startedShellPid = process.shellPid
+    @discardableResult
+    func terminateSession() -> Task<Void, Never>? {
+        guard process.running, process.shellPid > 0 else { return nil }
+        let session = process
+        let pid = session.shellPid
+        let delay = terminationEscalationDelay
+        ProcessTree.send(SIGHUP, to: pid)
+        return Task { @MainActor in
+            try? await Task.sleep(for: delay)
+            guard session.running, session.shellPid == pid else { return }
+            ProcessTree.send(SIGKILL, to: pid)
+        }
     }
 
     /// The `processDelegate` is used to deliver messages and information relevant to the execution of the terminal.
@@ -150,7 +155,6 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
                 execName: shell.rawValue,
                 currentDirectory: url?.absolutePath
             )
-            adoptPseudoTerminal()
         } catch {
             terminal.feed(text: "Failed to start a terminal session: \(error.localizedDescription)")
         }

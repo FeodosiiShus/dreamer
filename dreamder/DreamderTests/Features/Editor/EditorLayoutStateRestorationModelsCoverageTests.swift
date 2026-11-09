@@ -12,7 +12,7 @@ struct EditorLayoutStateRestorationModelsCoverageTests {
         let manager: EditorManager
     }
 
-    private struct ForcedFailure: Error {}
+    struct ForcedFailure: Error {}
 
     private func makeSource(in directory: URL, names: [String] = ["a.txt", "b.txt", "c.txt"]) throws -> Source {
         for name in names {
@@ -29,8 +29,9 @@ struct EditorLayoutStateRestorationModelsCoverageTests {
         return try #require(children.first(where: { $0.name == name }))
     }
 
-    private func discardState(of workspace: WorkspaceDocument) {
-        UserDefaults.standard.removeObject(forKey: "workspaceState-\(workspace.fileURL?.absoluteString ?? "")")
+    func discardState(of workspace: WorkspaceDocument) {
+        guard let url = workspace.fileURL else { return }
+        UserDefaults.standard.removeObject(forKey: WorkspaceDocument.workspaceStateKey(for: url))
     }
 
     private func store(_ layout: EditorLayout, active: UUID, in workspace: WorkspaceDocument) throws {
@@ -245,62 +246,6 @@ struct EditorLayoutStateRestorationModelsCoverageTests {
             #expect(editors.count == 1)
             #expect(editors.first?.id != editor.id)
             #expect(editors.first?.tabs.isEmpty == true)
-        }
-    }
-
-    @Test
-    func restoreWithoutAFileManagerKeepsTheDecodedLayout() throws {
-        try withTempDir { dir in
-            let workspace = WorkspaceDocument()
-            workspace.fileURL = dir
-            defer { discardState(of: workspace) }
-            let first = Editor(files: OrderedSet([CEWorkspaceFile(url: dir.appending(path: "one.txt"))]))
-            let second = Editor(files: OrderedSet([CEWorkspaceFile(url: dir.appending(path: "two.txt"))]))
-            let source = EditorManager()
-            source.editorLayout = .horizontal(SplitViewData(.horizontal, editorLayouts: [.one(first), .one(second)]))
-            source.activeEditor = second
-            source.saveRestorationState(workspace)
-
-            let restored = EditorManager()
-            restored.restoreFromState(workspace)
-
-            let editors = restored.flattenedEditors
-            #expect(editors.map(\.id) == [first.id, second.id])
-            #expect(editors.map { $0.tabs.map { $0.file.url.lastPathComponent } } == [["one.txt"], ["two.txt"]])
-            #expect(restored.activeEditor === editors[1])
-            #expect(editors.allSatisfy { $0.workspace === workspace })
-        }
-    }
-
-    @Test
-    func restoreWithoutSavedStateOnlyAttachesTheWorkspace() throws {
-        try withTempDir { dir in
-            let workspace = WorkspaceDocument()
-            workspace.fileURL = dir
-            defer { discardState(of: workspace) }
-            let manager = EditorManager()
-            let before = manager.activeEditor
-
-            manager.restoreFromState(workspace)
-
-            #expect(manager.activeEditor === before)
-            #expect(before.workspace === workspace)
-        }
-    }
-
-    @Test
-    func aFailingEncoderClearsThePreviouslySavedState() throws {
-        try withTempDir { dir in
-            let workspace = WorkspaceDocument()
-            workspace.fileURL = dir
-            defer { discardState(of: workspace) }
-            let manager = EditorManager()
-            manager.saveRestorationState(workspace)
-            #expect(workspace.getFromWorkspaceState(.openTabs) is Data)
-
-            manager.saveRestorationState(workspace) { _ in throw ForcedFailure() }
-
-            #expect(workspace.getFromWorkspaceState(.openTabs) == nil)
         }
     }
 }

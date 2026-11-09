@@ -115,7 +115,7 @@ struct MarkdownTableOfContentsTests {
         #expect(first.text == expected)
         let second = MarkdownTableOfContents.generate(text: first.text, caret: 0)
         #expect(second.text == expected)
-        #expect(second.edits.isEmpty)
+        #expect(second.edit == nil)
     }
 
     @Test func updatesEveryTocSection() {

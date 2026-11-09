@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Synchronization
 import Testing
@@ -226,6 +227,8 @@ struct RegistryManagerTimingTests {
             let clock = TestClock()
             let log = FetchLog()
             let archive = StoredZip.make(entries: [(name: "registry.json", contents: Self.registryJSON(name: "fresh-ls"))])
+            let digest = SHA256.hash(data: archive).map { String(format: "%02x", $0) }.joined()
+            let checksums = Data("\(digest)  registry.json.zip\n".utf8)
             let registryURL = Self.registryURL
 
             let manager = RegistryManager(
@@ -237,7 +240,7 @@ struct RegistryManagerTimingTests {
                     guard let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil) else {
                         throw CancellationError()
                     }
-                    let body = url == registryURL ? archive : Data("checksums".utf8)
+                    let body = url == registryURL ? archive : checksums
                     return (body, response)
                 },
                 backoff: { _ in },

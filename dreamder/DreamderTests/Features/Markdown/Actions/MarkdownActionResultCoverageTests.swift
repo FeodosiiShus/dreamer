@@ -19,13 +19,14 @@ struct MarkdownActionResultCoverage {
     }
 
     @Test
-    func resultWithoutChangesHasNoEdits() {
+    func resultWithoutChangesHasNoEdit() {
         let buffer = MarkdownEditBuffer("same")
 
         let result = buffer.result(selections: [NSRange(location: 1, length: 0)])
 
-        #expect(result.edits.isEmpty)
+        #expect(result.edit == nil)
         #expect(result.text == "same")
+        #expect(result.applied(to: "same") == "same")
     }
 }
 

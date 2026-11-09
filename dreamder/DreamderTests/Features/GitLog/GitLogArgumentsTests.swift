@@ -300,7 +300,7 @@ struct GitLogArgumentsTests {
         )
         #expect(GitLogArguments.arguments(parameters: parameters, format: "%H") == [
             "-c", "log.mailmap=false", "-c", "a=b",
-            "log", "--date-order", "-z", "--format=%H",
+            "log", "--date-order", "-z", "--decorate=full", "--format=%H",
             "HEAD", "--max-count=5"
         ])
     }

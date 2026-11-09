@@ -21,16 +21,14 @@ final class DreamderDocumentController: NSDocumentController {
     var openDocuments: @MainActor () -> [NSDocument] = { DreamderDocumentController.shared.documents }
 
     var showWelcomeWindow: @MainActor () -> Void = {
-        (NSApp.delegate as? AppDelegate)?.openWindow(sceneID: .welcome)
+        AppDelegate.openScene(.welcome)
     }
 
     var quitApplication: @MainActor () -> Void = { NSApplication.shared.terminate(nil) }
 
     private let fileManager = FileManager.default
 
-    var recordsRecentDocuments: Bool {
-        !DreamderHeadless.isEnabled
-    }
+    var recordsRecentDocuments = !DreamderHeadless.isEnabled
 
     override func noteNewRecentDocument(_ document: NSDocument) {
         if recordsRecentDocuments { super.noteNewRecentDocument(document) }
@@ -97,19 +95,35 @@ final class DreamderDocumentController: NSDocumentController {
 
         super.openDocument(withContentsOf: url, display: displayDocument) { document, documentWasAlreadyOpen, error in
             MainActor.assumeIsolated {
-                if let document {
-                    self.addDocument(document)
-                } else {
-                    let errorMessage = error?.localizedDescription ?? "unknown error"
-                    Self.logger.error(
-                        "Unable to open document '\(url.path, privacy: .public)': \(errorMessage, privacy: .public)"
-                    )
-                }
-
-                self.noteRecentProject(at: url)
-                completionHandler(document, documentWasAlreadyOpen, error)
+                self.finishOpening(
+                    url: url,
+                    document: document,
+                    alreadyOpen: documentWasAlreadyOpen,
+                    error: error,
+                    completionHandler: completionHandler
+                )
             }
         }
+    }
+
+    func finishOpening(
+        url: URL,
+        document: NSDocument?,
+        alreadyOpen: Bool,
+        error: Error?,
+        completionHandler: (NSDocument?, Bool, Error?) -> Void
+    ) {
+        if let document {
+            addDocument(document)
+        } else {
+            let errorMessage = error?.localizedDescription ?? "unknown error"
+            Self.logger.error(
+                "Unable to open document '\(url.path, privacy: .public)': \(errorMessage, privacy: .public)"
+            )
+        }
+
+        noteRecentProject(at: url)
+        completionHandler(document, alreadyOpen, error)
     }
 
     /// Attempt to open the file URL in an open workspace, finding the nearest workspace to open it in if possible.

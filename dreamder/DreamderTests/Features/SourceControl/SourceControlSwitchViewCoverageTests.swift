@@ -130,4 +130,23 @@ struct SourceControlSwitchViewCoverageTests {
 
         #expect(dismissals.value == 0)
     }
+
+    @Test
+    func switchButtonActionSubmitsTheBranchOfTheView() async throws {
+        try await withTempDir { dir in
+            let harness = try await ScmViewsCHarness.make(in: dir)
+            defer { harness.close() }
+            let feature = try harness.localBranch(named: "feature")
+            let model = SourceControlSwitchModel()
+            let dismissals = ScmViewsBCounter()
+            model.attach(manager: harness.manager, dismiss: { dismissals.increment() })
+            let view = SourceControlSwitchView(branch: feature, model: model)
+
+            view.submit()
+            await model.submission?.value
+
+            #expect(harness.manager.currentBranch?.name == "feature")
+            #expect(dismissals.value == 1)
+        }
+    }
 }

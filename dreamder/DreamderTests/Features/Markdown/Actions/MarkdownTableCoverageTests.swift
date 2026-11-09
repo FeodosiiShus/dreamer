@@ -95,6 +95,13 @@ struct MarkdownTableLayoutCoverageTests {
 
         #expect(try !insideListItem(markup))
     }
+
+    @Test
+    func indentedTablePrecededOnlyByBlankLinesIsNotInsideAListItem() throws {
+        let markup = tableCoverageText("", "", "  | a | b |", "  |---|---|")
+
+        #expect(try !insideListItem(markup))
+    }
 }
 
 struct MarkdownTableInsertCoverageTests {
@@ -147,6 +154,29 @@ struct MarkdownTableFormatterCoverageTests {
 
         #expect(result?.text == tableCoverageText("|a|", "|---|", "|c|"))
         #expect(result?.selections == [NSRange(location: 8, length: 0)])
+    }
+
+    @Test
+    func aSelectionEndingInsideAShrunkSeparatorCollapsesOnlyItsEnd() {
+        let text = tableCoverageText("|a|", "|-----|", "|c|")
+
+        let result = MarkdownTable.format(
+            text: text,
+            selections: [NSRange(location: 6, length: 3)],
+            style: .tight
+        )
+
+        #expect(result?.text == tableCoverageText("|a|", "|---|", "|c|"))
+        #expect(result?.selections == [NSRange(location: 6, length: 2)])
+    }
+
+    @Test
+    func tightFormattingThatEscapesTheClosingPipeStopsAtTheBrokenColumn() {
+        let text = tableCoverageText("| a\\ | b |", "|---|---|", "| c | d |")
+
+        let result = MarkdownTable.formatAllTables(text: text, style: .tight)
+
+        #expect(result?.text == tableCoverageText("|a\\| b |", "|---|---|", "|c| d |"))
     }
 }
 

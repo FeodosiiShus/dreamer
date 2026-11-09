@@ -162,18 +162,20 @@ extension ProjectNavigatorMenu {
             newFolderURL = parent.url.appending(path: "New Folder With Items \(folderNumber)")
         }
 
-        do {
-            for selectedItem in selectedItems where selectedItem.url != newFolderURL {
-                let destination = newFolderURL.appending(path: selectedItem.name)
-                let sourceURL = selectedItem.url
-                try workspaceFileManager.move(file: selectedItem, to: destination)
-                sender?.retargetTabs(from: sourceURL, to: destination)
+        Task.immediate { [self] in
+            do {
+                for selectedItem in selectedItems where selectedItem.url != newFolderURL {
+                    let destination = newFolderURL.appending(path: selectedItem.name)
+                    let sourceURL = selectedItem.url
+                    try await workspaceFileManager.move(file: selectedItem, to: destination)
+                    sender?.retargetTabs(from: sourceURL, to: destination)
+                }
+            } catch {
+                presentError(error)
             }
-        } catch {
-            presentError(error)
-        }
 
-        reloadData()
+            reloadData()
+        }
     }
 
     /// Action that moves the item to trash.

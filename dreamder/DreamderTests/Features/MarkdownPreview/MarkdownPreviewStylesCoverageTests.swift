@@ -45,4 +45,31 @@ struct MarkdownPreviewStylesCoverageTests {
         #expect(shifted.contrast(with: background) >= 3)
         #expect(shifted.luminance > dim.luminance)
     }
+
+    @Test(arguments: [
+        ("#0A0B0C", 10, 11, 12, 255),
+        ("0a0b0c", 10, 11, 12, 255),
+        (" #0A0B0C ", 10, 11, 12, 255),
+        ("#FF000080", 255, 0, 0, 128),
+        ("ff000080", 255, 0, 0, 128),
+        ("#00000000", 0, 0, 0, 0),
+        ("#FFFFFFFF", 255, 255, 255, 255),
+        ("#11223344", 17, 34, 51, 68)
+    ])
+    func hexStringsOfSixOrEightDigitsParseComponentsAndAlpha(
+        input: String,
+        red: Int,
+        green: Int,
+        blue: Int,
+        alphaByte: Int
+    ) {
+        let color = MarkdownPreviewColor(hex: input)
+
+        #expect(color == MarkdownPreviewColor(red: red, green: green, blue: blue, alpha: Double(alphaByte) / 255))
+    }
+
+    @Test(arguments: ["", "#", "#FFF", "#12345", "#1234567", "#123456789", "#GG0000", "#12345G78", "#-12345"])
+    func hexStringsOfOtherLengthsOrWithInvalidCharactersAreRejected(input: String) {
+        #expect(MarkdownPreviewColor(hex: input) == nil)
+    }
 }

@@ -31,8 +31,32 @@ nonisolated private struct SnippetLayout {
     }
 
     struct Definition {
-        let children: [SnippetNode]
+        enum Content {
+            case children([SnippetNode])
+            case choice(String)
+
+            init?(children: [SnippetNode], choices: [String]) {
+                if !children.isEmpty {
+                    self = .children(children)
+                } else if let first = choices.first {
+                    self = .choice(first)
+                } else {
+                    return nil
+                }
+            }
+        }
+
+        let content: Content
         let choices: [String]
+    }
+
+    struct OccurrenceGroup {
+        var first: Occurrence
+        var rest: [Occurrence] = []
+
+        var all: [Occurrence] {
+            [first] + rest
+        }
     }
 
     let nodes: [SnippetNode]
@@ -41,7 +65,7 @@ nonisolated private struct SnippetLayout {
     private var length = 0
     private var definitions: [Int: Definition] = [:]
     private var claimedDefinitions: Set<Int> = []
-    private var occurrences: [Int: [Occurrence]] = [:]
+    private var occurrences: [Int: OccurrenceGroup] = [:]
     private var caret: Int?
 
     var finalCaret: Int {
@@ -59,12 +83,16 @@ nonisolated private struct SnippetLayout {
     }
 
     func tabStops() -> [SnippetTemplate.TabStop] {
-        occurrences.keys.sorted().compactMap { index in
-            guard var others = occurrences[index], !others.isEmpty else { return nil }
+        occurrences.sorted { $0.key < $1.key }.map { entry in
+            var others = entry.value.all
             let primaryPosition = others.firstIndex(where: \.isDefinition) ?? 0
             let primary = others.remove(at: primaryPosition)
             let ranges = [primary.range] + others.map(\.range).sorted { $0.location < $1.location }
-            return SnippetTemplate.TabStop(index: index, ranges: ranges, choices: definitions[index]?.choices ?? [])
+            return SnippetTemplate.TabStop(
+                index: entry.key,
+                ranges: ranges,
+                choices: definitions[entry.key]?.choices ?? []
+            )
         }
     }
 
@@ -74,8 +102,9 @@ nonisolated private struct SnippetLayout {
             case .text:
                 continue
             case let .tabStop(index, children, choices):
-                if index > 0, definitions[index] == nil, !children.isEmpty || !choices.isEmpty {
-                    definitions[index] = Definition(children: children, choices: choices)
+                if index > 0, definitions[index] == nil,
+                   let content = Definition.Content(children: children, choices: choices) {
+                    definitions[index] = Definition(content: content, choices: choices)
                 }
                 collectDefinitions(in: children)
             case let .variable(_, children):
@@ -123,28 +152,40 @@ nonisolated private struct SnippetLayout {
             emit(children, visiting: visiting)
             return
         }
-        let hasContent = !children.isEmpty || !choices.isEmpty
-        let isDefinition = hasContent && claimedDefinitions.insert(index).inserted
-        if isDefinition {
-            if children.isEmpty {
-                append(choices.first ?? "")
-            } else {
-                emit(children, visiting: visiting.union([index]))
+        let content = Definition.Content(children: children, choices: choices)
+        var isDefinition = false
+        if let content, claimedDefinitions.insert(index).inserted {
+            isDefinition = true
+            switch content {
+            case let .children(nodes):
+                emit(nodes, visiting: visiting.union([index]))
+            case let .choice(first):
+                append(first)
             }
         } else {
             append(value(of: index, visiting: visiting))
         }
-        occurrences[index, default: []].append(
-            Occurrence(range: NSRange(location: start, length: length - start), isDefinition: isDefinition)
-        )
+        let range = NSRange(location: start, length: length - start)
+        record(Occurrence(range: range, isDefinition: isDefinition), for: index)
+    }
+
+    private mutating func record(_ occurrence: Occurrence, for index: Int) {
+        if var group = occurrences[index] {
+            group.rest.append(occurrence)
+            occurrences[index] = group
+        } else {
+            occurrences[index] = OccurrenceGroup(first: occurrence)
+        }
     }
 
     private func value(of index: Int, visiting: Set<Int>) -> String {
         guard !visiting.contains(index), let definition = definitions[index] else { return "" }
-        if definition.children.isEmpty {
-            return definition.choices.first ?? ""
+        switch definition.content {
+        case let .children(nodes):
+            return flatten(nodes, visiting: visiting.union([index]))
+        case let .choice(first):
+            return first
         }
-        return flatten(definition.children, visiting: visiting.union([index]))
     }
 
     private func flatten(_ nodes: [SnippetNode], visiting: Set<Int>) -> String {

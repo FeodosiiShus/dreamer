@@ -13,10 +13,11 @@ struct StatusBarIndentSelector: View {
 
     let document: CodeFileDocument?
 
-    @State private var isHovering = false
+    @State private var isHovering: Bool
 
-    init(document: CodeFileDocument? = nil) {
+    init(document: CodeFileDocument? = nil, isHovering: Bool = false) {
         self.document = document
+        _isHovering = State(initialValue: isHovering)
     }
 
     var resolved: ResolvedIndent {
@@ -92,6 +93,11 @@ struct StatusBarIndentSelector: View {
         isHovering = hovering
     }
 
+    var labelContent: some View {
+        StatusBarWidgetText(text: label, isHovering: isHovering)
+            .statusBarWidgetChrome(isHovering: isHovering)
+    }
+
     var body: some View {
         Menu {
             Button("Use Tabs", action: useTabs)
@@ -106,16 +112,7 @@ struct StatusBarIndentSelector: View {
                 ForEach(Self.tabWidths, id: \.self, content: spacesOption)
             }
         } label: {
-            Text(label)
-                .font(Islands.smallFont)
-                .foregroundColor(Islands.secondaryForeground)
-                .padding(.horizontal, 6)
-                .frame(height: 18)
-                .background {
-                    RoundedRectangle(cornerRadius: Islands.rowRadius)
-                        .fill(isHovering ? Islands.islandRaised.opacity(0.8) : Color.clear)
-                }
-                .contentShape(Rectangle())
+            labelContent
         }
         .menuStyle(StatusBarMenuStyle())
         .disabled(document == nil)

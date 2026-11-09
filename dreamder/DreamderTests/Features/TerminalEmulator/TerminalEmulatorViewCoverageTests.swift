@@ -10,12 +10,12 @@ final class TerminalEmulatorTitleBox {
 }
 
 @MainActor
-private func makeEmptyThemeModel(in directory: URL) -> ThemeModel {
+func makeEmptyThemeModel(in directory: URL) -> ThemeModel {
     ThemeModel(baseURL: directory, bundledThemesURL: nil, preferencesStore: Dreamder.Settings(baseURL: directory))
 }
 
 @MainActor
-private func makeBundledThemeModel(in directory: URL) -> ThemeModel {
+func makeBundledThemeModel(in directory: URL) -> ThemeModel {
     ThemeModel(
         baseURL: directory,
         bundledThemesURL: ThemeModel.defaultBundledThemesURL,
@@ -24,7 +24,7 @@ private func makeBundledThemeModel(in directory: URL) -> ThemeModel {
 }
 
 @MainActor
-private func withTerminalCoverageTheme(
+func withTerminalCoverageTheme(
     matchAppearance: Bool,
     useThemeBackground: Bool = true,
     perform body: () async throws -> Void
@@ -36,7 +36,7 @@ private func withTerminalCoverageTheme(
     }
 }
 
-private func terminalCoverageRGB(_ color: NSColor) -> [CGFloat]? {
+func terminalCoverageRGB(_ color: NSColor) -> [CGFloat]? {
     color.usingColorSpace(.sRGB).map { [$0.redComponent, $0.greenComponent, $0.blueComponent] }
 }
 

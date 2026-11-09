@@ -41,6 +41,23 @@ enum SearchEverywhereTab: String, CaseIterable, Identifiable {
         }
     }
 
+    var position: Int {
+        switch self {
+        case .all: return 0
+        case .classes: return 1
+        case .files: return 2
+        case .symbols: return 3
+        case .actions: return 4
+        case .text: return 5
+        }
+    }
+
+    func cycled(by delta: Int) -> SearchEverywhereTab {
+        let tabs = Self.allCases
+        let count = tabs.count
+        return tabs[((position + delta) % count + count) % count]
+    }
+
     var sections: [SearchEverywhereSectionKind] {
         switch self {
         case .all: return [.recent, .files, .classes, .symbols, .actions, .text]
@@ -93,7 +110,7 @@ final class SearchEverywhereAction {
     }
 
     var title: String {
-        path.components(separatedBy: " | ").last ?? path
+        path.components(separatedBy: " | ").reduce(path) { _, component in component }
     }
 
     var menuPath: String {
@@ -159,7 +176,10 @@ enum SearchEverywhereActionProvider {
         actions(mainMenu: NSApp.mainMenu)
     }
 
-    static func actions(mainMenu: NSMenu?) -> [SearchEverywhereAction] {
+    static func actions(
+        mainMenu: NSMenu?,
+        commands: [Command] = CommandManager.shared.commands
+    ) -> [SearchEverywhereAction] {
         var collected: [SearchEverywhereAction] = []
         guard let mainMenu else { return collected }
 
@@ -169,7 +189,7 @@ enum SearchEverywhereActionProvider {
             collectActions(from: submenu, prefix: prefix, into: &collected)
         }
 
-        for command in CommandManager.shared.commands {
+        for command in commands {
             collected.append(SearchEverywhereAction(
                 identity: "command:\(command.id)",
                 path: "Command | \(command.title)",
@@ -183,7 +203,7 @@ enum SearchEverywhereActionProvider {
 
     static func shortcutString(for item: NSMenuItem) -> String {
         let key = item.keyEquivalent
-        guard !key.isEmpty else { return "" }
+        guard let scalar = key.unicodeScalars.first else { return "" }
 
         var result = ""
         let modifiers = item.keyEquivalentModifierMask
@@ -191,7 +211,7 @@ enum SearchEverywhereActionProvider {
         if modifiers.contains(.option) { result += "\u{2325}" }
         if modifiers.contains(.shift) { result += "\u{21E7}" }
         if modifiers.contains(.command) { result += "\u{2318}" }
-        result += displayKey(key)
+        result += displayKey(key, firstScalar: scalar)
         return result
     }
 
@@ -232,25 +252,29 @@ enum SearchEverywhereActionProvider {
         }
     }
 
-    private static func displayKey(_ key: String) -> String {
-        switch key {
-        case "\r", "\u{3}": return "\u{21A9}"
-        case "\t": return "\u{21E5}"
-        case "\u{8}", "\u{7F}": return "\u{232B}"
-        case "\u{1B}": return "\u{238B}"
-        case " ": return "\u{2423}"
-        case "\u{F700}": return "\u{2191}"
-        case "\u{F701}": return "\u{2193}"
-        case "\u{F702}": return "\u{2190}"
-        case "\u{F703}": return "\u{2192}"
-        case "\u{F72C}": return "\u{21DE}"
-        case "\u{F72D}": return "\u{21DF}"
-        case "\u{F729}": return "\u{2196}"
-        case "\u{F72B}": return "\u{2198}"
-        default: break
+    private static let specialKeySymbols: [String: String] = [
+        "\r": "\u{21A9}",
+        "\u{3}": "\u{21A9}",
+        "\t": "\u{21E5}",
+        "\u{8}": "\u{232B}",
+        "\u{7F}": "\u{232B}",
+        "\u{1B}": "\u{238B}",
+        " ": "\u{2423}",
+        "\u{F700}": "\u{2191}",
+        "\u{F701}": "\u{2193}",
+        "\u{F702}": "\u{2190}",
+        "\u{F703}": "\u{2192}",
+        "\u{F72C}": "\u{21DE}",
+        "\u{F72D}": "\u{21DF}",
+        "\u{F729}": "\u{2196}",
+        "\u{F72B}": "\u{2198}"
+    ]
+
+    private static func displayKey(_ key: String, firstScalar scalar: Unicode.Scalar) -> String {
+        if let symbol = specialKeySymbols[key] {
+            return symbol
         }
 
-        guard let scalar = key.unicodeScalars.first else { return key.uppercased() }
         let value = scalar.value
         if (0xF704...0xF726).contains(value) {
             return "F\(value - 0xF704 + 1)"

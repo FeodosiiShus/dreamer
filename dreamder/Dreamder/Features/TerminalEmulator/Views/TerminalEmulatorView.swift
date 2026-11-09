@@ -102,39 +102,23 @@ struct TerminalEmulatorView: NSViewRepresentable {
     }
 
     private var activeTerminalColors: Theme.TerminalColors? {
-        guard let theme = activeTheme, let index = themeModel.themes.firstIndex(of: theme) else { return nil }
-        return themeModel.themes[index].terminal
+        guard let theme = activeTheme else { return nil }
+        return themeModel.themes.first { $0.id == theme.id }?.terminal
     }
 
-    private var colors: [SwiftTerm.Color] {
-        activeTerminalColors?.ansiColors.map { SwiftTerm.Color(hex: $0) } ?? []
-    }
-
-    private var cursorColor: NSColor {
-        activeTerminalColors.map { NSColor($0.cursor.swiftColor) } ?? NSColor(.accentColor)
-    }
-
-    private var selectionColor: NSColor {
-        activeTerminalColors.map { NSColor($0.selection.swiftColor) } ?? NSColor(.accentColor)
-    }
-
-    private var textColor: NSColor {
-        activeTerminalColors.map { NSColor($0.text.swiftColor) } ?? NSColor(.primary)
-    }
-
-    /// returns a `NSAppearance` based on the user setting of the terminal appearance,
-    /// `nil` if app default is not overridden
-    private var colorAppearance: NSAppearance? {
-        if terminalSettings.darkAppearance {
-            return .init(named: .darkAqua)
-        }
-        return nil
+    private var appearance: TerminalAppearance {
+        TerminalAppearance(
+            colors: activeTerminalColors,
+            cursorStyle: getTerminalCursor(),
+            optionAsMeta: optionAsMeta,
+            darkAppearance: terminalSettings.darkAppearance
+        )
     }
 
     // MARK: - NSViewRepresentable
 
     /// Inherited from NSViewRepresentable.makeNSView(context:).
-    func makeNSView(context: Context) -> CELocalShellTerminalView {
+    func makeNSView(context: Context) -> TerminalContainerView {
         let view: CELocalShellTerminalView
 
         switch mode {
@@ -144,7 +128,7 @@ struct TerminalEmulatorView: NSViewRepresentable {
             if !isCached {
                 view.settings = store
                 view.startProcess(workspaceURL: url, shell: shellType)
-                configureView(view)
+                context.coordinator.appliedAppearance = configureView(view)
             }
         case .task(let activeTask):
             if let output = activeTask.output {
@@ -155,7 +139,7 @@ struct TerminalEmulatorView: NSViewRepresentable {
                 view = newView
             }
             if !activeTask.hasOutputBeenConfigured {
-                configureView(view)
+                context.coordinator.appliedAppearance = configureView(view)
                 activeTask.hasOutputBeenConfigured = true
             }
         }
@@ -163,23 +147,17 @@ struct TerminalEmulatorView: NSViewRepresentable {
         view.processDelegate = context.coordinator
 
         TerminalCache.shared.cacheTerminalView(for: terminalID, view: view)
-        return view
+        return TerminalContainerView(terminal: view)
     }
 
-    func configureView(_ terminal: CELocalShellTerminalView) {
+    @discardableResult
+    func configureView(_ terminal: CELocalShellTerminalView) -> TerminalAppearance {
         terminal.getTerminal().silentLog = true
-        terminal.appearance = colorAppearance
         scroller(terminal)?.isHidden = true
         terminal.font = font
-        terminal.installColors(self.colors)
-        terminal.caretColor = cursorColor.withAlphaComponent(0.5)
-        terminal.caretTextColor = cursorColor.withAlphaComponent(0.5)
-        terminal.selectedTextBackgroundColor = selectionColor
-        terminal.nativeForegroundColor = textColor
-        terminal.nativeBackgroundColor = .clear
-        terminal.cursorStyleChanged(source: terminal.getTerminal(), newStyle: getTerminalCursor())
-        terminal.layer?.backgroundColor = CGColor.clear
-        terminal.optionAsMetaKey = optionAsMeta
+        let current = self.appearance
+        current.apply(to: terminal)
+        return current
     }
 
     private func scroller(_ terminal: CELocalShellTerminalView) -> NSScroller? {
@@ -191,19 +169,15 @@ struct TerminalEmulatorView: NSViewRepresentable {
         return nil
     }
 
-    func updateNSView(_ view: CELocalShellTerminalView, context: Context) {
-        view.installColors(self.colors)
-        view.caretColor = cursorColor.withAlphaComponent(0.5)
-        view.caretTextColor = cursorColor.withAlphaComponent(0.5)
-        view.selectedTextBackgroundColor = selectionColor
-        view.nativeForegroundColor = textColor
-        view.nativeBackgroundColor = .clear
-        view.layer?.backgroundColor = .clear
-        view.optionAsMetaKey = optionAsMeta
-        view.cursorStyleChanged(source: view.getTerminal(), newStyle: getTerminalCursor())
-        view.appearance = colorAppearance
-        view.getTerminal().softReset()
-        view.feed(text: "") // send empty character to force colors to be redrawn
+    func updateNSView(_ view: TerminalContainerView, context: Context) {
+        refreshAppearance(of: view.terminal, coordinator: context.coordinator)
+    }
+
+    func refreshAppearance(of terminal: CELocalShellTerminalView, coordinator: Coordinator) {
+        let current = self.appearance
+        guard coordinator.appliedAppearance != current else { return }
+        current.apply(to: terminal)
+        coordinator.appliedAppearance = current
     }
 
     func makeCoordinator() -> Coordinator {

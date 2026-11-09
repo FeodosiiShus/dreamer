@@ -218,10 +218,9 @@ struct WorkspaceIndexTests {
         try await withTempDir { dir in
             let workspace = try makeWorkspace(dir, files: project())
             defer { workspace.tearDownFileScope() }
-            try await eventually { isDone(workspace) }
+            try await eventually { isDone(workspace) && indexedNames(workspace).contains("a.swift") }
             let model = try #require(workspace.excludedDirectories)
             defer { model.cancelExclusion(dir.appending(path: "src")) }
-            #expect(indexedNames(workspace).contains("a.swift"))
 
             model.exclude(dir.appending(path: "src"))
 

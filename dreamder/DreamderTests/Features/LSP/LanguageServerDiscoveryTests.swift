@@ -166,6 +166,7 @@ struct LanguageServerDiscoveryTests {
         let withLocalTypeScript = LanguageServerDiscovery.initializationOptions(
             for: .javascript,
             workspacePath: "/project",
+            workspaceTrusted: true,
             searchPaths: ["/mise/bin"],
             inlayHints: InlayHintSettings(),
             fileExists: { files.union(["/project/node_modules/typescript/lib/tsserver.js"]).contains($0) },

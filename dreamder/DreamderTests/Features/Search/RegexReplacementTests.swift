@@ -13,10 +13,10 @@ struct RegexReplacementTests {
 
     private func message(pattern: String, template: String) throws -> String? {
         let regex = try NSRegularExpression(pattern: pattern)
-        do {
+        do throws(RegexReplacement.TemplateError) {
             try RegexReplacement.validate(template: template, regex: regex)
             return nil
-        } catch let error as RegexReplacement.TemplateError {
+        } catch {
             return error.message
         }
     }
@@ -146,5 +146,23 @@ struct RegexReplacementTests {
     @Test
     func unterminatedQuotedSectionHidesGroupNamesUntilTheEnd() {
         #expect(RegexReplacement.captureGroupNames(in: "\\Q(?<a>x)").isEmpty)
+    }
+
+    @Test
+    func backspaceAndFormFeedEscapesExpandToTheirControlCharacters() throws {
+        #expect(try replace(pattern: "x", in: "x", with: "a\\bb\\fc") == "a\u{08}b\u{0C}c")
+    }
+
+    @Test
+    func consecutiveSingleCharacterConversionsApplyOnlyOnceTheFirstOneIsClosed() throws {
+        #expect(try replace(pattern: "x", in: "x", with: "\\ua\\ub") == "AB")
+        #expect(try replace(pattern: "x", in: "x", with: "\\la\\ub") == "aB")
+        #expect(try replace(pattern: "x", in: "x", with: "\\u\\lab") == "Ab")
+    }
+
+    @Test
+    func nonAsciiDigitsAreNeitherGroupNumbersNorGroupNames() throws {
+        #expect(try message(pattern: "(a)", template: "$\u{0663}") == "Illegal group reference")
+        #expect(try message(pattern: "(?<a>x)", template: "${\u{0663}}") == "named capturing group has 0 length name")
     }
 }

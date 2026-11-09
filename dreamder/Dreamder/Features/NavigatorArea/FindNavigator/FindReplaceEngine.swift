@@ -119,15 +119,15 @@ nonisolated enum FindFileRewriter {
     }
 
     @concurrent
-    static func rewrite(_ jobs: [Int: FindReplaceJob]) async -> [Int: FindReplaceOutcome] {
+    static func rewrite(_ jobs: [FindReplaceJob]) async -> [FindReplaceOutcome] {
         await withTaskGroup(of: (Int, FindReplaceOutcome).self) { group in
-            var pending = jobs.sorted(by: { $0.key < $1.key }).makeIterator()
+            var pending = jobs.enumerated().makeIterator()
             let width = max(2, ProcessInfo.processInfo.activeProcessorCount)
             for _ in 0..<width {
                 guard let (index, job) = pending.next() else { break }
                 group.addTask { (index, rewrite(job)) }
             }
-            var outcomes: [Int: FindReplaceOutcome] = [:]
+            var outcomes = [FindReplaceOutcome](repeating: .stale, count: jobs.count)
             for await (index, outcome) in group {
                 outcomes[index] = outcome
                 if let (next, job) = pending.next() {

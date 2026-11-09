@@ -79,10 +79,12 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: dreamder/.build/xcode/SourcePackages
-          key: spm-${{ matrix.runner }}-${{ matrix.xcode }}-${{ hashFiles('dreamder/Dreamder.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
-          restore-keys: spm-${{ matrix.runner }}-${{ matrix.xcode }}-
+          key: spm-v2-${{ matrix.runner }}-${{ matrix.xcode }}-${{ hashFiles('dreamder/Dreamder.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: spm-v2-${{ matrix.runner }}-${{ matrix.xcode }}-
       - name: Build
         run: make build
+      - name: SwiftLint
+        run: make lint
       - name: Unit tests with coverage
         env:
           TEST_RUNNER_DREAMDER_STALL_SAMPLE_DIR: ${{ github.workspace }}/dreamder/.build/logs/stalls
@@ -99,15 +101,24 @@ jobs:
       - name: Coverage gate against the previous successful run
         env:
           GH_TOKEN: ${{ github.token }}
+          BASELINE_BRANCH: ${{ github.head_ref || github.ref_name }}
+          FALLBACK_BASELINE_BRANCH: ${{ github.base_ref }}
         run: |
           python3 Scripts/coverage-report.py .build/coverage.xcresult --baseline .build/coverage-baseline.json --write-baseline
-          previous=$(gh run list --repo "$GITHUB_REPOSITORY" --branch "$GITHUB_REF_NAME" --workflow "$GITHUB_WORKFLOW" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
-          if [ -n "$previous" ] && gh run download "$previous" --repo "$GITHUB_REPOSITORY" -n "coverage-baseline-${{ matrix.runner }}" -D .build/previous-coverage; then
-            python3 Scripts/coverage-report.py .build/coverage.xcresult --check --summary --baseline .build/previous-coverage/coverage-baseline.json
-          else
-            echo "No coverage baseline from a previous successful run on ${{ matrix.runner }}; reporting only"
-            python3 Scripts/coverage-report.py .build/coverage.xcresult --summary
+          baseline_args=""
+          for branch in "$BASELINE_BRANCH" "$FALLBACK_BASELINE_BRANCH"; do
+            [ -n "$branch" ] || continue
+            previous=$(gh run list --repo "$GITHUB_REPOSITORY" --branch "$branch" --workflow "$GITHUB_WORKFLOW" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+            if [ -n "$previous" ] && gh run download "$previous" --repo "$GITHUB_REPOSITORY" -n "coverage-baseline-${{ matrix.runner }}" -D .build/previous-coverage; then
+              echo "Coverage deltas against run $previous on $branch"
+              baseline_args="--baseline .build/previous-coverage/coverage-baseline.json"
+              break
+            fi
+          done
+          if [ -z "$baseline_args" ]; then
+            echo "No coverage baseline from a previous successful run on ${{ matrix.runner }}; deltas use the committed baseline"
           fi
+          python3 Scripts/coverage-report.py .build/coverage.xcresult --check --summary $baseline_args
       - name: Upload coverage baseline
         uses: actions/upload-artifact@v7
         with:

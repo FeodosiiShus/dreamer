@@ -43,11 +43,25 @@ private struct FormattingCommandsHarness {
         )
     }
 
-    static func make(in directory: URL, text: String, prettierScript: String) async throws -> Self {
+    static func makeTrust(defaults: UserDefaults, trusting directory: URL?) -> WorkspaceTrust {
+        let trust = WorkspaceTrust(defaults: defaults, confirm: { _ in false })
+        if let directory {
+            trust.trust(directory)
+        }
+        return trust
+    }
+
+    static func make(
+        in directory: URL,
+        text: String,
+        prettierScript: String,
+        trust: WorkspaceTrust
+    ) async throws -> Self {
         let fileURL = directory.appending(path: "app.ts")
         try text.write(to: fileURL, atomically: true, encoding: .utf8)
         try installPrettier(in: directory, script: prettierScript)
         let (workspace, controller) = try makeEmptyWorkspace(in: directory)
+        controller.workspaceTrust = trust
         let manager = try #require(workspace.editorManager)
         let file = try #require(workspace.workspaceFileManager?.getFile(
             fileURL.path(percentEncoded: false),
@@ -85,7 +99,8 @@ private struct FormattingCommandsHarness {
 @MainActor
 @Suite("FormattingCommands", .serialized, .uiGate)
 struct FormattingCommandsTests {
-    private static let uppercasingPrettier = "#!/bin/sh\n/usr/bin/touch \"$PWD/formatter-ran\"\nexec /usr/bin/tr a-z A-Z\n"
+    private static let uppercasingPrettier =
+        "#!/bin/sh\n/usr/bin/touch \"$PWD/formatter-ran\"\nexec /usr/bin/tr a-z A-Z\n"
     private static let failingPrettier = "#!/bin/sh\n/usr/bin/touch \"$PWD/formatter-ran\"\necho broken >&2\nexit 1\n"
 
     private func withFormatOnSave<T>(
@@ -105,34 +120,62 @@ struct FormattingCommandsTests {
     @Test
     func reformatCodeFormatsTheSelectedFileWithTheWorkspacePrettier() async throws {
         try await withTempDir { directory in
-            let harness = try await FormattingCommandsHarness.make(
-                in: directory,
-                text: "let  x\n",
-                prettierScript: Self.uppercasingPrettier
-            )
-            defer { harness.close() }
+            try await withIsolatedDefaults { defaults in
+                let harness = try await FormattingCommandsHarness.make(
+                    in: directory,
+                    text: "let  x\n",
+                    prettierScript: Self.uppercasingPrettier,
+                    trust: FormattingCommandsHarness.makeTrust(defaults: defaults, trusting: directory)
+                )
+                defer { harness.close() }
 
-            harness.controller.reformatCode(nil)
+                harness.controller.reformatCode(nil)
 
-            try await eventually { harness.textView.string == "LET  X\n" }
-            #expect(FileManager.default.fileExists(atPath: harness.markerURL.path(percentEncoded: false)))
+                try await eventually { harness.textView.string == "LET  X\n" }
+                #expect(FileManager.default.fileExists(atPath: harness.markerURL.path(percentEncoded: false)))
+            }
+        }
+    }
+
+    @Test
+    func savingInAnUntrustedWorkspaceNeverRunsTheProjectFormatter() async throws {
+        try await withTempDir { directory in
+            try await withIsolatedDefaults { defaults in
+                let harness = try await FormattingCommandsHarness.make(
+                    in: directory,
+                    text: "let  x\n",
+                    prettierScript: Self.uppercasingPrettier,
+                    trust: FormattingCommandsHarness.makeTrust(defaults: defaults, trusting: nil)
+                )
+                defer { harness.close() }
+                harness.textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "// edit\n")
+
+                try await withFormatOnSave(true, on: harness) {
+                    harness.controller.saveDocument(harness.controller)
+                    try await eventually { harness.diskText == "// edit\nlet  x\n" }
+                }
+                #expect(!FileManager.default.fileExists(atPath: harness.markerURL.path(percentEncoded: false)))
+            }
         }
     }
 
     @Test
     func optimizeImportsWithoutAServerLeavesTheTextAlone() async throws {
         try await withTempDir { directory in
-            let harness = try await FormattingCommandsHarness.make(
-                in: directory,
-                text: "import b\nimport a\n",
-                prettierScript: Self.uppercasingPrettier
-            )
-            defer { harness.close() }
+            try await withIsolatedDefaults { defaults in
+                let harness = try await FormattingCommandsHarness.make(
+                    in: directory,
+                    text: "import b\nimport a\n",
+                    prettierScript: Self.uppercasingPrettier,
+                    trust: FormattingCommandsHarness.makeTrust(defaults: defaults, trusting: directory)
+                )
+                defer { harness.close() }
 
-            harness.controller.optimizeImports(nil)
-            try await Task.sleep(for: .milliseconds(300))
+                harness.controller.optimizeImports(nil)
+                try await Task.sleep(for: .milliseconds(300))
 
-            #expect(harness.textView.string == "import b\nimport a\n")
+                #expect(harness.textView.string == "import b\nimport a\n")
+            }
         }
     }
 
@@ -156,57 +199,66 @@ struct FormattingCommandsTests {
     @Test
     func savingWithFormatOnSaveFormatsBeforeWritingTheFile() async throws {
         try await withTempDir { directory in
-            let harness = try await FormattingCommandsHarness.make(
-                in: directory,
-                text: "let  x\n",
-                prettierScript: Self.uppercasingPrettier
-            )
-            defer { harness.close() }
+            try await withIsolatedDefaults { defaults in
+                let harness = try await FormattingCommandsHarness.make(
+                    in: directory,
+                    text: "let  x\n",
+                    prettierScript: Self.uppercasingPrettier,
+                    trust: FormattingCommandsHarness.makeTrust(defaults: defaults, trusting: directory)
+                )
+                defer { harness.close() }
 
-            try await withFormatOnSave(true, on: harness) {
-                harness.controller.saveDocument(harness.controller)
-                try await eventually { harness.diskText == "LET  X\n" }
+                try await withFormatOnSave(true, on: harness) {
+                    harness.controller.saveDocument(harness.controller)
+                    try await eventually { harness.diskText == "LET  X\n" }
+                }
+                #expect(harness.textView.string == "LET  X\n")
             }
-            #expect(harness.textView.string == "LET  X\n")
         }
     }
 
     @Test
     func aFailingFormatterStillSavesTheDocumentAsItIs() async throws {
         try await withTempDir { directory in
-            let harness = try await FormattingCommandsHarness.make(
-                in: directory,
-                text: "let  x\n",
-                prettierScript: Self.failingPrettier
-            )
-            defer { harness.close() }
-            harness.textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "// edit\n")
+            try await withIsolatedDefaults { defaults in
+                let harness = try await FormattingCommandsHarness.make(
+                    in: directory,
+                    text: "let  x\n",
+                    prettierScript: Self.failingPrettier,
+                    trust: FormattingCommandsHarness.makeTrust(defaults: defaults, trusting: directory)
+                )
+                defer { harness.close() }
+                harness.textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "// edit\n")
 
-            try await withFormatOnSave(true, on: harness) {
-                harness.controller.saveDocument(harness.controller)
-                try await eventually { harness.diskText == "// edit\nlet  x\n" }
+                try await withFormatOnSave(true, on: harness) {
+                    harness.controller.saveDocument(harness.controller)
+                    try await eventually { harness.diskText == "// edit\nlet  x\n" }
+                }
+                #expect(FileManager.default.fileExists(atPath: harness.markerURL.path(percentEncoded: false)))
+                #expect(harness.textView.string == "// edit\nlet  x\n")
             }
-            #expect(FileManager.default.fileExists(atPath: harness.markerURL.path(percentEncoded: false)))
-            #expect(harness.textView.string == "// edit\nlet  x\n")
         }
     }
 
     @Test
     func savingWithoutFormatOnSaveWritesTheFileWithoutRunningAnyFormatter() async throws {
         try await withTempDir { directory in
-            let harness = try await FormattingCommandsHarness.make(
-                in: directory,
-                text: "let  x\n",
-                prettierScript: Self.uppercasingPrettier
-            )
-            defer { harness.close() }
-            harness.textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "// edit\n")
+            try await withIsolatedDefaults { defaults in
+                let harness = try await FormattingCommandsHarness.make(
+                    in: directory,
+                    text: "let  x\n",
+                    prettierScript: Self.uppercasingPrettier,
+                    trust: FormattingCommandsHarness.makeTrust(defaults: defaults, trusting: directory)
+                )
+                defer { harness.close() }
+                harness.textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "// edit\n")
 
-            try await withFormatOnSave(false, on: harness) {
-                harness.controller.saveDocument(harness.controller)
-                try await eventually { harness.diskText == "// edit\nlet  x\n" }
+                try await withFormatOnSave(false, on: harness) {
+                    harness.controller.saveDocument(harness.controller)
+                    try await eventually { harness.diskText == "// edit\nlet  x\n" }
+                }
+                #expect(!FileManager.default.fileExists(atPath: harness.markerURL.path(percentEncoded: false)))
             }
-            #expect(!FileManager.default.fileExists(atPath: harness.markerURL.path(percentEncoded: false)))
         }
     }
 

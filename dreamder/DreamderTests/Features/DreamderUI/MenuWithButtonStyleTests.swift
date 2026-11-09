@@ -40,4 +40,22 @@ struct MenuWithButtonStyleTests {
 
         #expect(HostedView.pixelsDiffer(ellipsis.snapshot(), plus.snapshot()))
     }
+
+    @Test
+    func hoveringTheLabelDrawsTheActionButtonHoverFill() async throws {
+        let idle = HostedViewFixture.host(size: NSSize(width: 120, height: 60)) {
+            MenuWithButtonLabel(systemImage: "ellipsis", isHovering: false)
+        }
+        let hovered = HostedViewFixture.host(size: NSSize(width: 120, height: 60)) {
+            MenuWithButtonLabel(systemImage: "ellipsis", isHovering: true)
+        }
+        defer {
+            idle.close()
+            hovered.close()
+        }
+        try await idle.settle(.milliseconds(100))
+        try await hovered.settle(.milliseconds(100))
+
+        #expect(HostedView.pixelsDiffer(idle.snapshot(), hovered.snapshot()))
+    }
 }

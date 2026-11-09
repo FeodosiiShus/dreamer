@@ -23,13 +23,12 @@ final class NPMPackageManager: PackageManagerProtocol {
             throw PackageManagerError.invalidConfiguration
         }
 
-        let packagePath = installationDirectory.appending(path: source.entryName)
+        let packagePath = try RegistryInputValidation.child(of: installationDirectory, named: source.entryName)
         return [
             initialize(in: packagePath),
-            runNpmInstall(source, installDir: packagePath),
+            try runNpmInstall(source, installDir: packagePath),
             verifyInstallation(source, installDir: packagePath)
         ]
-
     }
 
     /// Checks if npm is installed
@@ -40,7 +39,7 @@ final class NPMPackageManager: PackageManagerProtocol {
                 message: "This package requires npm to install. Allow Dreamder to run npm commands?"
             )
         ) { model in
-            let versionOutput = try await model.runCommand("npm --version")
+            let versionOutput = try await model.run(["npm", "--version"])
             let versionPattern = #"^\d+\.\d+\.\d+$"#
             let output = versionOutput.reduce(into: "") {
                 $0 += $1.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -77,9 +76,7 @@ final class NPMPackageManager: PackageManagerProtocol {
 
             // Init npm directory with .npmrc file
             try model.createDirectoryStructure(for: packagePath)
-            _ = try await model.executeInDirectory(
-                in: packagePath.path, ["npm init --yes --scope=dreamder"]
-            )
+            _ = try await model.run(["npm", "init", "--yes", "--scope=dreamder"], in: packagePath)
 
             let npmrcPath = packagePath.appending(path: ".npmrc")
             if !FileManager.default.fileExists(atPath: npmrcPath.path) {
@@ -90,18 +87,27 @@ final class NPMPackageManager: PackageManagerProtocol {
 
     // MARK: - NPM Install
 
-    func runNpmInstall(_ source: PackageSource, installDir installationDirectory: URL) -> PackageManagerInstallStep {
-        let qualifiedSourceName = "\(source.pkgName)@\(source.version)"
-        let otherPackages = source.options["extraPackages"]?
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? []
+    func runNpmInstall(
+        _ source: PackageSource,
+        installDir installationDirectory: URL
+    ) throws -> PackageManagerInstallStep {
+        let name = try RegistryInputValidation.argument(source.pkgName)
+        let version = try RegistryInputValidation.argument(source.version)
+        let qualifiedSourceName = "\(name)@\(version)"
+        let otherPackages = try (source.options["extraPackages"]?.split(separator: ",") ?? [])
+            .map { try RegistryInputValidation.argument($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+
+        var installArgs = ["npm", "install", qualifiedSourceName]
+        if let dev = source.options["dev"], dev.lowercased() == "true" {
+            installArgs.append("--save-dev")
+        }
+        installArgs.append(contentsOf: otherPackages)
+        let arguments = installArgs
 
         let packageList = [qualifiedSourceName] + otherPackages
         let plural = packageList.count > 1
 
-        let listFormatter = ListFormatter()
-        listFormatter.locale = locale
-        let packagesDescription = listFormatter.string(from: packageList) ?? packageList.joined(separator: ", ")
+        let packagesDescription = packageList.formatted(.list(type: .and).locale(locale))
 
         let sSuffix = plural ? "s" : ""
         let suffix = plural ? "these packages" : "this package"
@@ -114,18 +120,7 @@ final class NPMPackageManager: PackageManagerProtocol {
             )
         ) { model in
             do {
-                var installArgs = ["npm", "install", qualifiedSourceName]
-                if let dev = source.options["dev"], dev.lowercased() == "true" {
-                    installArgs.append("--save-dev")
-                }
-                for extraPackage in otherPackages {
-                    installArgs.append(extraPackage)
-                }
-
-                _ = try await model.executeInDirectory(
-                    in: installationDirectory.path(percentEncoded: false),
-                    installArgs
-                )
+                _ = try await model.run(arguments, in: installationDirectory)
             } catch {
                 let nodeModulesPath = installationDirectory.appending(path: "node_modules").path(percentEncoded: false)
                 try? FileManager.default.removeItem(atPath: nodeModulesPath)

@@ -10,7 +10,7 @@ import SwiftUI
 @MainActor
 @Observable
 final class EditorTabClosePressModel {
-    static let buttonSize: CGFloat = 16
+    static let buttonSize = EditorTabMetrics.closeButtonSize
 
     private(set) var isPressing = false
 
@@ -45,21 +45,13 @@ struct EditorTabCloseButton: View {
 
     @State private var press = EditorTabClosePressModel()
 
+    var glyphState: ActionButtonState {
+        ActionButtonState.resolve(isEnabled: true, isPressed: press.isPressing, isHovering: isHoveringClose)
+    }
+
     var body: some View {
-        Image("general/closeSmall")
-            .resizable()
-            .frame(width: 16, height: 16)
-            .frame(width: EditorTabClosePressModel.buttonSize, height: EditorTabClosePressModel.buttonSize)
-            .background {
-                if isHoveringClose || press.isPressing {
-                    Capsule()
-                        .fill(Islands.tabHoverFill)
-                        .overlay {
-                            Capsule().strokeBorder(Islands.glassBorder, lineWidth: 1)
-                        }
-                }
-            }
-            .contentShape(Capsule())
+        EditorTabCloseGlyph(state: glyphState)
+            .contentShape(Circle())
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged(pressBegan)

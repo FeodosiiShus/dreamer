@@ -89,4 +89,25 @@ struct CEWorkspaceFileRecursionTests {
             #expect(flatten(tree.nested, depth: 2, ignoringFolders: true) == [tree.deepest])
         }
     }
+
+    @Test
+    func aRelativePathIsResolvedAgainstTheWorkspaceFolder() async throws {
+        try await withTempDir { dir in
+            try write(dir.appending(path: "sub/b.txt"))
+            let folder = URL(filePath: dir.path(percentEncoded: false) + "/")
+            let manager = CEWorkspaceFileManager(
+                folderUrl: folder,
+                ignoredFilesAndFolders: [],
+                sourceControlManager: nil
+            )
+            manager.fsEventStream?.cancel()
+
+            let relative = manager.getFile("sub/b.txt", createIfNotFound: true)
+            let absolute = manager.getFile("\(manager.workspaceItem.id)/sub/b.txt")
+
+            #expect(relative?.name == "b.txt")
+            #expect(relative === absolute)
+            try await eventually { manager.pendingLoads.isEmpty }
+        }
+    }
 }

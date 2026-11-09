@@ -121,6 +121,11 @@ extension FileCommands {
             .keymapShortcut(.workspaceSettings)
             .disabled(!isWorkspaceSettingsEnabled)
 
+            Button("Trust Project\u{2026}") {
+                NSApp.sendAction(#selector(DreamderWindowController.trustProject(_:)), to: target, from: nil)
+            }
+            .disabled(!isWorkspaceSettingsEnabled)
+
             Divider()
 
             Button("Save") {

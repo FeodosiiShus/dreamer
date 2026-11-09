@@ -11,12 +11,12 @@ nonisolated enum RegexReplacement {
         let names: Set<String>
         let named: [String: String]
 
-        func group(_ number: Int) throws -> String? {
+        func group(_ number: Int) throws(TemplateError) -> String? {
             guard number >= 0, number <= count else { throw TemplateError(message: "No group \(number)") }
             return numbered[number]
         }
 
-        func group(named name: String) throws -> String? {
+        func group(named name: String) throws(TemplateError) -> String? {
             guard names.contains(name) else { throw TemplateError(message: "No group with name <\(name)>") }
             return named[name]
         }
@@ -40,7 +40,7 @@ nonisolated enum RegexReplacement {
             self.groups = groups
         }
 
-        mutating func build() throws -> String {
+        mutating func build() throws(TemplateError) -> String {
             while cursor < template.count {
                 let character = template[cursor]
                 cursor += 1
@@ -56,7 +56,7 @@ nonisolated enum RegexReplacement {
             return generateResult()
         }
 
-        private mutating func processEscapedCharacter() throws {
+        private mutating func processEscapedCharacter() throws(TemplateError) {
             guard cursor < template.count else {
                 throw TemplateError(message: "character to be escaped is missing")
             }
@@ -86,7 +86,7 @@ nonisolated enum RegexReplacement {
             replacement.append(Unicode.Scalar(code).map { Character($0) } ?? "\u{FFFD}")
         }
 
-        private mutating func processGroupValue() throws {
+        private mutating func processGroupValue() throws(TemplateError) {
             guard cursor < template.count else {
                 throw TemplateError(message: "Illegal group reference: group index is missing")
             }
@@ -202,7 +202,7 @@ nonisolated enum RegexReplacement {
         }
     }
 
-    static func validate(template: String, regex: NSRegularExpression) throws {
+    static func validate(template: String, regex: NSRegularExpression) throws(TemplateError) {
         let count = regex.numberOfCaptureGroups
         let names = Set(captureGroupNames(in: regex.pattern))
         let groups = Groups(

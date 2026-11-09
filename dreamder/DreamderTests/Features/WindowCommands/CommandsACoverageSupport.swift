@@ -74,6 +74,11 @@ final class CommandsACoverageRecorder: NSResponder {
         received.append(#function)
     }
 
+    @objc
+    func trustProject(_ sender: Any?) {
+        received.append(#function)
+    }
+
     @objc func saveDocument(_ sender: Any?) {
         received.append(#function)
     }

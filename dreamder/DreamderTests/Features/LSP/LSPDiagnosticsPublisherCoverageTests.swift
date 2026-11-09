@@ -1,4 +1,5 @@
 import Foundation
+import LanguageServerProtocol
 import Testing
 @testable import Dreamder
 
@@ -72,6 +73,30 @@ struct LSPDiagnosticsWorkspaceLookupTests {
             LSPDiagnosticsPublisher.clear(tracked.lspURI)
 
             #expect(workspace.diagnosticsStore.diagnostics(for: tracked).isEmpty)
+        }
+    }
+
+    @Test
+    func publishingToAnUntrackedOrForeignDocumentLeavesTheStoreAlone() throws {
+        try withTempDir { directory in
+            let workspace = try HostedSourceEditorFixture.registerWorkspace(at: directory)
+            defer { workspace.close() }
+            let tracked = directory.appending(path: "tracked.swift")
+            let diagnostic = Diagnostic(
+                range: SyncTestServer.range(0, 0, 3),
+                severity: .warning,
+                source: "test",
+                message: "careful"
+            )
+
+            LSPDiagnosticsPublisher.publish([diagnostic], forDocument: "untitled:Scratch")
+            LSPDiagnosticsPublisher.publish([diagnostic], forDocument: "file:///nonexistent/dreamder/other.swift")
+
+            #expect(workspace.diagnosticsStore.diagnostics(for: tracked).isEmpty)
+
+            LSPDiagnosticsPublisher.publish([diagnostic], forDocument: tracked.lspURI)
+
+            #expect(workspace.diagnosticsStore.diagnostics(for: tracked).map(\.message) == ["careful"])
         }
     }
 }

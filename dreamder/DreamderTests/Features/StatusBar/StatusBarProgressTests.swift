@@ -158,6 +158,29 @@ struct StatusBarProgressTests {
     }
 
     @Test
+    func hoveringTheProgressWidgetPaintsTheStatusBarHoverBackground() async throws {
+        let center = NotificationCenter()
+        let handler = TaskNotificationHandler(center: center)
+        post(center, .create, id: "a", title: "Indexing project", percentage: 0.4, isLoading: true)
+        try await eventually { !handler.notifications.isEmpty }
+        let idle = HostedViewFixture.host(size: NSSize(width: 420, height: 30)) {
+            StatusBarProgressIndicator(handler: handler)
+        }
+        let hovered = HostedViewFixture.host(size: NSSize(width: 420, height: 30)) {
+            StatusBarProgressIndicator(handler: handler, isHovering: true)
+        }
+        defer {
+            idle.close()
+            hovered.close()
+        }
+        try await idle.settle(.milliseconds(50))
+        try await hovered.settle(.milliseconds(50))
+
+        #expect(idle.renders())
+        #expect(HostedView.pixelsDiffer(idle.snapshot(), hovered.snapshot()))
+    }
+
+    @Test
     func popoverListsEveryNotificationWithItsProgress() async throws {
         let handler = TaskNotificationHandler(center: NotificationCenter())
         let indicator = StatusBarProgressIndicator(handler: handler)

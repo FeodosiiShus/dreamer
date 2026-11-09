@@ -15,7 +15,11 @@ final class CEWorkspaceSettings {
 
     @ObservationIgnored private var observationTask: Task<Void, Never>?
     @ObservationIgnored private var pendingSaveTask: Task<Void, Never>?
+    @ObservationIgnored private var savedSnapshot: Data?
+    @ObservationIgnored private let clock: any Clock<Duration>
     private let fileManager = FileManager.default
+
+    static let saveDebounce: Duration = .seconds(2)
 
     private(set) var folderURL: URL
 
@@ -23,38 +27,51 @@ final class CEWorkspaceSettings {
         folderURL.appending(path: "settings").appendingPathExtension("json")
     }
 
-    init(workspaceURL: URL) {
+    init(workspaceURL: URL, clock: any Clock<Duration> = ContinuousClock()) {
         folderURL = workspaceURL.appending(path: ".dreamder", directoryHint: .isDirectory)
+        self.clock = clock
         loadSettings()
+        savedSnapshot = snapshot()
         startAutosave()
+    }
+
+    private func snapshot() -> Data? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return try? encoder.encode(settings)
     }
 
     private func startAutosave() {
         observationTask = Task { [weak self] in
             let changes = Observations { [weak self] in
-                self.map { ObjectIdentifier($0.settings) }
+                self?.snapshot()
             }
             for await _ in changes {
-                guard let self else { return }
-                self.scheduleSave()
+                self?.scheduleSave()
             }
         }
     }
 
     private func scheduleSave() {
         pendingSaveTask?.cancel()
-        pendingSaveTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(2))
+        pendingSaveTask = Task { [weak self, clock] in
+            try? await Task.sleep(for: Self.saveDebounce, clock: clock)
             guard !Task.isCancelled else { return }
-            try? self?.savePreferences()
+            self?.flushPendingSave()
         }
+    }
+
+    func flushPendingSave() {
+        pendingSaveTask?.cancel()
+        pendingSaveTask = nil
+        guard snapshot() != savedSnapshot else { return }
+        try? savePreferences()
     }
 
     func cleanUp() {
         observationTask?.cancel()
         observationTask = nil
-        pendingSaveTask?.cancel()
-        pendingSaveTask = nil
+        flushPendingSave()
     }
 
     isolated deinit {
@@ -72,6 +89,11 @@ final class CEWorkspaceSettings {
 
     /// Save``CEWorkspaceSettingsManager`` model to `.dreamder/settings.json`
     func savePreferences() throws {
+        try writeSettings()
+        savedSnapshot = snapshot()
+    }
+
+    private func writeSettings() throws {
         // If the user doesn't have any settings to save, don't save them.
         guard !settings.isEmpty() else {
             // Settings is empty, remove the file & directory if it's empty.

@@ -65,19 +65,39 @@ struct ShelfView: View {
     private var toolbar: some View {
         let hasSelection = model.selectedShelf != nil
         return HStack(spacing: Self.buttonSpacing) {
-            ToolWindowActionButton(icon: "vcs/shelve", help: "Shelve Changes…", action: { model.enqueue { await $0.shelveAllChanges() } })
-            ToolWindowActionButton(icon: "vcs/unshelve", help: "Unshelve", action: { model.enqueue { await $0.unshelveSelected(keep: false) } })
+            ToolWindowActionButton(icon: "vcs/shelve", help: "Shelve Changes…", action: queueShelveAll)
+            ToolWindowActionButton(icon: "vcs/unshelve", help: "Unshelve", action: queueUnshelve)
                 .disabled(!hasSelection)
-            ToolWindowActionButton(icon: "general/copy", help: "Unshelve and Keep", action: { model.enqueue { await $0.unshelveSelected(keep: true) } })
+            ToolWindowActionButton(icon: "general/copy", help: "Unshelve and Keep", action: queueUnshelveKeeping)
                 .disabled(!hasSelection)
-            ToolWindowActionButton(icon: "general/edit", help: "Rename…", action: { model.enqueue { await $0.renameSelected() } })
+            ToolWindowActionButton(icon: "general/edit", help: "Rename…", action: queueRename)
                 .disabled(!hasSelection)
-            ToolWindowActionButton(icon: "general/delete", help: "Delete", action: { model.enqueue { await $0.deleteSelected() } })
+            ToolWindowActionButton(icon: "general/delete", help: "Delete", action: queueDelete)
                 .disabled(!hasSelection)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, Self.toolbarInset)
         .frame(height: Self.toolbarHeight)
+    }
+
+    func queueShelveAll() {
+        model.enqueue { await $0.shelveAllChanges() }
+    }
+
+    func queueUnshelve() {
+        model.enqueue { await $0.unshelveSelected(keep: false) }
+    }
+
+    func queueUnshelveKeeping() {
+        model.enqueue { await $0.unshelveSelected(keep: true) }
+    }
+
+    func queueRename() {
+        model.enqueue { await $0.renameSelected() }
+    }
+
+    func queueDelete() {
+        model.enqueue { await $0.deleteSelected() }
     }
 
     private var shelfList: some View {
@@ -141,9 +161,17 @@ struct ShelfRow: View {
         .frame(height: Islands.listRowHeight)
         .background(Self.background(isSelected: model.selectedHash == shelf.hash, isHovering: isHovering))
         .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
-        .onTapGesture { model.select(shelf) }
+        .onHover(perform: setHovering)
+        .onTapGesture(perform: select)
         .contextMenu { ShelfRowMenu(shelf: shelf, model: model) }
+    }
+
+    func setHovering(_ hovering: Bool) {
+        isHovering = hovering
+    }
+
+    func select() {
+        model.select(shelf)
     }
 
     static func background(isSelected: Bool, isHovering: Bool) -> Color {

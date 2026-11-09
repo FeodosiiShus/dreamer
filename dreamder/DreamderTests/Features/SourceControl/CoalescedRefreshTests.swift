@@ -57,42 +57,49 @@ struct CoalescedRefreshTests {
 
     @Test
     func debouncedRequestsInsideTheWindowShareOneRunStartedAfterTheDelay() async throws {
-        let refresh = CoalescedRefresh()
+        let clock = TestClock()
+        let refresh = CoalescedRefresh(clock: clock)
         let probe = Probe()
-        let clock = ContinuousClock()
         let start = clock.now
 
-        await withTaskGroup(of: Void.self) { group in
-            for _ in 0..<10 {
-                group.addTask { await refresh.run(debounce: .milliseconds(200)) { probe.begin() } }
-            }
+        let callers = (0..<10).map { _ in
+            Task { await refresh.run(debounce: .milliseconds(200)) { probe.begin() } }
+        }
+        try await waitUntil { await refresh.requestCount == 10 }
+        try await clock.waitForSleepers(1, timeout: .seconds(100))
+        #expect(clock.pendingDeadlines == [start.advanced(by: .milliseconds(200))])
+        #expect(probe.runs == 0)
+        clock.advance(by: .milliseconds(200))
+        for caller in callers {
+            await caller.value
         }
 
         #expect(probe.runs == 1)
-        #expect(clock.now - start >= .milliseconds(180))
     }
 
     @Test
     func anImmediateRequestCutsThePendingDebounceShort() async throws {
-        let refresh = CoalescedRefresh()
+        let clock = TestClock()
+        let refresh = CoalescedRefresh(clock: clock)
         let probe = Probe()
-        let clock = ContinuousClock()
+        let start = clock.now
 
         let debounced = Task { await refresh.run(debounce: .seconds(60)) { probe.begin() } }
         try await waitUntil { await refresh.requestCount == 1 }
-        let start = clock.now
+        try await clock.waitForSleepers(1, timeout: .seconds(100))
         await refresh.run { probe.begin() }
         await debounced.value
 
-        #expect(clock.now - start < .seconds(30))
+        #expect(clock.now == start)
+        #expect(clock.pendingSleeperCount == 0)
         #expect(probe.runs == 1)
     }
 
     @Test
     func debouncedRequestsNeverDelayAnImmediateOneThatIsAlreadyPending() async throws {
-        let refresh = CoalescedRefresh()
+        let clock = TestClock()
+        let refresh = CoalescedRefresh(clock: clock)
         let probe = Probe()
-        let clock = ContinuousClock()
         let start = clock.now
         let (gate, release) = AsyncStream<Void>.makeStream()
         defer { release.finish() }
@@ -113,13 +120,14 @@ struct CoalescedRefreshTests {
         await immediate.value
         await debounced.value
 
-        #expect(clock.now - start < .seconds(30))
+        #expect(clock.now == start)
+        #expect(clock.pendingSleeperCount == 0)
         #expect(probe.runs == 2)
     }
 
     private func waitUntil(_ condition: () async -> Bool) async throws {
         let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(30))
+        let deadline = clock.now.advanced(by: .seconds(100))
         while await !condition(), clock.now < deadline {
             try await Task.sleep(for: .milliseconds(10))
         }

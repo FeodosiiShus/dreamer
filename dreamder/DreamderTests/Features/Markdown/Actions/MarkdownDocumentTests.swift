@@ -141,7 +141,7 @@ struct MarkdownEditBufferTests {
         let result = buffer.result(selections: [NSRange(location: 4, length: 0)])
 
         #expect(result.text == "abc!")
-        #expect(result.edits == [MarkdownTextEdit(range: NSRange(location: 3, length: 0), replacement: "!")])
+        #expect(result.edit == MarkdownTextEdit(range: NSRange(location: 3, length: 0), replacement: "!"))
         #expect(result.selections == [NSRange(location: 4, length: 0)])
     }
 }

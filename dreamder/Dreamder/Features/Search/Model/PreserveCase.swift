@@ -160,12 +160,15 @@ nonisolated enum PreserveCase {
     }
 
     private static func upper(_ character: Character) -> Character {
-        let converted = String(character).uppercased()
-        return converted.count == 1 ? (converted.first ?? character) : character
+        singleCharacter(of: String(character).uppercased(), fallback: character)
     }
 
     private static func lower(_ character: Character) -> Character {
-        let converted = String(character).lowercased()
-        return converted.count == 1 ? (converted.first ?? character) : character
+        singleCharacter(of: String(character).lowercased(), fallback: character)
+    }
+
+    private static func singleCharacter(of converted: String, fallback: Character) -> Character {
+        guard converted.count == 1, let only = converted.first else { return fallback }
+        return only
     }
 }

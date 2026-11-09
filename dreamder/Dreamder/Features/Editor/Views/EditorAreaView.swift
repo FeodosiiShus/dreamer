@@ -65,10 +65,14 @@ struct EditorAreaView: View {
                     }
             }
         } else {
-            EditorEmptyStateView(sendAction: MenuResponderChain.send)
+            Self.emptyState()
                 .onTapGesture(perform: Self.activateAction(editor, in: editorManager))
                 .onDrop(of: [.fileURL], isTargeted: nil, perform: dropHandler)
         }
+    }
+
+    static func emptyState() -> EditorEmptyStateView {
+        EditorEmptyStateView(sendAction: MenuResponderChain.send)
     }
 
     private var dropHandler: ([NSItemProvider]) -> Bool {

@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 import Testing
 @testable import Dreamder
 
@@ -41,13 +42,14 @@ struct IslandsDensityTests {
         withDensity("compact") {
             #expect(Islands.islandGap == 4)
             #expect(Islands.islandRadius == 8)
+            #expect(Islands.layoutMetrics == .compact)
             #expect(Islands.tabStripHeight == 31)
             #expect(Islands.tabBarHeight == 32)
             #expect(Islands.tabPillHeight == 24)
             #expect(Islands.tabPillRadius == 4)
             #expect(Islands.tabLabelFontSize == 12)
             #expect(Islands.stripeIconSize == 16)
-            #expect(Islands.stripeWidth == 33)
+            #expect(Islands.stripeWidth == 37)
             #expect(Islands.treeRowHeight == 20)
             #expect(Islands.toolWindowHeaderHeight == 32)
             #expect(Islands.statusBarHeight == 22)
@@ -60,11 +62,12 @@ struct IslandsDensityTests {
             #expect(Islands.density == .default)
             #expect(Islands.islandGap == 6)
             #expect(Islands.islandRadius == 10)
+            #expect(Islands.layoutMetrics == .regular)
             #expect(Islands.tabStripHeight == 40)
             #expect(Islands.tabBarHeight == 41)
-            #expect(Islands.tabPillHeight == 30)
+            #expect(Islands.tabPillHeight == 28)
             #expect(Islands.stripeIconSize == 20)
-            #expect(Islands.stripeWidth == 40)
+            #expect(Islands.stripeWidth == 37)
             #expect(Islands.treeRowHeight == 24)
             #expect(Islands.toolWindowHeaderHeight == 41)
             #expect(Islands.statusBarHeight == 26)
@@ -89,7 +92,10 @@ struct IslandsDensityTests {
             #expect(Islands.mainToolbarHeight == 34)
             #expect(Islands.toolbarControlHeight == 24)
             #expect(Islands.tabColorInset == 2)
-            #expect(Islands.stripeButtonSize == 32)
+            #expect(Islands.stripeButtonWidth == 29)
+            #expect(Islands.stripeButtonHeight == 32)
+            #expect(Islands.stripeButtonRadius == 4)
+            #expect(Islands.stripeButtonInsets == EdgeInsets(top: 4, leading: 5, bottom: 4, trailing: 3))
             #expect(Islands.listRowHeight == 20)
             #expect(Islands.popupRowHeight == 22)
             #expect(Islands.popupHeaderHeight == 32)
@@ -105,7 +111,10 @@ struct IslandsDensityTests {
             #expect(Islands.tabPillRadius == 6)
             #expect(Islands.tabColorInset == 3)
             #expect(Islands.tabLabelFontSize == 13)
-            #expect(Islands.stripeButtonSize == 30)
+            #expect(Islands.stripeButtonWidth == 30)
+            #expect(Islands.stripeButtonHeight == 30)
+            #expect(Islands.stripeButtonRadius == 6)
+            #expect(Islands.stripeButtonInsets == EdgeInsets(top: 5, leading: 5, bottom: 5, trailing: 2))
             #expect(Islands.listRowHeight == 24)
             #expect(Islands.popupRowHeight == 26)
             #expect(Islands.popupHeaderHeight == 40)

@@ -50,12 +50,7 @@ class CEOpenWith: FIFinderSync {
             return
         }
 
-        // Make values compatible to ArrayLiteralElement
-        var files = ""
-
-        for obj in items {
-            files.append("\(obj.path);")
-        }
+        let files = items.map(\.path)
 
         guard let Dreamder = NSWorkspace.shared.urlForApplication(
             withBundleIdentifier: "dev.dreamder.Dreamder"

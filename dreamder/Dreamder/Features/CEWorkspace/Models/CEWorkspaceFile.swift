@@ -81,9 +81,15 @@ final class CEWorkspaceFile: Codable, Comparable, Hashable, Identifiable, Editor
         if let customImage = NSImage.symbol(named: systemImage) {
             return customImage
         } else {
-            return NSImage(systemSymbolName: systemImage, accessibilityDescription: systemImage)
-                ?? NSImage(systemSymbolName: "doc", accessibilityDescription: "doc") ?? NSImage()
+            return Self.systemSymbolImage(named: systemImage)
         }
+    }
+
+    static func systemSymbolImage(
+        named name: String,
+        lookup: (String) -> NSImage? = { NSImage(systemSymbolName: $0, accessibilityDescription: $0) }
+    ) -> NSImage {
+        lookup(name) ?? lookup("doc") ?? NSImage()
     }
 
     /// Returns a parent ``CEWorkspaceFile``.
@@ -258,6 +264,15 @@ final class CEWorkspaceFile: Codable, Comparable, Hashable, Identifiable, Editor
     /// Loads the ``fileDocument`` property with a new ``CodeFileDocument`` and registers it with the shared
     /// ``DreamderDocumentController``.
     func loadCodeFile() throws {
+        let documentURL = resolvedURL.standardizedFileURL
+        let openDocument = DreamderDocumentController.shared.documents
+            .lazy
+            .compactMap { $0 as? CodeFileDocument }
+            .first { $0.fileURL?.standardizedFileURL == documentURL }
+        if let openDocument {
+            self.fileDocument = openDocument
+            return
+        }
         let codeFile = try CodeFileDocument(contentsOf: resolvedURL, ofType: contentType?.identifier ?? "")
         DreamderDocumentController.shared.addDocument(codeFile)
         self.fileDocument = codeFile

@@ -61,12 +61,10 @@ extension WorkspaceDocument.SearchState {
         }
 
         let plan: FindPlan
-        do {
+        do throws(FindFailure) {
             plan = try await makeFindPlan(query: query, previewsReplacements: selectedMode.isReplaceMode)
         } catch {
-            guard isCurrentSearch(generation) else { return }
-            let failure = (error as? FindFailure)?.message ?? error.localizedDescription
-            findNavigatorStatus = .failed(errorMessage: failure)
+            findNavigatorStatus = .failed(errorMessage: error.message)
             return
         }
         guard isCurrentSearch(generation) else { return }
@@ -203,7 +201,7 @@ extension WorkspaceDocument.SearchState {
         query: String,
         previewsReplacements: Bool = false,
         makeMask: (String?) throws -> FileMask = { try FileMask(filter: $0) }
-    ) async throws -> FindPlan {
+    ) async throws(FindFailure) -> FindPlan {
         let model = makeFindModel(query: query)
         guard let regex = model.compileMatcher() else { throw FindFailure.invalidRegularExpression }
         let mask: FileMask
@@ -249,11 +247,11 @@ extension WorkspaceDocument.SearchState {
 
     nonisolated static func replacementIssue(for model: FindModel, regex: NSRegularExpression) -> String? {
         guard model.isRegularExpressions else { return nil }
-        do {
+        do throws(RegexReplacement.TemplateError) {
             try RegexReplacement.validate(template: model.stringToReplace, regex: regex)
             return nil
         } catch {
-            return (error as? RegexReplacement.TemplateError)?.message ?? error.localizedDescription
+            return error.message
         }
     }
 

@@ -18,14 +18,16 @@ struct EditorLayoutView: View {
             case .one(let detailEditor):
                 EditorAreaView(editor: detailEditor, focus: $focus)
             case .vertical(let data), .horizontal(let data):
-                SubEditorLayoutView(data: data, focus: $focus)
+                SubEditorLayoutView(data: data) { child in
+                    EditorLayoutView(layout: child, focus: $focus)
+                }
             }
         }
     }
 
-    struct SubEditorLayoutView: View {
+    struct SubEditorLayoutView<Pane: View>: View {
         let data: SplitViewData
-        @FocusState.Binding var focus: Editor?
+        let pane: (EditorLayout) -> Pane
 
         var body: some View {
             SplitView(axis: data.axis, dividerStyle: .editorDivider, weights: Bindable(data).weights) {
@@ -35,8 +37,8 @@ struct EditorLayoutView: View {
         }
 
         var splitView: some View {
-            ForEach(Array(data.editorLayouts.enumerated()), id: \.offset) { index, item in
-                EditorLayoutView(layout: item, focus: $focus)
+            ForEach(Array(data.editorLayouts.enumerated()), id: \.element.id) { index, item in
+                pane(item)
                    .transformEnvironment(\.isEditorLayoutAtEdge) { belowToolbar in
                        calcIsAtEdge(current: &belowToolbar, index: index)
                    }
@@ -61,6 +63,22 @@ struct EditorLayoutView: View {
                     current = []
                 }
             }
+        }
+    }
+}
+
+enum EditorLayoutID: Hashable {
+    case editor(Editor.ID)
+    case split(ObjectIdentifier)
+}
+
+extension EditorLayout: Identifiable {
+    var id: EditorLayoutID {
+        switch self {
+        case .one(let editor):
+            .editor(editor.id)
+        case .vertical(let data), .horizontal(let data):
+            .split(ObjectIdentifier(data))
         }
     }
 }

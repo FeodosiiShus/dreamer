@@ -34,15 +34,23 @@ final class WorkspaceSheetPresentation {
         get { manager.switchToBranch != nil && manager.stashSheetIsPresented ? nil : manager.switchToBranch }
         set { manager.switchToBranch = newValue }
     }
+
+    func dismissDiscardAllAlert() {
+        manager.discardAllAlertIsPresented = false
+    }
 }
 
-private struct NoUncommittedChangesAlert: ViewModifier {
+struct NoUncommittedChangesAlert: ViewModifier {
     let title: LocalizedStringKey
     @Binding var isPresented: Bool
 
+    func dismiss() {
+        isPresented = false
+    }
+
     func body(content: Content) -> some View {
         content.alert(title, isPresented: $isPresented) {
-            Button("OK", role: .cancel) {}
+            Button("OK", role: .cancel, action: dismiss)
         } message: {
             Text("There are no uncommitted changes in the local repository for this project.")
         }
@@ -74,8 +82,8 @@ struct WorkspaceSheets: View {
                 "Do you want to discard all uncommitted, local changes?",
                 isPresented: $sourceControlManager.discardAllAlertIsPresented
             ) {
-                Button("Discard", role: .destructive) { sourceControlManager.discardAllChanges() }
-                Button("Cancel", role: .cancel) {}
+                Button("Discard", role: .destructive, action: sourceControlManager.discardAllChanges)
+                Button("Cancel", role: .cancel, action: presentation.dismissDiscardAllAlert)
             } message: {
                 Text("This action cannot be undone.")
             }

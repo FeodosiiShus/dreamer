@@ -45,6 +45,8 @@ extension DreamderWindowController {
             id: "show_terminal_tool_window",
             command: { [weak self] in self?.workspace?.toolWindowManager.show(.terminal) }
         )
+
+        registerTrustProjectCommand()
     }
 
     internal func listenToDocumentEdited(workspace: WorkspaceDocument) {
@@ -52,8 +54,7 @@ extension DreamderWindowController {
         documentEditedObservation?.cancel()
         documentEditedObservation = Task { [weak self] in
             for await hasEditedDocuments in Observations({ Self.hasEditedDocuments(in: editorManager) }) {
-                guard let self else { return }
-                self.setDocumentEdited(hasEditedDocuments)
+                self?.setDocumentEdited(hasEditedDocuments)
             }
         }
     }
@@ -75,12 +76,10 @@ extension DreamderWindowController {
             let settingsWindow = NSWindow()
             settingsWindow.isReleasedWhenClosed = false
             self.workspaceSettingsWindow = settingsWindow
-            let contentView = CEWorkspaceSettingsView(
-                dismiss: { [weak self] in self?.dismissWorkspaceSettings() }
-            )
-            .environment(workspaceSettingsManager)
-            .environment(workspace)
-            .environment(taskManager)
+            let contentView = makeWorkspaceSettingsView()
+                .environment(workspaceSettingsManager)
+                .environment(workspace)
+                .environment(taskManager)
 
             settingsWindow.contentView = NSHostingView(rootView: contentView)
             settingsWindow.titlebarAppearsTransparent = true
@@ -89,6 +88,10 @@ extension DreamderWindowController {
 
             window.beginSheet(settingsWindow, completionHandler: nil)
         }
+    }
+
+    func makeWorkspaceSettingsView() -> CEWorkspaceSettingsView {
+        CEWorkspaceSettingsView(dismiss: { [weak self] in self?.dismissWorkspaceSettings() })
     }
 
     func dismissWorkspaceSettings() {

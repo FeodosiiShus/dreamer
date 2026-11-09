@@ -30,21 +30,37 @@ final class StructureViewModel {
         StructureTreeBuilder.rows(nodes: displayNodes, collapsed: collapsed, expandsAll: isFiltering)
     }
 
+    typealias TextReader = @Sendable (URL) async -> String?
+    typealias NodeBuilder = @Sendable (String, String) async -> [StructureNode]
+
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored let readText: TextReader
+    @ObservationIgnored let buildNodes: NodeBuilder
     @ObservationIgnored private var caretObservation: Task<Void, Never>?
 
-    init(defaults: UserDefaults = .standard) {
+    init(
+        defaults: UserDefaults = .standard,
+        readText: @escaping TextReader = StructureViewModel.readTextFromDisk,
+        buildNodes: @escaping NodeBuilder = StructureViewModel.fallbackNodes
+    ) {
         self.defaults = defaults
+        self.readText = readText
+        self.buildNodes = buildNodes
         self.options = StructureViewOptions(defaults: defaults)
     }
 
-    @ObservationIgnored private weak var workspace: WorkspaceDocument?
+    @concurrent
+    static func readTextFromDisk(_ url: URL) async -> String? {
+        try? String(contentsOf: url, encoding: .utf8)
+    }
+
+    @ObservationIgnored private(set) weak var workspace: WorkspaceDocument?
     @ObservationIgnored private weak var observedDocument: CodeFileDocument?
     @ObservationIgnored private var lspService: LSPService?
     @ObservationIgnored private var selectionObservation: Task<Void, Never>?
     @ObservationIgnored private var documentCancellable: AnyCancellable?
     @ObservationIgnored private var documentLoadObservation: Task<Void, Never>?
-    @ObservationIgnored private var requestTask: Task<Void, Never>?
+    @ObservationIgnored private(set) var requestTask: Task<Void, Never>?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
 
     isolated deinit {
@@ -139,24 +155,6 @@ final class StructureViewModel {
         requestScroll(to: visible[index].id)
     }
 
-    @discardableResult
-    func activateSelection(workspace: WorkspaceDocument) -> KeyPress.Result {
-        let displayed = displayNodes
-        let selected = selection.flatMap { StructureTreeTransform.find($0, in: displayed) }
-        let firstMatch = isFiltering ? rows.first { !$0.node.isGroup }?.node : nil
-        if let node = selected ?? firstMatch {
-            activate(node, workspace: workspace)
-        }
-        return .handled
-    }
-
-    func submission(workspace: WorkspaceDocument, then completion: @escaping () -> Void = {}) -> () -> Void {
-        {
-            self.activateSelection(workspace: workspace)
-            completion()
-        }
-    }
-
     func syncSelectionToCaret() {
         guard options.autoscrollsFromSource, let line = caretLine() else { return }
         let path = StructureBreadcrumbs.path(in: nodes, line: line)
@@ -178,18 +176,7 @@ final class StructureViewModel {
         scrollRequests += 1
     }
 
-    private func caretLine() -> Int? {
-        guard let tab = workspace?.editorManager?.activeEditor.selectedTab,
-              tab.file.url.standardizedFileURL == fileURL,
-              let position = tab.cursorPositions.first else { return nil }
-        if position.start.line > 0 {
-            return position.start.line
-        }
-        let text = tab.file.fileDocument?.content?.string ?? ""
-        return StructureCaretLine.line(offset: position.range.location, in: text)
-    }
-
-    private func apply(nodes: [StructureNode]) {
+    func apply(nodes: [StructureNode]) {
         self.nodes = nodes
         syncSelectionToCaret()
     }
@@ -240,7 +227,9 @@ final class StructureViewModel {
         guard let client = lspService.languageClient(forDocument: url) else {
             usesLanguageServer = false
             isLoading = false
-            apply(nodes: fallbackNodes(document: document, url: url))
+            requestTask = Task { [weak self] in
+                await self?.applyFallback(document: document, url: url)
+            }
             return
         }
 
@@ -255,13 +244,9 @@ final class StructureViewModel {
             if let response, let symbols = StructureTreeBuilder.nodes(from: response) {
                 self.apply(nodes: symbols)
             } else {
-                self.apply(nodes: self.fallbackNodes(document: document, url: url))
+                await self.applyFallback(document: document, url: url)
             }
         }
-    }
-
-    private func activeURL() -> URL? {
-        workspace?.editorManager?.activeEditor.selectedTab?.file.url.standardizedFileURL
     }
 
     private func observe(document: CodeFileDocument?) {
@@ -275,21 +260,5 @@ final class StructureViewModel {
                     self?.scheduleRefresh(delay: .milliseconds(400))
                 }
             }
-    }
-
-    private func fallbackNodes(document: CodeFileDocument, url: URL) -> [StructureNode] {
-        let text = document.content?.string ?? (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-        let extracted = SymbolExtractor.symbols(in: text, fileExtension: url.pathExtension)
-        return StructureTreeBuilder.nodes(from: extracted, text: text)
-    }
-
-    private func navigate(to node: StructureNode, workspace: WorkspaceDocument) {
-        guard let fileURL else { return }
-        EditorLocationNavigation.open(
-            fileURL: fileURL,
-            line: node.line,
-            column: node.column,
-            workspace: workspace
-        )
     }
 }

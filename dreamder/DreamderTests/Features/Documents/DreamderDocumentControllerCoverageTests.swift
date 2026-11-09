@@ -3,7 +3,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-private final class OpenResultRecorder {
+final class OpenResultRecorder {
     private(set) var results: [(document: NSDocument?, alreadyOpen: Bool, error: Error?)] = []
 
     func record(_ document: NSDocument?, _ alreadyOpen: Bool, _ error: Error?) {
@@ -12,7 +12,7 @@ private final class OpenResultRecorder {
 }
 
 @MainActor
-private final class LastDocumentActionRecorder {
+final class LastDocumentActionRecorder {
     private(set) var welcomeWindows = 0
     private(set) var quits = 0
 
@@ -29,7 +29,7 @@ private final class LastDocumentActionRecorder {
 @Suite(.serialized, .uiGate)
 struct DreamderDocumentControllerCoverageTests {
     @MainActor
-    private struct LastDocumentScope {
+    struct LastDocumentScope {
         let controller: DreamderDocumentController
         let recorder = LastDocumentActionRecorder()
         let settings: Dreamder.Settings
@@ -59,11 +59,11 @@ struct DreamderDocumentControllerCoverageTests {
         }
     }
 
-    private func sharedController() throws -> DreamderDocumentController {
+    func sharedController() throws -> DreamderDocumentController {
         try #require(DreamderDocumentController.shared as? DreamderDocumentController)
     }
 
-    private func openFileNames(in workspace: WorkspaceDocument) -> [String] {
+    func openFileNames(in workspace: WorkspaceDocument) -> [String] {
         let files = workspace.editorManager?.editorLayout.gatherOpenFiles() ?? []
         return files.map(\.name).sorted()
     }
@@ -198,6 +198,20 @@ struct DreamderDocumentControllerCoverageTests {
             #expect(scope.recorder.welcomeWindows == 1)
             #expect(scope.recorder.quits == 0)
         }
+    }
+
+    @Test
+    func theDefaultWelcomeActionOpensTheWelcomeSceneThroughTheInstalledOpener() throws {
+        let controller = try sharedController()
+        let delegate = AppDelegate()
+        var openedScenes: [SceneID] = []
+        delegate.installSceneOpener { openedScenes.append($0) }
+
+        withExtendedLifetime(delegate) {
+            controller.showWelcomeWindow()
+        }
+
+        #expect(openedScenes == [.welcome])
     }
 
     @Test

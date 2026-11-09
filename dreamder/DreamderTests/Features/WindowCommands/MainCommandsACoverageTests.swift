@@ -46,8 +46,24 @@ struct MainCommandsACoverageTests {
     }
 
     @Test
+    func sceneButtonsInstallTheSceneOpenerWithoutAnyWelcomeView() async throws {
+        let delegate = AppDelegate()
+        let installer: SceneOpenerInstall = { delegate.installSceneOpener($0) }
+        let hosted = HostedViewFixture.host(size: NSSize(width: 200, height: 60)) {
+            SceneButton(title: "Settings...", scene: .settings, installSceneOpener: installer)
+        }
+        defer { hosted.close() }
+
+        try await eventually { delegate.sceneOpener != nil }
+
+        #expect(delegate.sceneOpener != nil)
+    }
+
+    @Test
     func commandBodiesBuild() {
         _ = MainCommands().body
+        _ = MainCommands(installSceneOpener: { _ in }).body
+        _ = DreamderCommands().body
         _ = WindowCommands().body
     }
 }

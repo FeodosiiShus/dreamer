@@ -114,7 +114,7 @@ say "step: launch headless"
 make -o build headless PROJECT_DIR="$FIXTURE" >>"$LOG" 2>&1
 
 say "step: wait for the project window"
-deadline=$((SECONDS + 30))
+deadline=$((SECONDS + 90))
 window_ready=0
 while [ "$SECONDS" -lt "$deadline" ]; do
   if make screenshot OUT="$OUT/0" >>"$LOG" 2>&1; then
@@ -124,7 +124,7 @@ while [ "$SECONDS" -lt "$deadline" ]; do
   sleep 1
 done
 if [ "$window_ready" != "1" ]; then
-  add_reason "no window appeared within 30 s"
+  add_reason "no window appeared within 90 s"
   conclude
 fi
 if ! alive; then

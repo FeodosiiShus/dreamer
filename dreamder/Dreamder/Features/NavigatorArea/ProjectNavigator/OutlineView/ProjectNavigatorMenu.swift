@@ -278,6 +278,7 @@ final class ProjectNavigatorMenu: NSMenu {
     private func markExcluded() {
         guard let item else { return }
         workspace?.excludedDirectories?.exclude(item.url)
+        workspace?.workspaceFileManager?.refreshEventStream()
         sender?.outlineView.reloadItem(item, reloadChildren: true)
         workspace?.searchState?.addProjectToIndex()
     }
@@ -286,6 +287,7 @@ final class ProjectNavigatorMenu: NSMenu {
     private func cancelExclusion() {
         guard let item else { return }
         workspace?.excludedDirectories?.cancelExclusion(item.url)
+        workspace?.workspaceFileManager?.refreshEventStream()
         sender?.outlineView.reloadItem(item, reloadChildren: true)
         workspace?.searchState?.addProjectToIndex()
     }

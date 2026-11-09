@@ -89,7 +89,7 @@ def main():
     shutil.rmtree(SHARDS_DIR, ignore_errors=True)
     os.makedirs(SHARDS_DIR)
     coverage = ["-enableCodeCoverage", "YES"] if arguments.coverage else []
-    environment = dict(os.environ, TEST_RUNNER_DREAMDER_HEADLESS="1")
+    environment = dict(os.environ, TEST_RUNNER_DREAMDER_HEADLESS="1", TEST_RUNNER_SWIFT_DETERMINISTIC_HASHING="1")
 
     build_log = os.path.join(LOGS, "sharded-build.log")
     build = run(xcodebuild_base() + coverage + ["build-for-testing"], build_log, environment)
@@ -101,6 +101,8 @@ def main():
     processes = []
     bundles = []
     for index, names in enumerate(shards):
+        if not names:
+            continue
         bundle = os.path.join(SHARDS_DIR, f"shard-{index}.xcresult")
         bundles.append(bundle)
         selection = [f"-only-testing:{TARGET}/{name}" for name in names]

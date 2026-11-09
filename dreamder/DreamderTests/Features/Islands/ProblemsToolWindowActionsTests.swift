@@ -81,4 +81,12 @@ struct ProblemsToolWindowActionsTests {
         toggle.setHovering(true)
         toggle.setHovering(false)
     }
+
+    @Test
+    func severityToggleBackgroundPrefersHoverThenSelection() {
+        #expect(ProblemSeverityToggle.background(isHovering: true, isOn: false) == Islands.actionHover)
+        #expect(ProblemSeverityToggle.background(isHovering: true, isOn: true) == Islands.actionHover)
+        #expect(ProblemSeverityToggle.background(isHovering: false, isOn: true) == Islands.selection)
+        #expect(ProblemSeverityToggle.background(isHovering: false, isOn: false) == .clear)
+    }
 }

@@ -181,6 +181,18 @@ struct SearchEverywhereProviderPriorityTests {
     }
 
     @Test
+    func equalWeightsAndTitlesKeepDiscoveryOrderOfNonTextProviders() {
+        let candidates = [
+            candidate("second", .files, "Main.swift", match: 5, key: "file:b/Main.swift"),
+            candidate("first", .files, "Main.swift", match: 5, key: "file:a/Main.swift")
+        ]
+
+        let order = SearchEverywhereRanking.rank(candidates, limitPerProvider: 8)
+
+        #expect(order == [0, 1])
+    }
+
+    @Test
     func perProviderLimitCapsEachProviderSeparately() {
         let files = (0..<5).map { candidate("f\($0)", .files, "file\($0)", match: 100 - $0) }
         let classes = (0..<5).map { candidate("c\($0)", .classes, "class\($0)", match: 100 - $0) }
@@ -315,150 +327,6 @@ struct SearchEverywhereEqualityTests {
         ]
 
         #expect(SearchEverywhereRanking.deduplicated(candidates) == [0, 1])
-    }
-}
-
-@Suite
-struct SearchEverywhereComposedWeightTests {
-    private static let keyA = SearchEverywhereWeightKey(id: "a", order: 10, defaultWeight: 0)
-    private static let keyB = SearchEverywhereWeightKey(id: "b", order: 20, defaultWeight: 5)
-    private static let keyC = SearchEverywhereWeightKey(id: "c", order: 30, defaultWeight: 0)
-
-    private func key(_ key: SearchEverywhereWeightKey?) throws -> SearchEverywhereWeightKey {
-        try #require(key)
-    }
-
-    private func weight(_ match: Int, _ components: [(SearchEverywhereWeightKey?, Int)] = []) throws -> SearchEverywhereComposedWeight {
-        let extra = try components.map { SearchEverywhereWeightComponent(key: try key($0.0), weight: $0.1) }
-        return try #require(SearchEverywhereComposedWeight(components: [SearchEverywhereWeightComponent(weight: match)] + extra))
-    }
-
-    private func assertCompare(_ expected: Int, _ left: SearchEverywhereComposedWeight, _ right: SearchEverywhereComposedWeight) {
-        #expect(left.compare(right).signum() == expected)
-        #expect(right.compare(left).signum() == -expected)
-    }
-
-    @Test
-    func matchDecidesBeforeOtherKeys() throws {
-        let a = Self.keyA
-        assertCompare(1, try weight(100, [(a, 0)]), try weight(50, [(a, 9)]))
-    }
-
-    @Test
-    func missingComponentCountsAsDefaultWeight() throws {
-        let a = Self.keyA
-        let b = Self.keyB
-        assertCompare(0, try weight(100), try weight(100, [(a, 0)]))
-        assertCompare(-1, try weight(100), try weight(100, [(a, 3)]))
-        assertCompare(0, try weight(100), try weight(100, [(b, 5)]))
-        assertCompare(1, try weight(100), try weight(100, [(b, 4)]))
-    }
-
-    @Test
-    func keysAreComparedInTheirOrder() throws {
-        let a = Self.keyA
-        let b = Self.keyB
-        assertCompare(-1, try weight(100, [(a, 0), (b, 9)]), try weight(100, [(a, 1), (b, 0)]))
-        assertCompare(1, try weight(100, [(b, 6)]), try weight(100, [(a, 0), (b, 5)]))
-    }
-
-    @Test
-    func idDecidesTheOrderOfKeysWithTheSameOrder() throws {
-        let x = SearchEverywhereWeightKey(id: "x", order: 10, defaultWeight: 0)
-        let y = SearchEverywhereWeightKey(id: "y", order: 10, defaultWeight: 0)
-        let built = try #require(SearchEverywhereComposedWeight(components: [
-            SearchEverywhereWeightComponent(key: try key(y), weight: 0),
-            SearchEverywhereWeightComponent(key: try key(x), weight: 0),
-            SearchEverywhereWeightComponent(weight: 1)
-        ]))
-
-        #expect(built.components.map(\.key.id) == ["matchWeight", "x", "y"])
-    }
-
-    @Test
-    func keyEqualityAgreesWithComparison() throws {
-        let copy = try key(SearchEverywhereWeightKey(id: "notDeprecated", order: 200, defaultWeight: 1))
-        let shifted = try key(SearchEverywhereWeightKey(id: "notDeprecated", order: 201, defaultWeight: 1))
-
-        #expect(SearchEverywhereWeightKey.notDeprecated == copy)
-        #expect(SearchEverywhereWeightKey.notDeprecated.hashValue == copy.hashValue)
-        #expect(SearchEverywhereWeightKey.notDeprecated.compare(copy) == 0)
-        #expect(Set([SearchEverywhereWeightKey.notDeprecated]) == Set([copy]))
-        #expect(SearchEverywhereWeightKey.notDeprecated != shifted)
-    }
-
-    @Test
-    func notDeprecatedIsTheDefault() throws {
-        let notDeprecated = SearchEverywhereWeightKey.notDeprecated
-        assertCompare(0, try weight(100), try weight(100, [(notDeprecated, 1)]))
-        assertCompare(1, try weight(100), try weight(100, [(notDeprecated, 0)]))
-    }
-
-    @Test
-    func comparisonIsTransitive() throws {
-        let a = Self.keyA
-        let b = Self.keyB
-        let c = Self.keyC
-        let keys = [a, b, c]
-        let values = [0, 1, 5, 9]
-        var weights: [SearchEverywhereComposedWeight] = []
-        for match in 0...1 {
-            for mask in 0..<(1 << keys.count) {
-                for value in values {
-                    let chosen = keys.enumerated()
-                        .filter { mask & (1 << $0.offset) != 0 }
-                        .map { ($0.element, value) }
-                    weights.append(try weight(match, chosen))
-                }
-            }
-        }
-
-        for x in weights {
-            for y in weights {
-                let xy = x.compare(y).signum()
-                #expect(-xy == y.compare(x).signum())
-                for z in weights {
-                    let yz = y.compare(z).signum()
-                    if xy >= 0 && yz >= 0 {
-                        #expect(x >= z)
-                    }
-                    if xy == 0 {
-                        #expect(x.compare(z).signum() == y.compare(z).signum())
-                    }
-                }
-            }
-        }
-    }
-
-    @Test
-    func withAddsComponentInKeyOrderAndReplacesSameKey() throws {
-        let a = Self.keyA
-        let b = Self.keyB
-        let updated = try weight(100, [(b, 1)])
-            .with(SearchEverywhereWeightComponent(key: try key(a), weight: 2))
-            .with(SearchEverywhereWeightComponent(key: try key(b), weight: 7))
-
-        #expect(updated.components.map(\.key.id) == ["matchWeight", "a", "b"])
-        #expect(updated.components.map(\.weight) == [100, 2, 7])
-    }
-
-    @Test
-    func constructorRejectsInvalidComponents() throws {
-        let a = try key(Self.keyA)
-        #expect(SearchEverywhereComposedWeight(components: [
-            SearchEverywhereWeightComponent(weight: 1),
-            SearchEverywhereWeightComponent(key: a, weight: 0),
-            SearchEverywhereWeightComponent(key: a, weight: 1)
-        ]) == nil)
-        #expect(SearchEverywhereComposedWeight(components: [SearchEverywhereWeightComponent(key: a, weight: 0)]) == nil)
-        #expect(SearchEverywhereComposedWeight(components: []) == nil)
-        #expect(SearchEverywhereWeightKey(id: "negative", order: -1, defaultWeight: 0) == nil)
-        #expect(SearchEverywhereWeightKey(id: "matchWeight", order: 5, defaultWeight: 0) == nil)
-    }
-
-    @Test
-    func firstIsTheMatchWeight() throws {
-        #expect(try weight(42, [(Self.keyA, 9)]).first == 42)
     }
 }
 

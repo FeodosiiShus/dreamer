@@ -140,10 +140,11 @@ nonisolated final class WorkspaceFileScope: Sendable {
         }
 
         mutating func apply(updated: [URL], removed: [URL]) {
-            if !removed.isEmpty {
+            if !removed.isEmpty, var remaining = files {
                 let removedPaths = WorkspaceRemovedPaths(removed)
-                files?.removeAll { removedPaths.covers($0) }
-                paths = Set((files ?? []).map(\.workspacePathKey))
+                remaining.removeAll { removedPaths.covers($0) }
+                files = remaining
+                paths = Set(remaining.map(\.workspacePathKey))
                 signatures = signatures.filter { !removedPaths.covers(key: $0.key) }
             }
             for url in updated where paths.insert(url.workspacePathKey).inserted {
@@ -325,8 +326,7 @@ nonisolated final class WorkspaceFileScope: Sendable {
         var signatures: [String: WorkspaceFileSignature] = [:]
         var removed: [URL] = []
         var directories: [URL] = []
-        for relative in observed.keys.sorted() {
-            guard let (url, types) = observed[relative] else { continue }
+        for (url, types) in observed.keys.sorted().compactMap({ observed[$0] }) {
             guard let entry = fileSystem.entry(at: url) else {
                 removed.append(url)
                 continue

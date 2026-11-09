@@ -72,7 +72,7 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
         self.openFiles = LanguageServerFileMap()
         self.logContainer = logContainer
         self.logger = Logger(
-            subsystem: Bundle.main.bundleIdentifier ?? "",
+            subsystem: "dev.dreamder.Dreamder",
             category: "LanguageServer.\(languageId.rawValue)"
         )
         if let semanticTokensProvider = serverCapabilities.semanticTokensProvider {
@@ -91,7 +91,8 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
     static func createServer(
         for languageId: LSPLanguage,
         with binary: LanguageServerBinary,
-        workspacePath: String
+        workspacePath: String,
+        workspaceTrusted: Bool = false
     ) async throws -> LanguageServer {
         let executionParams = Process.ExecutionParameters(
             path: binary.execPath,
@@ -114,6 +115,8 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
         let initializationOptions = await LanguageServerDiscovery.resolvedInitializationOptions(
             for: languageId,
             workspacePath: workspacePath,
+            workspaceTrusted: workspaceTrusted,
+            serverExecutable: binary.execPath,
             searchPaths: LSPProcessEnvironment.shared.searchPaths,
             inlayHints: Settings[\.textEditing].inlayHints
         )
@@ -155,12 +158,12 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
         logContainer: LanguageServerLogContainer,
         onTermination: @escaping @Sendable () -> Void
     ) throws -> (connection: JSONRPCServerConnection, process: Process) {
-        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "LanguageServer")
+        let logger = Logger(subsystem: "dev.dreamder.Dreamder", category: "LanguageServer")
         do {
             let (channel, process) = try DataChannel.localProcessChannel(
                 parameters: executionParams,
                 terminationHandler: { [weak logContainer] in
-                    logger.debug("Terminated data channel for \(languageId.rawValue)")
+                    logger.info("Terminated data channel for \(languageId.rawValue)")
                     Task { @MainActor in
                         logContainer?.appendLog(
                             LogMessageParams(type: .error, message: "Data Channel Terminated Unexpectedly")
@@ -174,168 +177,6 @@ class LanguageServer<DocumentType: LanguageServerDocument> {
             logger.warning("Failed to initialize data channel for \(languageId.rawValue)")
             throw error
         }
-    }
-
-    // MARK: - Get Init Params
-
-    nonisolated static func textDocumentCapabilities() -> TextDocumentClientCapabilities {
-        let markupKinds: [MarkupKind] = [.markdown, .plaintext]
-        var capabilities = TextDocumentClientCapabilities(
-            completion: CompletionClientCapabilities(
-                dynamicRegistration: true,
-                completionItem: CompletionClientCapabilities.CompletionItem(
-                    snippetSupport: true,
-                    commitCharactersSupport: true,
-                    documentationFormat: [MarkupKind.plaintext],
-                    deprecatedSupport: true,
-                    preselectSupport: true,
-                    tagSupport: ValueSet(valueSet: [CompletionItemTag.deprecated]),
-                    insertReplaceSupport: true,
-                    resolveSupport: CompletionClientCapabilities.CompletionItem.ResolveSupport(
-                        properties: ["documentation", "detail", "additionalTextEdits"]
-                    ),
-                    insertTextModeSupport: ValueSet(valueSet: [InsertTextMode.adjustIndentation]),
-                    labelDetailsSupport: true
-                ),
-                completionItemKind: ValueSet<CompletionItemKind>.all,
-                contextSupport: true,
-                insertTextMode: InsertTextMode.asIs
-            ),
-            hover: HoverClientCapabilities(dynamicRegistration: false, contentFormat: markupKinds),
-            signatureHelp: SignatureHelpClientCapabilities(
-                dynamicRegistration: false,
-                signatureInformation: SignatureHelpClientCapabilities.SignatureInformation(
-                    documentationFormat: markupKinds,
-                    labelOffsetSupport: true,
-                    activeParameterSupport: true
-                ),
-                contextSupport: true
-            ),
-            documentSymbol: DocumentSymbolClientCapabilities(
-                dynamicRegistration: false,
-                symbolKind: ValueSet<SymbolKind>.all,
-                hierarchicalDocumentSymbolSupport: true
-            ),
-            codeAction: CodeActionClientCapabilities(
-                dynamicRegistration: false,
-                codeActionLiteralSupport: CodeActionClientCapabilities.CodeActionLiteralSupport(
-                    codeActionKind: ValueSet(valueSet: [
-                        CodeActionKind.Quickfix,
-                        CodeActionKind.Refactor,
-                        CodeActionKind.RefactorExtract,
-                        CodeActionKind.RefactorInline,
-                        CodeActionKind.RefactorRewrite,
-                        CodeActionKind.Source,
-                        CodeActionKind.SourceOrganizeImports,
-                        CodeActionKind.SourceFixAll
-                    ])
-                ),
-                isPreferredSupport: true,
-                disabledSupport: true,
-                dataSupport: true,
-                resolveSupport: CodeActionClientCapabilities.ResolveSupport(properties: ["edit"]),
-                honorsChangeAnnotations: false
-            ),
-            rename: RenameClientCapabilities(
-                dynamicRegistration: false,
-                prepareSupport: true,
-                prepareSupportDefaultBehavior: .Identifier,
-                honorsChangeAnnotations: false
-            ),
-            publishDiagnostics: PublishDiagnosticsClientCapabilities(
-                relatedInformation: true,
-                tagSupport: ValueSet(valueSet: [DiagnosticTag.unnecessary, DiagnosticTag.deprecated]),
-                versionSupport: true
-            ),
-            foldingRange: FoldingRangeClientCapabilities(dynamicRegistration: false, lineFoldingOnly: true),
-            semanticTokens: SemanticTokensClientCapabilities(
-                dynamicRegistration: false,
-                requests: .init(range: false, delta: true),
-                tokenTypes: SemanticTokenTypes.allStrings,
-                tokenModifiers: SemanticTokenModifiers.allStrings,
-                formats: [.relative],
-                overlappingTokenSupport: true,
-                multilineTokenSupport: true,
-                serverCancelSupport: false,
-                augmentsSyntaxTokens: true
-            )
-        )
-        capabilities.inlayHint = InlayHintClientCapabilities(dynamicRegistration: false)
-        return capabilities
-    }
-
-    nonisolated static func workspaceCapabilities() -> ClientCapabilities.Workspace {
-        ClientCapabilities.Workspace(
-            applyEdit: true,
-            workspaceEdit: nil,
-            didChangeConfiguration: DidChangeConfigurationClientCapabilities(dynamicRegistration: true),
-            didChangeWatchedFiles: DidChangeWatchedFilesClientCapabilities(dynamicRegistration: true),
-            symbol: WorkspaceSymbolClientCapabilities(
-                dynamicRegistration: true,
-                symbolKind: nil,
-                tagSupport: nil,
-                resolveSupport: []
-            ),
-            executeCommand: GenericDynamicRegistration(dynamicRegistration: false),
-            workspaceFolders: true,
-            configuration: true,
-            semanticTokens: SemanticTokensWorkspaceClientCapabilities(refreshSupport: true),
-            codeLens: nil,
-            fileOperations: ClientCapabilities.Workspace.FileOperations(
-                dynamicRegistration: true,
-                didCreate: true,
-                willCreate: true,
-                didRename: true,
-                willRename: true,
-                didDelete: true,
-                willDelete: true
-            )
-        )
-    }
-
-    nonisolated static func clientCapabilities() -> ClientCapabilities {
-        ClientCapabilities(
-            workspace: workspaceCapabilities(),
-            textDocument: textDocumentCapabilities(),
-            window: WindowClientCapabilities(
-                workDoneProgress: true,
-                showMessage: ShowMessageRequestClientCapabilities(
-                    messageActionItem: ShowMessageRequestClientCapabilities.MessageActionItemCapabilities(
-                        additionalPropertiesSupport: true
-                    )
-                ),
-                showDocument: ShowDocumentClientCapabilities(
-                    support: true
-                )
-            ),
-            general: nil,
-            experimental: nil
-        )
-    }
-
-    nonisolated static func initializeParams(
-        workspacePath: String,
-        initializationOptions: LSPAny?
-    ) -> InitializeParams {
-        InitializeParams(
-            processId: nil,
-            locale: nil,
-            rootPath: nil,
-            rootUri: LSPWorkspaceFolders.uri(forWorkspacePath: workspacePath),
-            initializationOptions: initializationOptions ?? [],
-            capabilities: clientCapabilities(),
-            trace: nil,
-            workspaceFolders: [LSPWorkspaceFolders.folder(forWorkspacePath: workspacePath)]
-        )
-    }
-
-    static func getInitParams(
-        workspacePath: String,
-        initializationOptions: LSPAny? = nil
-    ) -> InitializingServer.InitializeParamsProvider {
-        let params = initializeParams(workspacePath: workspacePath, initializationOptions: initializationOptions)
-        let provider: InitializingServer.InitializeParamsProvider = { params }
-        return provider
     }
 
     // MARK: - Shutdown

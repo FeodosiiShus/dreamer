@@ -185,15 +185,12 @@ struct EditorTabView: View {
         TestFileClassifier.isTestFile(tabFile.url)
     }
 
-    private var backgroundColor: Color {
-        if isActive {
-            return isFocused ? Islands.tabSelectedBackground : Islands.tabInactiveSelectedBackground
-        }
-        return .clear
-    }
-
-    private var showsHoverCapsule: Bool {
-        !isActive && (interaction.isHovering || isInHoldingState)
+    var appearance: EditorTabAppearance {
+        EditorTabAppearance.resolve(
+            isSelected: isActive,
+            isFocused: isFocused,
+            isHovering: interaction.isHovering || isInHoldingState
+        )
     }
 
     @ViewBuilder private var fileColorFill: some View {
@@ -207,9 +204,8 @@ struct EditorTabView: View {
         }
     }
 
-    private var borderColor: Color {
-        guard isActive else { return .clear }
-        return isFocused ? Islands.tabSelectedBorder : Islands.tabInactiveSelectedBorder
+    private var tabShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: Islands.tabPillRadius, style: .continuous)
     }
 
     init(
@@ -255,36 +251,31 @@ struct EditorTabView: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(IntelliJIcon.fileIcon(for: tabFile.name))
-                .resizable()
-                .frame(width: 16, height: 16)
-            Text(tabFile.name)
-                .font(isTemporary ? Islands.tabLabelFont.italic() : Islands.tabLabelFont)
-                .foregroundStyle(isActive ? Islands.foreground : Islands.foreground.opacity(0.75))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: 240, alignment: .leading)
-                .strikethrough(fileObserver.isDeleted, color: Islands.secondaryForeground)
+        HStack(spacing: EditorTabMetrics.actionsLeadingGap) {
+            HStack(spacing: EditorTabMetrics.iconTextGap) {
+                Image(IntelliJIcon.fileIcon(for: tabFile.name))
+                    .resizable()
+                    .frame(width: EditorTabMetrics.iconSize, height: EditorTabMetrics.iconSize)
+                Text(tabFile.name)
+                    .font(isTemporary ? Islands.tabLabelFont.italic() : Islands.tabLabelFont)
+                    .foregroundStyle(isActive ? Islands.foreground : Islands.foreground.opacity(0.75))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 240, alignment: .leading)
+                    .strikethrough(fileObserver.isDeleted, color: Islands.secondaryForeground)
+            }
             trailingSlot
         }
-        .padding(.leading, 8)
-        .padding(.trailing, 6)
+        .padding(.leading, EditorTabMetrics.leadingInset)
+        .padding(.trailing, EditorTabMetrics.trailingInset)
         .frame(height: Self.tabHeight)
         .background(
-            RoundedRectangle(cornerRadius: Islands.tabPillRadius, style: .continuous)
-                .fill(backgroundColor)
+            tabShape
+                .fill(appearance.fill)
                 .overlay(fileColorFill)
         )
-        .background {
-            if showsHoverCapsule {
-                Capsule()
-                    .fill(Islands.tabHoverFill)
-            }
-        }
         .overlay(
-            RoundedRectangle(cornerRadius: Islands.tabPillRadius, style: .continuous)
-                .strokeBorder(borderColor, lineWidth: 1)
+            tabShape.strokeBorder(appearance.border, lineWidth: 1)
         )
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)

@@ -73,7 +73,7 @@ final class Editor: Identifiable {
     @ObservationIgnored weak var workspace: WorkspaceDocument?
 
     private let logger = EditorLogging.logger(category: "Editor")
-    @ObservationIgnored private let closeResponder = CloseResponder()
+    @ObservationIgnored private var pendingCloseConfirmations: Set<CEWorkspaceFile.ID> = []
 
     init() {
         self.tabs = []
@@ -153,40 +153,26 @@ final class Editor: Identifiable {
     ///   - fromHistory: If `true`, does not clear tabs ahead of the ``historyOffset``
     ///                  Used when opening tabs from the history queue where tabs ahead of the ``historyOffset`` should
     ///                  not be removed.
-    func closeTab(file: CEWorkspaceFile, fromHistory: Bool = false) {
-        guard canCloseTab(file: file) else { return }
-
-        if temporaryTab?.file == file {
-            temporaryTab = nil
+    func closeTab(file: CEWorkspaceFile, fromHistory: Bool = false, completion: @escaping (Bool) -> Void = { _ in }) {
+        guard !isDocumentShownElsewhere(file), let codeFile = file.fileDocument else {
+            closeConfirmedTab(file: file, fromHistory: fromHistory)
+            completion(true)
+            return
         }
-        if !fromHistory {
-            clearFuture()
+        guard pendingCloseConfirmations.insert(file.id).inserted else {
+            completion(false)
+            return
         }
-        if file != selectedTab?.file {
-            addToHistory(EditorInstance(workspace: workspace, file: file))
-        }
-        removeTab(file)
-        if let selectedTab {
-            addToHistory(selectedTab)
-        }
-        guard !isShownInAnotherEditor(file) else { return }
-        file.fileDocument?.updateChangeCount(.changeCleared)
-        if let codeFile = file.fileDocument {
-            codeFile.close()
-        }
-        file.fileDocument = nil
-    }
-
-    private func isShownInAnotherEditor(_ file: CEWorkspaceFile) -> Bool {
-        let siblings: [Editor]
-        if let managed = workspace?.editorManager?.getFlattened(), managed.contains(where: { $0 === self }) {
-            siblings = managed
-        } else {
-            siblings = parent?.getFlattened() ?? []
-        }
-        return siblings.contains { other in
-            other !== self
-                && (other.tabs.contains { $0.file == file } || other.temporaryTab?.file == file)
+        DocumentCloseConfirmation.ask([codeFile]) { [weak self] shouldClose in
+            guard let self else {
+                completion(false)
+                return
+            }
+            pendingCloseConfirmations.remove(file.id)
+            if shouldClose {
+                closeConfirmedTab(file: file, fromHistory: fromHistory)
+            }
+            completion(shouldClose)
         }
     }
 
@@ -202,42 +188,6 @@ final class Editor: Identifiable {
     func closeTabUnlessPinned(file: CEWorkspaceFile) {
         guard !isPinned(file) else { return }
         closeTab(file: file)
-    }
-
-    var pinnedTabCount: Int {
-        tabs.count(where: { isPinned($0.file) })
-    }
-
-    func isPinned(_ file: CEWorkspaceFile) -> Bool {
-        pinnedURLs.contains(file.url)
-    }
-
-    var unpinnedFiles: [CEWorkspaceFile] {
-        tabs.map(\.file).filter { !isPinned($0) }
-    }
-
-    func setPinned(_ pinned: Bool, file: CEWorkspaceFile) {
-        guard let tab = tabs.first(where: { $0.file == file }), isPinned(tab.file) != pinned else { return }
-        var ordered = Array(tabs).filter { $0 != tab }
-        if pinned {
-            pinnedURLs.insert(tab.file.url)
-            if temporaryTab == tab {
-                temporaryTab = nil
-            }
-        } else {
-            pinnedURLs.remove(tab.file.url)
-        }
-        let boundary = ordered.count(where: { isPinned($0.file) })
-        ordered.insert(tab, at: boundary)
-        tabs = OrderedSet(ordered)
-    }
-
-    func togglePinned(file: CEWorkspaceFile) {
-        setPinned(!isPinned(file), file: file)
-    }
-
-    func closeUnpinnedTabs(where isIncluded: (CEWorkspaceFile) -> Bool = { _ in true }) {
-        unpinnedFiles.filter(isIncluded).forEach { closeTab(file: $0) }
     }
 
     /// Opens a tab in the editor.
@@ -335,30 +285,6 @@ final class Editor: Identifiable {
         }
 
         try item.file.loadCodeFile()
-    }
-
-    /// Check if tab can be closed
-    ///
-    /// If document edited it will show dialog where user can save document before closing or cancel.
-    private func canCloseTab(file: CEWorkspaceFile) -> Bool {
-        guard !isShownInAnotherEditor(file), let codeFile = file.fileDocument else { return true }
-
-        closeResponder.shouldClose = true
-        codeFile.canClose(
-            withDelegate: closeResponder,
-            shouldClose: #selector(CloseResponder.document(_:shouldClose:contextInfo:)),
-            contextInfo: nil
-        )
-        return closeResponder.shouldClose
-    }
-
-    final class CloseResponder: NSObject {
-        var shouldClose = true
-
-        @objc
-        func document(_ document: NSDocument, shouldClose: Bool, contextInfo: UnsafeMutableRawPointer?) {
-            self.shouldClose = shouldClose
-        }
     }
 
     /// Remove the given file from tabs.

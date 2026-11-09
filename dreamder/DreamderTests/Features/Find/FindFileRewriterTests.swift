@@ -217,21 +217,20 @@ struct FindFileRewriterTests {
     @Test
     func bulkRewriteHandlesMoreJobsThanTheConcurrencyWidth() async throws {
         try await withTempDir { dir in
-            var jobs: [Int: FindReplaceJob] = [:]
-            var urls: [Int: URL] = [:]
+            var jobs: [FindReplaceJob] = []
+            var urls: [URL] = []
             for index in 0..<40 {
                 let url = dir.appending(path: "file-\(index).txt")
                 try write("foo \(index) foo", to: url)
-                urls[index] = url
-                jobs[index] = try job(url, replace: "n\(index)", ranges: [NSRange(location: 0, length: 3)])
+                urls.append(url)
+                jobs.append(try job(url, replace: "n\(index)", ranges: [NSRange(location: 0, length: 3)]))
             }
 
             let outcomes = await FindFileRewriter.rewrite(jobs)
 
             #expect(outcomes.count == 40)
-            for index in 0..<40 {
-                #expect(outcomes[index]?.isClean == true)
-                let url = try #require(urls[index])
+            for (index, url) in urls.enumerated() {
+                #expect(try #require(outcomes.dropFirst(index).first).isClean)
                 #expect(try text(of: url) == "n\(index) \(index) foo")
             }
         }
@@ -245,22 +244,23 @@ struct FindFileRewriterTests {
             try write("foo", to: good)
             try write("bar", to: stale)
             let jobs = [
-                0: try job(good, ranges: [NSRange(location: 0, length: 3)]),
-                1: try job(stale, ranges: [NSRange(location: 0, length: 3)]),
-                2: try job(dir.appending(path: "missing.txt"), ranges: [NSRange(location: 0, length: 3)])
+                try job(good, ranges: [NSRange(location: 0, length: 3)]),
+                try job(stale, ranges: [NSRange(location: 0, length: 3)]),
+                try job(dir.appending(path: "missing.txt"), ranges: [NSRange(location: 0, length: 3)])
             ]
 
             let outcomes = await FindFileRewriter.rewrite(jobs)
 
-            #expect(outcomes[0]?.isClean == true)
-            #expect(outcomes[1] == .stale)
-            #expect(outcomes[2] == .failed("Cannot read missing.txt"))
+            #expect(outcomes.count == 3)
+            #expect(outcomes.first?.isClean == true)
+            #expect(outcomes.dropFirst().first == .stale)
+            #expect(outcomes.last == .failed("Cannot read missing.txt"))
         }
     }
 
     @Test
     func bulkRewriteOfNoJobsIsEmpty() async {
-        let outcomes = await FindFileRewriter.rewrite([:])
+        let outcomes = await FindFileRewriter.rewrite([FindReplaceJob]())
         #expect(outcomes.isEmpty)
     }
 

@@ -3,6 +3,9 @@ import Foundation
 nonisolated enum NpmTaskDiscovery {
     private static let manifestName = "package.json"
     private static let defaultPackageManager = "npm"
+    private static let plainScalars = CharacterSet(
+        charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.:/@+,"
+    )
     private static let lockfiles: [(file: String, packageManager: String)] = [
         ("pnpm-lock.yaml", "pnpm"),
         ("yarn.lock", "yarn"),
@@ -18,9 +21,19 @@ nonisolated enum NpmTaskDiscovery {
         let packageManager = packageManager(for: directory)
         let entries = scripts
             .compactMap { $0.value is String ? $0.key : nil }
+            .filter { !$0.isEmpty && !$0.hasPrefix("-") }
             .sorted()
-            .map { TaskEntry(command: "\(packageManager) run \($0)") }
+            .map { TaskEntry(command: scriptCommand(packageManager: packageManager, script: $0)) }
         return directory.group(kind: .npm, manifestName: manifestName, entries: entries)
+    }
+
+    static func scriptCommand(packageManager: String, script: String) -> String {
+        "\(packageManager) run \(shellWord(script))"
+    }
+
+    static func shellWord(_ value: String) -> String {
+        guard !value.unicodeScalars.allSatisfy(plainScalars.contains) else { return value }
+        return "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     private static func packageManager(for directory: ScannedDirectory) -> String {

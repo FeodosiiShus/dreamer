@@ -132,4 +132,25 @@ struct ShowUsagesViewCoverageTests {
 
         #expect(HostedView.pixelsDiffer(highlighted.snapshot(), plain.snapshot()))
     }
+
+    @Test
+    func hoverChangesAreAcceptedWhileTheRowIsRendered() async throws {
+        let hosted = HostedViewFixture.host(size: NSSize(width: 620, height: 40)) {
+            ShowUsagesRowView(row: row(0), isSelected: false, onSelect: {}, onOpen: {})
+        }
+        defer { hosted.close() }
+        try await hosted.settle(.milliseconds(50))
+        let view = ShowUsagesRowView(row: row(0), isSelected: false, onSelect: {}, onOpen: {})
+
+        view.hoverChanged(true)
+        view.hoverChanged(false)
+
+        #expect(hosted.renders())
+    }
+
+    @Test
+    func rowHeightFollowsTheUiDensity() {
+        #expect(ShowUsagesRowView.rowHeight(isCompact: true) == 22)
+        #expect(ShowUsagesRowView.rowHeight(isCompact: false) == 24)
+    }
 }

@@ -31,10 +31,12 @@ final class QuickDocumentationPanel: NSPanel, NSWindowDelegate {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
-    func place(in parent: NSWindow, beside anchor: NSRect?) {
-        let size = panelSize
-        let parentFrame = parent.frame
-        let screen = parent.screen ?? NSScreen.main
+    static func origin(
+        size: NSSize,
+        parentFrame: NSRect,
+        anchor: NSRect?,
+        visibleFrame: NSRect?
+    ) -> NSPoint {
         var origin = NSPoint(
             x: parentFrame.midX - size.width / 2,
             y: parentFrame.maxY - size.height - 92
@@ -43,16 +45,26 @@ final class QuickDocumentationPanel: NSPanel, NSWindowDelegate {
         if let anchor {
             origin.x = anchor.minX
             let below = anchor.minY - size.height - 6
-            let visibleMinY = screen?.visibleFrame.minY ?? 0
+            let visibleMinY = visibleFrame?.minY ?? 0
             origin.y = below >= visibleMinY + 8 ? below : anchor.maxY + 6
         }
 
-        if let visible = screen?.visibleFrame {
-            origin.x = min(max(origin.x, visible.minX + 8), visible.maxX - size.width - 8)
-            origin.y = min(max(origin.y, visible.minY + 8), visible.maxY - size.height - 8)
+        if let visibleFrame {
+            origin.x = min(max(origin.x, visibleFrame.minX + 8), visibleFrame.maxX - size.width - 8)
+            origin.y = min(max(origin.y, visibleFrame.minY + 8), visibleFrame.maxY - size.height - 8)
         }
+        return origin
+    }
 
-        setFrame(NSRect(origin: origin, size: size), display: false)
+    func place(in parent: NSWindow, beside anchor: NSRect?) {
+        let screen = parent.screen ?? NSScreen.main
+        let origin = Self.origin(
+            size: panelSize,
+            parentFrame: parent.frame,
+            anchor: anchor,
+            visibleFrame: screen?.visibleFrame
+        )
+        setFrame(NSRect(origin: origin, size: panelSize), display: false)
     }
 
     func windowWillClose(_ notification: Notification) {

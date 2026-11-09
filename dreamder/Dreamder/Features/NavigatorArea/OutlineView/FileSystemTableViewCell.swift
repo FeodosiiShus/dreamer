@@ -46,7 +46,7 @@ class FileSystemTableViewCell: StandardTableViewCell {
         label.delegate = self
     }
 
-    func addIcon(item: CEWorkspaceFile, imageNamed: @MainActor (String) -> NSImage? = { IntelliJIcon.nsImage($0) }) {
+    func addIcon(item: CEWorkspaceFile, imageNamed: (String) -> NSImage? = { IntelliJIcon.nsImage($0) }) {
         fileItem = item
         let iconName: String
         if item.isFolder {
@@ -145,21 +145,24 @@ extension FileSystemTableViewCell: NSTextFieldDelegate {
 
     func controlTextDidEndEditing(_ obj: Notification) {
         guard let fileItem else { return }
-        do {
-            let isValid = fileItem.validateFileName(for: enteredName)
-            textField?.backgroundColor = isValid ? .none : errorRed
-            if isValid {
-                let newURL = fileItem.url
-                    .deletingLastPathComponent()
-                    .appending(path: enteredName)
-                try workspace?.workspaceFileManager?.move(file: fileItem, to: newURL)
-            } else {
-                textField?.stringValue = fileItem.labelFileName()
+        let isValid = fileItem.validateFileName(for: enteredName)
+        textField?.backgroundColor = isValid ? .none : errorRed
+        guard isValid else {
+            textField?.stringValue = fileItem.labelFileName()
+            return
+        }
+        let newURL = fileItem.url
+            .deletingLastPathComponent()
+            .appending(path: enteredName)
+        guard let manager = workspace?.workspaceFileManager else { return }
+        Task.immediate {
+            do {
+                try await manager.move(file: fileItem, to: newURL)
+            } catch {
+                let alert = NSAlert(error: error)
+                alert.addButton(withTitle: "Dismiss")
+                alert.runModal()
             }
-        } catch {
-            let alert = NSAlert(error: error)
-            alert.addButton(withTitle: "Dismiss")
-            alert.runModal()
         }
     }
 }

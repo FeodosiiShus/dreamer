@@ -174,11 +174,6 @@ struct EditorBreadcrumbsBarContent: View {
         .padding(.horizontal, 10)
         .frame(height: Islands.statusBarHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(Islands.glassBorder)
-                .frame(height: 1)
-        }
         .contextMenu(menuItems: contextMenuItems)
         .accessibilityIdentifier("EditorBreadcrumbs")
         .onAppear { bindModel() }

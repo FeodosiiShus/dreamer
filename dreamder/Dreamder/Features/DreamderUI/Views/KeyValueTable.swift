@@ -150,12 +150,12 @@ struct KeyValueItemSheet<HeaderView: View>: View {
             .formStyle(.grouped)
             .scrollDisabled(true)
             .scrollContentBackground(.hidden)
-            .onSubmit { model.commit(draft, into: &items) }
+            .onSubmit(commit)
 
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Add") { model.commit(draft, into: &items) }
+                Button("Cancel", action: cancel)
+                Button("Add", action: commit)
                     .buttonStyle(.borderedProminent)
                     .disabled(!draft.isComplete)
             }
@@ -163,6 +163,14 @@ struct KeyValueItemSheet<HeaderView: View>: View {
             .padding(.bottom, 20)
         }
         .frame(maxWidth: 500)
+    }
+
+    func commit() {
+        model.commit(draft, into: &items)
+    }
+
+    func cancel() {
+        dismiss()
     }
 }
 
@@ -206,19 +214,15 @@ struct KeyValueTable<Header: View, ActionBarView: View>: View {
                 Text(item.value)
             }
         }
-        .contextMenu(
-            forSelectionType: UUID.self,
-            menu: { KeyValueContextMenu(model: model, items: $items, selected: $0) },
-            primaryAction: { model.beginEditing(ids: $0) }
-        )
+        .contextMenu(forSelectionType: UUID.self, menu: menuContent, primaryAction: edit)
         .actionBar {
             HStack(spacing: 2) {
-                Button { model.beginAdding() } label: { Image(systemName: "plus") }
+                Button(action: model.beginAdding) { Image(systemName: "plus") }
 
                 Divider()
                     .frame(minHeight: 15)
 
-                Button { model.removeSelection(from: &items) } label: { Image(systemName: "minus") }
+                Button(action: removeSelected) { Image(systemName: "minus") }
                     .disabled(model.selection.isEmpty)
                     .opacity(model.selection.isEmpty ? 0.5 : 1)
 
@@ -231,5 +235,17 @@ struct KeyValueTable<Header: View, ActionBarView: View>: View {
         .clipShape(.rect(cornerRadius: 6))
         .onAppear { model.reload(from: items) }
         .onChange(of: items) { _, newValue in model.reload(from: newValue) }
+    }
+
+    func menuContent(for selected: Set<UUID>) -> KeyValueContextMenu {
+        KeyValueContextMenu(model: model, items: $items, selected: selected)
+    }
+
+    func edit(_ ids: Set<UUID>) {
+        model.beginEditing(ids: ids)
+    }
+
+    func removeSelected() {
+        model.removeSelection(from: &items)
     }
 }

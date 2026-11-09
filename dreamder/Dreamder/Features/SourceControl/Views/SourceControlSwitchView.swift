@@ -84,7 +84,7 @@ struct SourceControlSwitchView: View {
                     Text("Cancel")
                         .frame(minWidth: 56)
                 }
-                Button { model.submit(branch) } label: {
+                Button(action: submit) {
                     Text("Switch")
                         .frame(minWidth: 56)
                 }
@@ -97,5 +97,9 @@ struct SourceControlSwitchView: View {
         .onAppear {
             model.attach(manager: sourceControlManager, dismiss: dismiss.callAsFunction)
         }
+    }
+
+    func submit() {
+        model.submit(branch)
     }
 }

@@ -242,54 +242,57 @@ extension CEWorkspaceFileManager {
     ///            been revealed to save memory. This may move a file deeper into the tree than is indexed. In that
     ///            case, it is correct to return nothing. This is intentionally different than `addFile`.
     @discardableResult
-    public func move(file: CEWorkspaceFile, to newLocation: URL) throws -> CEWorkspaceFile? {
+    public func move(file: CEWorkspaceFile, to newLocation: URL) async throws -> CEWorkspaceFile? {
         do {
-            guard fileManager.fileExists(atPath: file.url.path(percentEncoded: false)) else {
-                throw FileManagerError.originFileNotFound
-            }
+            let oldLocation = file.url
+            try validateMove(from: oldLocation, to: newLocation)
 
-            guard !fileManager.fileExists(atPath: newLocation.path(percentEncoded: false)) else {
-                throw FileManagerError.destinationFileExists
-            }
+            await LSPFileOperations.willRename(from: oldLocation, to: newLocation)
+            try validateMove(from: oldLocation, to: newLocation)
 
             try createMissingParentDirectory(for: newLocation.deletingLastPathComponent())
 
-            try fileManager.moveItem(at: file.url, to: newLocation)
-            LSPFileOperations.fileMoved(from: file.url, to: newLocation)
-
-            // This function recursively creates missing directories if the file is moved to a directory that does
-            // not exist
-            func createMissingParentDirectory(for url: URL, createSelf: Bool = true) throws {
-                // if the folder's parent folder doesn't exist, create it.
-                if !fileManager.fileExists(atPath: url.deletingLastPathComponent().path) {
-                    try createMissingParentDirectory(for: url.deletingLastPathComponent())
-                }
-                // if the folder doesn't exist and the function was ordered to create it, create it.
-                if createSelf && !fileManager.fileExists(atPath: url.path) {
-                    // Create the folder
-                    try fileManager.createDirectory(
-                        at: url,
-                        withIntermediateDirectories: true,
-                        attributes: [:]
-                    )
-                }
-            }
+            try fileManager.moveItem(at: oldLocation, to: newLocation)
 
             if let parent = file.parent {
                 try rebuildFiles(fromItem: parent)
                 notifyObservers(updatedItems: [parent])
             }
 
-            // If we have the new parent file, let's rebuild that directory too
             if let newFileParent = getFile(newLocation.deletingLastPathComponent().path) {
                 try rebuildFiles(fromItem: newFileParent)
                 notifyObservers(updatedItems: [newFileParent])
             }
 
+            await LSPFileOperations.didRename(from: oldLocation, to: newLocation)
+
             return getFile(newLocation.absoluteURL.path)
         } catch {
             logger.error("Failed to move file: \(error, privacy: .auto)")
             throw error
+        }
+    }
+
+    private func validateMove(from oldLocation: URL, to newLocation: URL) throws {
+        guard fileManager.fileExists(atPath: oldLocation.path(percentEncoded: false)) else {
+            throw FileManagerError.originFileNotFound
+        }
+
+        guard !fileManager.fileExists(atPath: newLocation.path(percentEncoded: false)) else {
+            throw FileManagerError.destinationFileExists
+        }
+    }
+
+    private func createMissingParentDirectory(for url: URL, createSelf: Bool = true) throws {
+        if !fileManager.fileExists(atPath: url.deletingLastPathComponent().path) {
+            try createMissingParentDirectory(for: url.deletingLastPathComponent())
+        }
+        if createSelf && !fileManager.fileExists(atPath: url.path) {
+            try fileManager.createDirectory(
+                at: url,
+                withIntermediateDirectories: true,
+                attributes: [:]
+            )
         }
     }
 

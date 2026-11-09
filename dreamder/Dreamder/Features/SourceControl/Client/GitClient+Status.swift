@@ -32,16 +32,13 @@ nonisolated extension GitClient {
     /// - Throws: Can throw ``GitClient/GitClientError`` errors if it finds unexpected output.
     @concurrent
     func getStatus() async throws -> Status {
-        let output = try await run(arguments: ["status", "-z", "--porcelain=2", "-unormal"] + scopePathspecArguments)
-        return try parseStatusString(output)
+        let arguments = ["status", "-z", "--porcelain=2", "-unormal"] + scopePathspecArguments
+        let output = try await runData(arguments: arguments)
+        return try parseStatus(output)
     }
 
-    /// Parses a status string from ``getStatus()`` and returns a ``Status`` object if possible.
-    /// - Parameter output: The git output from running `status`. Expects a porcelain v2 string.
-    /// - Returns: A status object if parseable.
-    func parseStatusString(_ output: String) throws -> Status {
-        var contiguous = output
-        return try contiguous.withUTF8 { try parseStatus(bytes: $0) }
+    func parseStatus(_ output: Data) throws -> Status {
+        try output.withUnsafeBytes { try parseStatus(bytes: $0.bindMemory(to: UInt8.self)) }
     }
 
     /// Discard changes for file

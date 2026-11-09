@@ -61,27 +61,12 @@ struct MarkdownPreviewLayoutButtons: View {
             mode.icon(isVerticalSplit: isVerticalSplit)
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 16, height: 16)
-                .frame(width: 24, height: Islands.tabPillHeight)
-                .background(
-                    RoundedRectangle(cornerRadius: Islands.rowRadius, style: .continuous)
-                        .fill(background(for: mode, selected: selected))
-                )
-                .contentShape(Rectangle())
+                .frame(width: Islands.actionIconSize, height: Islands.actionIconSize)
+                .frame(width: Islands.actionButtonSize, height: Islands.actionButtonSize)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.actionButton(isHovering: mode == hover.hovered, isSelected: mode == selected))
         .help(mode.title)
         .accessibilityLabel(mode.title)
         .onHover(perform: Self.hoverAction(for: mode, hover: hover))
-    }
-
-    private func background(for mode: MarkdownPreviewLayout, selected: MarkdownPreviewLayout) -> Color {
-        if mode == selected {
-            return Islands.selection
-        }
-        if mode == hover.hovered {
-            return Islands.actionHover
-        }
-        return .clear
     }
 }

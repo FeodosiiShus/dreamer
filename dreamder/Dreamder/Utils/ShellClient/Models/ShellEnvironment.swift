@@ -14,13 +14,20 @@ nonisolated final class ShellEnvironment: Sendable {
         case loading(Task<Resolution, Never>)
     }
 
+    private enum Cached {
+        case login(Resolution)
+        case fallback(Resolution, since: ContinuousClock.Instant)
+    }
+
     private struct State {
-        var resolution: Resolution?
+        var cached: Cached?
         var loading: Task<Resolution, Never>?
     }
 
     private let runner: any ProcessRunning
     private let loadTimeout: Duration
+    private let retryInterval: Duration
+    private let now: @Sendable () -> ContinuousClock.Instant
     private let baseEnvironment: @Sendable () -> [String: String]
     private let shellExecutable: URL
     private let shellArguments: [String]
@@ -29,19 +36,26 @@ nonisolated final class ShellEnvironment: Sendable {
     init(
         runner: any ProcessRunning = ProcessRunner(),
         loadTimeout: Duration = .seconds(10),
+        retryInterval: Duration = .seconds(30),
+        now: @escaping @Sendable () -> ContinuousClock.Instant = { ContinuousClock.now },
         baseEnvironment: @escaping @Sendable () -> [String: String] = { ProcessInfo.processInfo.environment },
         shellExecutable: URL = URL(fileURLWithPath: "/bin/zsh"),
         shellArguments: [String] = ["-lic", "env -0"]
     ) {
         self.runner = runner
         self.loadTimeout = loadTimeout
+        self.retryInterval = retryInterval
+        self.now = now
         self.baseEnvironment = baseEnvironment
         self.shellExecutable = shellExecutable
         self.shellArguments = shellArguments
     }
 
     var cachedEnvironment: [String: String]? {
-        state.withLock { $0.resolution?.environment }
+        state.withLock { state in
+            guard case .login(let resolution) = state.cached else { return nil }
+            return resolution.environment
+        }
     }
 
     var environment: [String: String] {
@@ -71,23 +85,45 @@ nonisolated final class ShellEnvironment: Sendable {
 
     private func loadingTask() -> Step {
         state.withLock { state in
-            if let resolution = state.resolution {
+            switch state.cached {
+            case .login(let resolution):
                 return .resolved(resolution)
+            case let .fallback(resolution, since):
+                if state.loading == nil, isRetryDue(since: since) {
+                    state.loading = Task { await self.performLoad() }
+                }
+                return .resolved(resolution)
+            case nil:
+                if let loading = state.loading {
+                    return .loading(loading)
+                }
+                let task = Task { await self.performLoad() }
+                state.loading = task
+                return .loading(task)
             }
-            if let loading = state.loading {
-                return .loading(loading)
-            }
-            let task = Task { await self.performLoad() }
-            state.loading = task
-            return .loading(task)
         }
     }
 
+    private func isRetryDue(since fallbackSince: ContinuousClock.Instant) -> Bool {
+        now() - fallbackSince >= retryInterval
+    }
+
     private func performLoad() async -> Resolution {
-        let resolution = await loadLoginEnvironment()
-            ?? Resolution(environment: Self.fallbackEnvironment(base: baseEnvironment()), isLoginEnvironment: false)
+        let startedAt = now()
+        let resolution: Resolution
+        let cached: Cached
+        if let login = await loadLoginEnvironment() {
+            resolution = login
+            cached = .login(login)
+        } else {
+            resolution = Resolution(
+                environment: Self.fallbackEnvironment(base: baseEnvironment()),
+                isLoginEnvironment: false
+            )
+            cached = .fallback(resolution, since: startedAt)
+        }
         state.withLock { state in
-            state.resolution = resolution
+            state.cached = cached
             state.loading = nil
         }
         return resolution

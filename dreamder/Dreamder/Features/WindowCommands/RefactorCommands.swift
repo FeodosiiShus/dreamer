@@ -77,7 +77,7 @@ struct EditorIntelligenceMenu: View {
         Button("Shrink Selection", action: shrinkSelection)
             .keymapShortcut(.shrinkSelection)
             .disabled(!hasEditor)
-        Button("Parameter Info") { Task { await showParameterInfo() } }
+        Button("Parameter Info", action: requestParameterInfo)
             .keymapShortcut(.parameterInfo)
             .disabled(!hasLanguageServer)
         Menu("Code Folding") {
@@ -97,6 +97,10 @@ struct EditorIntelligenceMenu: View {
 
     func expandSelection() async {
         await EditorFeatureCommands.expandSelection(workspace: workspace)
+    }
+
+    func requestParameterInfo() {
+        Task { await showParameterInfo() }
     }
 
     func shrinkSelection() {

@@ -20,13 +20,46 @@ private final class RunningTaskHolder: Sendable {
 
 private final class OutputCollector: Sendable {
     private let text = Mutex("")
+    private let updates: AsyncStream<String>
+    private let continuation: AsyncStream<String>.Continuation
 
-    func append(_ data: Data) {
-        text.withLock { $0 += String(decoding: data, as: UTF8.self) }
+    init() {
+        let pair = AsyncStream<String>.makeStream()
+        updates = pair.stream
+        continuation = pair.continuation
     }
 
-    var value: String {
-        text.withLock { $0 }
+    func append(_ data: Data) {
+        let snapshot = text.withLock { text -> String in
+            text += String(bytes: data, encoding: .utf8) ?? ""
+            return text
+        }
+        continuation.yield(snapshot)
+    }
+
+    func finish() {
+        continuation.finish()
+    }
+
+    func waitFor(_ marker: String) async -> Bool {
+        for await snapshot in updates where snapshot.contains(marker) {
+            return true
+        }
+        return false
+    }
+}
+
+private final class OpenGate: Sendable {
+    private let opened = Mutex(false)
+
+    func open() {
+        opened.withLock { $0 = true }
+    }
+
+    func waitUntilOpen() {
+        while !opened.withLock({ $0 }) {
+            sched_yield()
+        }
     }
 }
 
@@ -76,16 +109,85 @@ struct ProcessExecutionCoverageTests {
         let tuning = ProcessExecution.Tuning(killGracePeriod: .milliseconds(200))
         let invocation = ProcessTestSupport.shell("trap '' TERM; echo ready; exec sleep 30")
         let task = Task { () throws -> ProcessOutput in
-            try await ProcessExecution.run(invocation, sink: { _, data in collector.append(data) }, tuning: tuning)
+            defer { collector.finish() }
+            return try await ProcessExecution.run(
+                invocation,
+                sink: { _, data in collector.append(data) },
+                tuning: tuning
+            )
         }
 
-        let started = try await ProcessTestSupport.waitUntil { collector.value.contains("ready") }
+        let started = await collector.waitFor("ready")
         #expect(started)
         task.cancel()
 
         await #expect(throws: CancellationError.self) {
             _ = try await task.value
         }
+    }
+
+    @Test
+    func aTimeoutThatAlreadyStoppedTheChildIgnoresALaterCancellation() async throws {
+        let collector = OutputCollector()
+        let tuning = ProcessExecution.Tuning(killGracePeriod: .milliseconds(200))
+        let invocation = ProcessTestSupport.shell(
+            "trap 'echo termed' TERM; echo ready; while true; do sleep 0.05; done",
+            timeout: .milliseconds(300)
+        )
+        let task = Task { () throws -> ProcessOutput in
+            defer { collector.finish() }
+            return try await ProcessExecution.run(
+                invocation,
+                sink: { _, data in collector.append(data) },
+                tuning: tuning
+            )
+        }
+
+        let terminated = await collector.waitFor("termed")
+        #expect(terminated)
+        task.cancel()
+
+        await #expect(throws: ProcessRunnerError.timedOut(.milliseconds(300))) {
+            _ = try await task.value
+        }
+    }
+
+    @Test
+    func aChildThatFinishedBeforeTheLaunchContinuesNeverArmsTheTimeout() async throws {
+        let gate = OpenGate()
+        let tuning = ProcessExecution.Tuning(drainGracePeriod: .zero, afterSpawn: { gate.waitUntilOpen() })
+        let invocation = ProcessTestSupport.shell("echo quick; exit 0")
+
+        let task = Task { () throws -> ProcessOutput in
+            try await ProcessExecution.run(invocation, tuning: tuning)
+        }
+        let output = try await task.value
+        gate.open()
+
+        #expect(output.succeeded)
+    }
+
+    @Test
+    func aCancelledRunWhoseChildAlreadyExitedHasNothingLeftToTerminate() async throws {
+        let holder = RunningTaskHolder()
+        let gate = OpenGate()
+        let tuning = ProcessExecution.Tuning(
+            drainGracePeriod: .zero,
+            afterSpawn: {
+                holder.cancelWhenStored()
+                gate.waitUntilOpen()
+            }
+        )
+        let invocation = ProcessTestSupport.shell("exit 0")
+        let task = Task { () throws -> ProcessOutput in
+            try await ProcessExecution.run(invocation, tuning: tuning)
+        }
+        holder.store(task)
+
+        await #expect(throws: CancellationError.self) {
+            _ = try await task.value
+        }
+        gate.open()
     }
 
     @Test
@@ -103,6 +205,8 @@ struct ProcessExecutionCoverageTests {
     func readingAPipeDistinguishesDataNothingYetAndEndOfStream() throws {
         let pipe = Pipe()
         let descriptor = pipe.fileHandleForReading.fileDescriptor
+        _ = fcntl(pipe.fileHandleForWriting.fileDescriptor, F_SETFD, FD_CLOEXEC)
+        _ = fcntl(descriptor, F_SETFD, FD_CLOEXEC)
         _ = fcntl(descriptor, F_SETFL, O_NONBLOCK)
 
         #expect(ProcessExecution.readAvailable(from: descriptor) == Data())

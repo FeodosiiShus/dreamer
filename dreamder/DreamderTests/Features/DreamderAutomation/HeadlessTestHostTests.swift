@@ -266,21 +266,4 @@ struct HeadlessTestHostTests {
             #expect(DreamderHeadless.resolveIsEnabled(environment: environment, defaults: defaults) == expected)
         }
     }
-
-    @Test
-    func aMissingSystemMethodIsRecordedAndNothingIsIntercepted() {
-        var intercepted: Set<String> = ["NSAlert.runModal"]
-        var missing: Set<String> = []
-
-        DreamderHeadless.swizzle(
-            nil,
-            named: "NSMenu.+noSuchContextMenu:",
-            with: 0,
-            intercepted: &intercepted,
-            missing: &missing
-        )
-
-        #expect(missing == ["NSMenu.+noSuchContextMenu:"])
-        #expect(intercepted == ["NSAlert.runModal"])
-    }
 }

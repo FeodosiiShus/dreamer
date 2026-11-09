@@ -41,6 +41,7 @@ struct FormattingService {
     var runner: any ProcessRunning
     var fileExists: @Sendable (String) -> Bool
     var workspaceRoot: (CodeFileDocument) -> URL?
+    var isWorkspaceTrusted: (URL) -> Bool
     var processEnvironment: @Sendable () async -> [String: String]
     var reportFailure: (String) -> Void
     var reportUnavailable: () -> Void
@@ -51,6 +52,7 @@ struct FormattingService {
         runner: any ProcessRunning = ProcessRunner(),
         fileExists: @escaping @Sendable (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) },
         workspaceRoot: @escaping (CodeFileDocument) -> URL? = { $0.findWorkspace()?.fileURL },
+        isWorkspaceTrusted: @escaping (URL) -> Bool = { WorkspaceTrust.shared.isTrusted($0) },
         processEnvironment: @escaping @Sendable () async -> [String: String] = {
             await LSPProcessEnvironment.shared.resolve().environment
         },
@@ -62,6 +64,7 @@ struct FormattingService {
         self.runner = runner
         self.fileExists = fileExists
         self.workspaceRoot = workspaceRoot
+        self.isWorkspaceTrusted = isWorkspaceTrusted
         self.processEnvironment = processEnvironment
         self.reportFailure = reportFailure
         self.reportUnavailable = reportUnavailable
@@ -93,7 +96,7 @@ struct FormattingService {
               let fileURL = codeFile.fileURL else {
             return nil
         }
-        if let root = workspaceRoot(codeFile),
+        if let root = workspaceRoot(codeFile), isWorkspaceTrusted(root),
            let formatter = ExternalFormatterChooser.choose(
             root: root,
             fileURL: fileURL,

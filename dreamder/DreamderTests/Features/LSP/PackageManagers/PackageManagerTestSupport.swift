@@ -2,33 +2,40 @@ import Foundation
 import Testing
 @testable import Dreamder
 
-nonisolated final class ScriptedShell: Sendable {
+nonisolated final class ScriptedProcesses: Sendable {
     typealias Responder = @Sendable (String) throws -> ProcessOutput
 
-    private static let commandPrefix = "exec 2>&1\n"
-
     let runner: FakeProcessRunner
-    let client: ShellClient
+    let shellEnvironment: ShellEnvironment
 
     init(_ responder: @escaping Responder = { _ in FakeProcessRunner.output("") }) {
-        let prefix = ScriptedShell.commandPrefix
         let runner = FakeProcessRunner { invocation in
-            let script = invocation.arguments.last ?? ""
-            let command = script.hasPrefix(prefix) ? String(script.dropFirst(prefix.count)) : script
-            return try responder(command)
+            try responder(invocation.arguments.joined(separator: " "))
         }
-        let loginShell = FakeProcessRunner { _ in FakeProcessRunner.output("PATH=/usr/bin:/bin\0") }
-        let environment = ShellEnvironment(runner: loginShell, baseEnvironment: { [:] })
+        let loginShell = FakeProcessRunner { _ in FakeProcessRunner.output("PATH=/usr/bin:/bin\0HOME=/Users/tester\0") }
         self.runner = runner
-        self.client = ShellClient(runner: runner, shellEnvironment: environment)
+        self.shellEnvironment = ShellEnvironment(runner: loginShell, baseEnvironment: { [:] })
+    }
+
+    var invocations: [ProcessInvocation] {
+        runner.invocations
     }
 
     var commands: [String] {
-        let prefix = ScriptedShell.commandPrefix
-        return runner.invocations.map { invocation in
-            let script = invocation.arguments.last ?? ""
-            return script.hasPrefix(prefix) ? String(script.dropFirst(prefix.count)) : script
-        }
+        invocations.map { $0.arguments.joined(separator: " ") }
+    }
+
+    var arguments: [[String]] {
+        invocations.map(\.arguments)
+    }
+
+    var workingDirectories: [String?] {
+        invocations.map { $0.workingDirectory?.path(percentEncoded: false) }
+    }
+
+    @MainActor
+    func makeModel() -> PackageManagerProgressModel {
+        PackageManagerProgressModel(runner: runner, shellEnvironment: shellEnvironment)
     }
 
     static func failing(_ exitCode: Int32 = 1) -> ProcessOutput {
@@ -43,8 +50,8 @@ struct StepOutcome {
 }
 
 @MainActor
-func runStep(_ step: PackageManagerInstallStep, shell: ScriptedShell = ScriptedShell()) async -> StepOutcome {
-    let model = PackageManagerProgressModel(shellClient: shell.client)
+func runStep(_ step: PackageManagerInstallStep, shell: ScriptedProcesses = ScriptedProcesses()) async -> StepOutcome {
+    let model = shell.makeModel()
     var failure: (any Error)?
     do {
         try await step.handler(model)
@@ -86,6 +93,7 @@ extension PackageManagerError {
         case .initializationFailed: "initializationFailed"
         case .installationFailed: "installationFailed"
         case .invalidConfiguration: "invalidConfiguration"
+        case .unsafeValue: "unsafeValue"
         }
     }
 }
@@ -100,6 +108,8 @@ extension RegistryManagerError {
         case .maxRetriesExceeded: "maxRetriesExceeded"
         case .writeFailed: "writeFailed"
         case .failedToSaveRegistryCache: "failedToSaveRegistryCache"
+        case .checksumMissing: "checksumMissing"
+        case .checksumMismatch: "checksumMismatch"
         }
     }
 }

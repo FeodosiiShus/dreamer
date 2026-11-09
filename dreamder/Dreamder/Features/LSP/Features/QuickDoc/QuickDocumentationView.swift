@@ -21,7 +21,7 @@ struct QuickDocumentationView: View {
     private func blockView(_ block: QuickDocumentationBlock) -> some View {
         switch block {
         case .prose(let markdown):
-            Text(prose(markdown))
+            Text(Self.prose(markdown))
                 .font(Islands.uiFont)
                 .foregroundStyle(Islands.foreground)
                 .fixedSize(horizontal: false, vertical: true)
@@ -46,10 +46,15 @@ struct QuickDocumentationView: View {
         }
     }
 
-    private func prose(_ markdown: String) -> AttributedString {
+    static func prose(
+        _ markdown: String,
+        parse: (String, AttributedString.MarkdownParsingOptions) throws -> AttributedString = {
+            try AttributedString(markdown: $0, options: $1)
+        }
+    ) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(
             interpretedSyntax: .inlineOnlyPreservingWhitespace
         )
-        return (try? AttributedString(markdown: markdown, options: options)) ?? AttributedString(markdown)
+        return (try? parse(markdown, options)) ?? AttributedString(markdown)
     }
 }

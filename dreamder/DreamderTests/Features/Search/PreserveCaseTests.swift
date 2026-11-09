@@ -138,4 +138,10 @@ struct PreserveCaseTests {
     func foundTextWithoutWordCharactersLeavesTheReplacementUnchanged() {
         #expect(PreserveCase.applyCase(found: "--", replacement: "foo") == "foo")
     }
+
+    @Test
+    func charactersWithoutASingleCharacterCaseMappingKeepTheirCase() {
+        #expect(PreserveCase.replaceWithCaseRespect("\u{DF}ar", foundString: "FOO") == "\u{DF}AR")
+        #expect(PreserveCase.replaceWithCaseRespect("\u{DF}ar", foundString: "foo") == "\u{DF}ar")
+    }
 }

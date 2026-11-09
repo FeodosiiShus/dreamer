@@ -15,20 +15,20 @@ struct ToolWindowLayout: Equatable {
     static let defaultLeftWidth: CGFloat = 280
     static let defaultBottomHeight: CGFloat = 300
     static let minSplitPart: CGFloat = 96
-    static let minLeftWidth: CGFloat = 180
-    static let maxLeftWidth: CGFloat = 640
-    static let minBottomHeight: CGFloat = 120
-    static let minEditorWidth: CGFloat = 320
-    static let minEditorHeight: CGFloat = 160
+    nonisolated static let minLeftWidth: CGFloat = 180
+    nonisolated static let maxLeftWidth: CGFloat = 640
+    nonisolated static let minBottomHeight: CGFloat = 120
+    nonisolated static let minEditorWidth: CGFloat = 320
+    nonisolated static let minEditorHeight: CGFloat = 160
 }
 
 extension ToolWindowLayout {
-    static func clampLeftWidth(_ width: CGFloat, availableWidth: CGFloat) -> CGFloat {
+    nonisolated static func clampLeftWidth(_ width: CGFloat, availableWidth: CGFloat) -> CGFloat {
         let upperBound = min(maxLeftWidth, max(minLeftWidth, availableWidth - minEditorWidth))
         return min(max(width, minLeftWidth), upperBound)
     }
 
-    static func clampBottomHeight(_ height: CGFloat, availableHeight: CGFloat) -> CGFloat {
+    nonisolated static func clampBottomHeight(_ height: CGFloat, availableHeight: CGFloat) -> CGFloat {
         let upperBound = max(minBottomHeight, availableHeight - minEditorHeight)
         return min(max(height, minBottomHeight), upperBound)
     }

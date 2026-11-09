@@ -19,122 +19,17 @@ private func makeStep(
 }
 
 @MainActor
-private func drain(_ model: PackageManagerProgressModel) async -> (statuses: [String], outputs: [String]) {
-    model.finish()
-    var statuses: [String] = []
-    var outputs: [String] = []
-    for await item in model.outputStream {
-        switch item {
-        case .status(let text): statuses.append(text)
-        case .output(let text): outputs.append(text)
-        }
-    }
-    return (statuses, outputs)
-}
-
-@MainActor
-@Suite(.uiGate)
-struct PackageManagerProgressModelTests {
-    @Test
-    func statusYieldsStatusItemsInOrder() async {
-        let model = PackageManagerProgressModel(shellClient: ScriptedShell().client)
-        model.status("first")
-        model.status("second")
-        let drained = await drain(model)
-        #expect(drained.statuses == ["first", "second"])
-        #expect(drained.outputs.isEmpty)
-    }
-
-    @Test
-    func createDirectoryStructureBuildsIntermediateDirectories() async throws {
-        try await withTempDir { directory in
-            let target = directory.appending(path: "Language Servers/tool", directoryHint: .isDirectory)
-            let model = PackageManagerProgressModel(shellClient: ScriptedShell().client)
-
-            try model.createDirectoryStructure(for: target)
-
-            var isDirectory: ObjCBool = false
-            #expect(FileManager.default.fileExists(atPath: target.path(percentEncoded: false), isDirectory: &isDirectory))
-            #expect(isDirectory.boolValue)
-            let drained = await drain(model)
-            #expect(drained.statuses == ["Creating directory: \(target.path(percentEncoded: false))"])
-        }
-    }
-
-    @Test
-    func createDirectoryStructureReplacesAnExistingInstallation() async throws {
-        try await withTempDir { directory in
-            let target = directory.appending(path: "tool", directoryHint: .isDirectory)
-            try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
-            let leftover = target.appending(path: "old.txt")
-            try Data("old".utf8).write(to: leftover)
-            let model = PackageManagerProgressModel(shellClient: ScriptedShell().client)
-
-            try model.createDirectoryStructure(for: target)
-
-            #expect(!FileManager.default.fileExists(atPath: leftover.path(percentEncoded: false)))
-            #expect(FileManager.default.fileExists(atPath: target.path(percentEncoded: false)))
-            let drained = await drain(model)
-            #expect(drained.statuses == [
-                "Removing existing installation.",
-                "Creating directory: \(target.path(percentEncoded: false))"
-            ])
-        }
-    }
-
-    @Test
-    func createDirectoryStructureFailsBelowARegularFile() async throws {
-        try withTempDir { directory in
-            let blocker = directory.appending(path: "blocker")
-            try Data("file".utf8).write(to: blocker)
-            let model = PackageManagerProgressModel(shellClient: ScriptedShell().client)
-
-            #expect(throws: (any Error).self) {
-                try model.createDirectoryStructure(for: blocker.appending(path: "child"))
-            }
-        }
-    }
-
-    @Test
-    func executeInDirectoryRunsOneShellCommandInThatDirectory() async throws {
-        let shell = ScriptedShell { _ in FakeProcessRunner.output("line one\nline two\n") }
-        let model = PackageManagerProgressModel(shellClient: shell.client)
-
-        let lines = try await model.executeInDirectory(in: "/tmp/some dir", ["npm", "install", "left-pad"])
-
-        #expect(lines == ["line one", "line two"])
-        #expect(shell.commands == ["cd \"/tmp/some dir\" && npm install left-pad"])
-        let drained = await drain(model)
-        #expect(drained.statuses == ["cd \"/tmp/some dir\" && npm install left-pad"])
-        #expect(drained.outputs == ["line one", "line two"])
-    }
-
-    @Test
-    func runCommandPropagatesTheExitStatusAfterStreamingItsOutput() async {
-        let shell = ScriptedShell { _ in FakeProcessRunner.output("partial\n", exitCode: 3) }
-        let model = PackageManagerProgressModel(shellClient: shell.client)
-
-        await #expect(throws: ShellClientError.taskTerminated(code: 3)) {
-            try await model.runCommand("failing")
-        }
-
-        let drained = await drain(model)
-        #expect(drained.statuses == ["failing"])
-        #expect(drained.outputs == ["partial"])
-    }
-}
-
-@MainActor
 @Suite(.uiGate)
 struct PackageManagerInstallOperationTests {
     private func makeOperation(
         steps: [PackageManagerInstallStep],
-        shell: ScriptedShell = ScriptedShell()
+        shell: ScriptedProcesses = ScriptedProcesses()
     ) throws -> PackageManagerInstallOperation {
         PackageManagerInstallOperation(
             package: try PackageManagerFixtures.registryItem(name: "operation-ls"),
             steps: steps,
-            shellClient: shell.client
+            runner: shell.runner,
+            shellEnvironment: shell.shellEnvironment
         )
     }
 
@@ -173,11 +68,11 @@ struct PackageManagerInstallOperationTests {
 
     @Test
     func stepsRunInOrderAndTheirOutputIsCollected() async throws {
-        let shell = ScriptedShell { _ in FakeProcessRunner.output("hi\n") }
+        let shell = ScriptedProcesses { _ in FakeProcessRunner.output("hi\n") }
         let steps = [
             makeStep("A") { model in
                 model.status("a-status")
-                try await model.runCommand("echo hi")
+                try await model.run(["npm", "--version"])
             },
             makeStep("B") { model in
                 model.status("b-status")
@@ -188,11 +83,12 @@ struct PackageManagerInstallOperationTests {
         try await operation.run()
 
         #expect(operation.accumulatedOutput.map(\.contents) == [
-            "Step 1: A", "a-status", "echo hi", "hi", "Step 2: B", "b-status"
+            "Step 1: A", "a-status", "npm --version", "hi", "Step 2: B", "b-status"
         ])
         #expect(operation.accumulatedOutput.map(\.isStepDivider) == [true, false, false, false, true, false])
         #expect(operation.accumulatedOutput.map(\.outputIdx) == [nil, 1, 2, nil, nil, 3])
-        #expect(shell.commands == ["echo hi"])
+        #expect(shell.commands == ["npm --version"])
+        #expect(shell.arguments == [["npm", "--version"]])
         #expect(operation.runningState == .complete)
         #expect(operation.currentStepIdx == 2)
         #expect(operation.completedSteps == 2)

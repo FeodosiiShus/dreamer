@@ -51,7 +51,9 @@ struct OpenQuicklyViewTests {
     private func awaitSelectedFirstRow(_ harness: Harness) async throws {
         try await eventually(timeout: .seconds(30)) {
             harness.hosted.layout()
-            return harness.hosted.views(of: NSTableView.self).first?.selectedRow == 0
+            return harness.hosted.views(of: NSTextField.self).contains {
+                !$0.isEditable && $0.stringValue == "alpha.txt"
+            }
         }
     }
 
@@ -63,7 +65,10 @@ struct OpenQuicklyViewTests {
             try await harness.hosted.settle(.milliseconds(400))
 
             #expect(harness.model.searchResults.isEmpty)
-            #expect(harness.hosted.views(of: NSTableView.self).isEmpty)
+            let staleRowShown = harness.hosted.views(of: NSTextField.self).contains {
+                !$0.isEditable && $0.stringValue == "alpha.txt"
+            }
+            #expect(!staleRowShown)
             #expect(harness.recorder.closes == 0)
         }
     }

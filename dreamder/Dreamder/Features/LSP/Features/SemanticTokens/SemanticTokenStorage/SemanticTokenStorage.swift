@@ -55,7 +55,7 @@ nonisolated final class SemanticTokenStorage: GenericSemanticTokenStorage {
         var tokens: [SemanticToken] = []
 
         // Perform a binary search
-        guard var idx = findLowerBound(in: range, data: state.tokens[...]) else {
+        guard var idx = findLowerBound(in: range, data: ArraySlice(state.tokens)) else {
             return []
         }
 
@@ -90,7 +90,11 @@ nonisolated final class SemanticTokenStorage: GenericSemanticTokenStorage {
         // Apply in reverse order (end to start)
         for edit in deltas.edits.sorted(by: { $0.start > $1.start }) {
             invalidatedSet.append(
-                contentsOf: invalidatedRanges(startIdx: edit.start, length: edit.deleteCount, data: tokenData[...])
+                contentsOf: invalidatedRanges(
+                    startIdx: edit.start,
+                    length: edit.deleteCount,
+                    data: ArraySlice(tokenData)
+                )
             )
 
             // Apply to our copy of the tokens array
@@ -100,12 +104,12 @@ nonisolated final class SemanticTokenStorage: GenericSemanticTokenStorage {
                 tokenData.insert(contentsOf: edit.data ?? [], at: Int(edit.start))
             }
 
-            if edit.data != nil {
+            if let insertedData = edit.data {
                 invalidatedSet.append(
                     contentsOf: invalidatedRanges(
                         startIdx: edit.start,
-                        length: UInt(edit.data?.count ?? 0),
-                        data: tokenData[...]
+                        length: UInt(insertedData.count),
+                        data: ArraySlice(tokenData)
                     )
                 )
             }

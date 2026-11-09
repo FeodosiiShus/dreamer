@@ -90,7 +90,7 @@ nonisolated enum GitLogArguments {
             arguments.append("-c")
             arguments.append(config)
         }
-        arguments.append(contentsOf: ["log", "--date-order", "-z", "--format=\(format)"])
+        arguments.append(contentsOf: ["log", "--date-order", "-z", "--decorate=full", "--format=\(format)"])
         arguments.append(contentsOf: parameters.filterParameters)
         return arguments
     }

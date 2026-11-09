@@ -115,6 +115,31 @@ struct ProblemsToolWindowViewTests {
     }
 
     @Test
+    func aWorkspaceWithoutAFileManagerFallsBackToItsOwnFileURLAsRoot() async throws {
+        try await withTempDir { dir in
+            let fixture = try makeFixture(in: dir)
+            defer { fixture.workspace.close() }
+            _ = populate(fixture)
+            fixture.workspace.workspaceFileManager = nil
+            #expect(fixture.workspace.fileURL != nil)
+            let model = ProblemsToolWindowModel()
+            model.tab = .project
+            let hosted = try host(fixture, model: model)
+            defer { hosted.close() }
+
+            try await hosted.settle()
+
+            #expect(hosted.renders())
+            let populated = hosted.snapshot()
+            fixture.workspace.diagnosticsStore.replace([], for: fixture.first)
+            fixture.workspace.diagnosticsStore.replace([], for: fixture.second)
+            fixture.workspace.diagnosticsStore.replace([], for: fixture.nested)
+            try await hosted.settle()
+            #expect(HostedView.pixelsDiffer(populated, hosted.snapshot()))
+        }
+    }
+
+    @Test
     func fileTabListsTheActiveFilesDiagnosticsAndCollapses() async throws {
         try await withTempDir { dir in
             let fixture = try makeFixture(in: dir)

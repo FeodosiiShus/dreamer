@@ -77,29 +77,51 @@ class CEActiveTaskTerminalView: CELocalShellTerminalView {
             execName: shell.rawValue,
             currentDirectory: URL(filePath: activeTask.task.workingDirectory, relativeTo: url).absolutePath
         )
-        adoptPseudoTerminal()
     }
 
     override func dataReceived(slice: ArraySlice<UInt8>) {
-        lastOutputAt = .now
+        receivedByteCount += slice.count
         super.dataReceived(slice: slice)
     }
 
     override func processTerminated(_ source: LocalProcess, exitCode: Int32?) {
         let status = exitCode ?? 1
-        lastOutputAt = .now
         Task { @MainActor [weak self] in
-            while let self, self.process.childfd != -1, ContinuousClock.now - self.lastOutputAt < Self.drainIdleLimit {
-                try? await Task.sleep(for: Self.drainInterval)
-            }
+            await self?.drainUntilEndOfOutput()
             self?.drainProcessEvents()
             self?.activeTask.handleProcessFinished(terminationStatus: status)
         }
     }
 
-    private var lastOutputAt = ContinuousClock.now
-    private static let drainInterval: Duration = .milliseconds(10)
-    private static let drainIdleLimit: Duration = .seconds(5)
+    var drainPollInterval: Duration = .milliseconds(10)
+    var drainStallRounds = 500
+    private var receivedByteCount = 0
+
+    private func drainUntilEndOfOutput() async {
+        await Self.waitForEndOfOutput(
+            isOpen: { self.process.childfd != -1 },
+            receivedBytes: { self.receivedByteCount },
+            interval: drainPollInterval,
+            stallRounds: drainStallRounds
+        )
+    }
+
+    static func waitForEndOfOutput(
+        isOpen: () -> Bool,
+        receivedBytes: () -> Int,
+        interval: Duration,
+        stallRounds: Int,
+        sleep: (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+    ) async {
+        var stalledRounds = 0
+        var received = receivedBytes()
+        while isOpen(), stalledRounds < stallRounds {
+            await sleep(interval)
+            let current = receivedBytes()
+            stalledRounds = current == received ? stalledRounds + 1 : 0
+            received = current
+        }
+    }
 
     func sendOutputMessage(_ message: String) {
         sendSpecialSequence()
@@ -122,10 +144,7 @@ class CEActiveTaskTerminalView: CELocalShellTerminalView {
     }
 
     func runningPID() -> pid_t? {
-        if process.shellPid != 0 {
-            return process.shellPid
-        }
-        return nil
+        process.running && process.shellPid > 0 ? process.shellPid : nil
     }
 
     func getBufferAsString() -> String {

@@ -8,14 +8,16 @@
 import SwiftUI
 
 struct MainCommands: Commands {
+    var installSceneOpener: SceneOpenerInstall?
+
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
-            SceneButton(title: "About Dreamder", scene: .about)
+            SceneButton(title: "About Dreamder", scene: .about, installSceneOpener: installSceneOpener)
                 .keymapShortcut(.about)
         }
 
         CommandGroup(replacing: .appSettings) {
-            SceneButton(title: "Settings...", scene: .settings)
+            SceneButton(title: "Settings...", scene: .settings, installSceneOpener: installSceneOpener)
                 .keymapShortcut(.settings)
         }
     }
@@ -25,6 +27,7 @@ struct SceneButton: View {
     let title: String
     let scene: SceneID
     var open: (@MainActor (SceneID) -> Void)?
+    var installSceneOpener: SceneOpenerInstall?
 
     @Environment(\.openWindow)
     var openWindow
@@ -37,5 +40,6 @@ struct SceneButton: View {
                 openWindow(sceneID: scene)
             }
         }
+        .installsSceneOpener(installSceneOpener)
     }
 }

@@ -14,6 +14,7 @@ extension TerminalEmulatorView {
         public var onTitleChange: ((_ title: String) -> Void)?
 
         var mode: TerminalMode
+        var appliedAppearance: TerminalAppearance?
 
         init(terminalID: UUID, mode: TerminalMode, onTitleChange: ((_ title: String) -> Void)?) {
             self.terminalID = terminalID

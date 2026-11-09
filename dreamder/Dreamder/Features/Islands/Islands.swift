@@ -49,6 +49,9 @@ enum Islands {
     static let editorForeground = Color(hex: 0xBCBEC4)
     static let hover = Color.white.opacity(0x10 / 255)
     static let actionHover = Color.white.opacity(0x17 / 255)
+    static let actionPressed = Color.white.opacity(0x29 / 255)
+    static let stripeSelectedForeground = Color.white
+    static let stripeSeparator = Color.white.opacity(0x21 / 255)
     static let selection = Color(hex: 0x2E436E)
     static let selectionInactive = Color(hex: 0x2B2D30)
     static let accent = Color(hex: 0x3871E1)
@@ -58,6 +61,7 @@ enum Islands {
     static let tabSelectedBorder = Color(hex: 0x2E4D89)
     static let tabInactiveSelectedBackground = Color(hex: 0x26282C)
     static let tabInactiveSelectedBorder = Color(hex: 0x40434A)
+    static let underTabsBorder = Color(hex: 0x26282C)
     static let testFileBackground = Color(hex: 0x1C261C)
     static let stripeSelected = Color(hex: 0x3871E1)
     static let lineNumber = Color(hex: 0x4B5059)
@@ -75,8 +79,9 @@ enum Islands {
     static let warningForeground = Color(hex: 0xF2C55C)
     static let successForeground = Color(hex: 0x5FB865)
 
-    static var islandRadius: CGFloat { isCompact ? 8 : 10 }
-    static var islandGap: CGFloat { isCompact ? 4 : 6 }
+    static var layoutMetrics: IslandsLayoutMetrics { IslandsLayoutMetrics.make(isCompact: isCompact) }
+    static var islandRadius: CGFloat { layoutMetrics.radius }
+    static var islandGap: CGFloat { layoutMetrics.gap }
     static let popupRadius: CGFloat = 12
     static let controlRadius: CGFloat = 6
     static let rowRadius: CGFloat = 4
@@ -85,14 +90,34 @@ enum Islands {
     static var toolWindowHeaderHeight: CGFloat { isCompact ? 32 : 41 }
     static var tabStripHeight: CGFloat { isCompact ? 31 : 40 }
     static var tabBarHeight: CGFloat { tabStripHeight + 1 }
-    static var tabPillHeight: CGFloat { isCompact ? 24 : 30 }
+    static var tabPillHeight: CGFloat { isCompact ? 24 : 28 }
     static var tabPillRadius: CGFloat { isCompact ? 4 : 6 }
     static var tabColorInset: CGFloat { isCompact ? 2 : 3 }
     static var tabLabelFontSize: CGFloat { isCompact ? 12 : 13 }
     static var statusBarHeight: CGFloat { isCompact ? 22 : 26 }
-    static var stripeWidth: CGFloat { isCompact ? 33 : 40 }
-    static var stripeButtonSize: CGFloat { isCompact ? 32 : 30 }
+    static let stripeWidth: CGFloat = 37
+    static let stripeButtonCellHeight: CGFloat = 40
+    static var stripeButtonInsets: EdgeInsets {
+        isCompact
+            ? EdgeInsets(top: 4, leading: 5, bottom: 4, trailing: 3)
+            : EdgeInsets(top: 5, leading: 5, bottom: 5, trailing: 2)
+    }
+    static var stripeButtonWidth: CGFloat { stripeWidth - stripeButtonInsets.leading - stripeButtonInsets.trailing }
+    static var stripeButtonHeight: CGFloat {
+        stripeButtonCellHeight - stripeButtonInsets.top - stripeButtonInsets.bottom
+    }
+    static var stripeButtonRadius: CGFloat { isCompact ? 4 : 6 }
     static var stripeIconSize: CGFloat { isCompact ? 16 : 20 }
+    static let stripeSeparatorWidth: CGFloat = 24
+    static let stripeSeparatorCellHeight: CGFloat = 11
+    static let actionButtonSize: CGFloat = 22
+    static let actionButtonRadius: CGFloat = 4
+    static let actionIconSize: CGFloat = 16
+    static let headerLabelLeadingInset: CGFloat = 12
+    static let headerLabelTrailingInset: CGFloat = 16
+    static let headerToolbarLeadingInset: CGFloat = 12
+    static let headerToolbarTrailingInset: CGFloat = 8
+    static let headerTabHorizontalInset: CGFloat = 12
     static var treeRowHeight: CGFloat { isCompact ? 20 : 24 }
     static var listRowHeight: CGFloat { isCompact ? 20 : 24 }
     static var popupRowHeight: CGFloat { isCompact ? 22 : 26 }
@@ -108,15 +133,13 @@ enum Islands {
 
     static var glassIslandTint: Color { island.opacity(glassTintOpacity) }
     static var glassPopupTint: Color { popup.opacity(glassTintOpacity) }
-    static var glassBorder: Color { popupBorder.opacity(0.6) }
-    static var glassHoverTint: Color { componentBorder.opacity(glassTintOpacity) }
-    static var tabHoverFill: Color { islandRaised.opacity(0.9) }
     static var glassRaisedFill: Color { islandRaised.opacity(0.5) }
     static var glassFieldFill: Color { islandRaised.opacity(0.7) }
 
     static var uiFont: Font { .system(size: uiFontSize) }
     static var smallFont: Font { .system(size: smallFontSize) }
     static var headerTitleFont: Font { .system(size: uiFontSize, weight: .semibold) }
+    static var toolWindowTitleFont: Font { .system(size: uiFontSize, weight: .bold) }
     static var tabLabelFont: Font { .system(size: tabLabelFontSize) }
 
     static var codeFont: Font {

@@ -64,7 +64,7 @@ struct SearchPanelView<RowView: View, PreviewView: View, Option: Identifiable & 
                         .font(.system(size: 20, weight: .light, design: .default))
                         .textFieldStyle(.plain)
                         .onSubmit(model.submit)
-                        .task(id: options) { model.update(options: options) }
+                        .onChange(of: options, initial: true) { model.update(options: options) }
                     if hasPreview {
                         PreviewToggle(previewVisible: model.previewVisible)
                             .onTapGesture(perform: model.togglePreview)
@@ -84,10 +84,11 @@ struct SearchPanelView<RowView: View, PreviewView: View, Option: Identifiable & 
                             .foregroundColor(.secondary)
                             .frame(maxWidth: hasPreview ? 272 : .infinity, maxHeight: .infinity)
                     } else {
-                        NSTableViewWrapper(
+                        SelectableRowList(
                             data: options,
                             rowHeight: optionRowHeight,
                             selection: Bindable(model).selection,
+                            onActivate: model.submit,
                             itemView: rowViewBuilder
                         )
                         .frame(maxWidth: hasPreview && model.previewVisible ? 272 : .infinity)

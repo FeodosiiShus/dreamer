@@ -15,6 +15,24 @@ struct FindModelCoverageTests {
     }
 
     @Test
+    func aWordAfterASurrogatePairStartsAtTheLowSurrogate() {
+        #expect(FindModel.isWholeWord(in: "😀abc" as NSString, range: NSRange(location: 2, length: 3)))
+    }
+
+    @Test
+    func wholeWordsOnlyStepsPastAnEmptyRegexMatch() throws {
+        var empty = FindModel()
+        empty.stringToFind = "x*"
+        empty.isRegularExpressions = true
+        empty.isWholeWordsOnly = true
+        let regex = try #require(empty.compileMatcher())
+
+        let matches = empty.findMatches(in: "", using: regex)
+
+        #expect(matches.map(\.range) == [NSRange(location: 0, length: 0)])
+    }
+
+    @Test
     func relativeDirectoryWithoutProjectRootResolvesAgainstTheWorkingDirectory() throws {
         var model = FindModel()
         model.isProjectScope = false

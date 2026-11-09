@@ -153,6 +153,7 @@ struct GitignoreRuleSetTests {
     func blankCommentAndBareSeparatorLinesProduceNoRules() {
         #expect(GitignoreRuleSet(text: "\n# note\n   \n/\n!\n!/\n").isEmpty)
         #expect(GitignoreRuleSet(lines: ["#x", "", "/"]).isEmpty)
+        #expect(GitignoreRuleSet(lines: ["//", "!//"]).isEmpty)
         #expect(GitignoreRuleSet.empty.isEmpty)
     }
 

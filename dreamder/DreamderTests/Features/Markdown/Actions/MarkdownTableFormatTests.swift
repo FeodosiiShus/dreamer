@@ -484,7 +484,7 @@ struct MarkdownTableFormatContextTests {
         let before = md("|a|b|", "|-|-|", "|long|x|")
         let result = MarkdownTable.formatAllTables(text: before)
         #expect(result?.applied(to: before) == result?.text)
-        #expect(result?.edits.count == 1)
+        #expect(result?.edit != nil)
     }
 
     @Test

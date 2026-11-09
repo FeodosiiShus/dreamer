@@ -57,9 +57,16 @@ struct WelcomeView: View {
 struct WelcomeScene: Scene {
     @State private var model = WelcomeViewModel()
 
+    private let installSceneOpener: SceneOpenerInstall
+
+    init(installSceneOpener: @escaping SceneOpenerInstall) {
+        self.installSceneOpener = installSceneOpener
+    }
+
     var body: some Scene {
         Window("Welcome to \(Bundle.displayName)", id: SceneID.welcome.rawValue) {
             WelcomeView(model: model)
+                .installsSceneOpener(installSceneOpener)
         }
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)

@@ -20,9 +20,17 @@ struct PressActions: ViewModifier {
         content
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0)
-                    .onChanged({ _ in onPress() })
-                    .onEnded({ _ in onRelease?() })
+                    .onChanged(pressChanged)
+                    .onEnded(pressEnded)
             )
+    }
+
+    func pressChanged<Value>(_ value: Value) {
+        onPress()
+    }
+
+    func pressEnded<Value>(_ value: Value) {
+        onRelease?()
     }
 }
 

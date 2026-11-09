@@ -17,7 +17,7 @@ struct LanguageServerLocalProcessTests {
     id=$(printf '%s' "$body" | sed 's/.*"id":\\([^,}]*\\).*/\\1/')
     response="{\\"jsonrpc\\":\\"2.0\\",\\"id\\":$id,\\"result\\":{\\"capabilities\\":{}}}"
     printf 'Content-Length: %d\\r\\n\\r\\n%s' "${#response}" "$response"
-    exec cat > /dev/null
+    cat > /dev/null
     """
 
     private let language = LSPLanguage(rawValue: "ruby")

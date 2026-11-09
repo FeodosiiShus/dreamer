@@ -32,6 +32,7 @@ class TaskManager {
     private let discovery: TaskDiscovery?
     private let selectionDefaults: UserDefaults
     private let settings: Settings
+    private let trust: WorkspaceTrust
     @ObservationIgnored private var persistedSelectionID: UUID?
     @ObservationIgnored private var selectionIsFallback = true
     @ObservationIgnored private var isApplyingFallbackSelection = false
@@ -41,12 +42,14 @@ class TaskManager {
         workspaceURL: URL?,
         discovery: TaskDiscovery? = nil,
         selectionDefaults: UserDefaults = .standard,
-        settings: Settings = SettingsScope.current ?? .shared
+        settings: Settings = SettingsScope.current ?? .shared,
+        trust: WorkspaceTrust = .shared
     ) {
         self.workspaceURL = workspaceURL
         self.workspaceSettings = workspaceSettings
         self.selectionDefaults = selectionDefaults
         self.settings = settings
+        self.trust = trust
         self.discovery = discovery ?? workspaceURL.map { root in
             TaskDiscovery(rootURL: root, isExcluded: { url in
                 ExcludedDirectories.rules(covering: url).isExcluded(url)
@@ -166,24 +169,21 @@ class TaskManager {
         }
     }
 
+    private func isAllowedToRun() async -> Bool {
+        guard let workspaceURL else { return true }
+        return await trust.requestTrust(for: workspaceURL)
+    }
+
     func runTask(task: CETask) async {
+        guard await isAllowedToRun() else { return }
         lastRunTask = task
-        // A process can only be started once, that means we have to renew the Process and Pipe
-        // but don't initialize a new object.
         if let activeTask = activeTasks[task.id] {
-            activeTask.terminate()
-            // Wait until the task is no longer running.
-            // The termination handler is asynchronous, so we avoid a race condition using this.
-            while activeTask.status == .running {
-                await Task.yield()
-            }
+            await activeTask.terminateAndWait()
             activeTask.run(workspaceURL: workspaceURL)
         } else {
             let runningTask = CEActiveTask(task: task, settings: settings)
             runningTask.run(workspaceURL: workspaceURL)
-            await MainActor.run {
-                activeTasks[task.id] = runningTask
-            }
+            activeTasks[task.id] = runningTask
         }
     }
 

@@ -38,4 +38,35 @@ struct AutosavePreferenceTests {
             #expect(CodeFileDocument.autosavesInPlace == false)
         }
     }
+
+    @Test
+    func aSavedAutosavePreferenceAppliesWhenTheSettingsLoad() throws {
+        let previous = AutosavePreference.isEnabled.withLock { $0 }
+        defer { AutosavePreference.isEnabled.withLock { $0 = previous } }
+        try withTempDir { directory in
+            try Data(#"{"general": {"isAutoSaveOn": true}}"#.utf8).write(to: directory.appending(path: "settings.json"))
+            AutosavePreference.isEnabled.withLock { $0 = false }
+            #expect(CodeFileDocument.autosavesInPlace == false)
+
+            let driving = Settings(baseURL: directory, drivesAutosavePreference: true)
+
+            #expect(driving.preferences.general.isAutoSaveOn)
+            #expect(CodeFileDocument.autosavesInPlace)
+        }
+    }
+
+    @Test
+    func aSavedAutosavePreferenceIsIgnoredByInstancesThatDoNotDriveTheFlag() throws {
+        let previous = AutosavePreference.isEnabled.withLock { $0 }
+        defer { AutosavePreference.isEnabled.withLock { $0 = previous } }
+        try withTempDir { directory in
+            try Data(#"{"general": {"isAutoSaveOn": true}}"#.utf8).write(to: directory.appending(path: "settings.json"))
+            AutosavePreference.isEnabled.withLock { $0 = false }
+
+            let isolated = Settings(baseURL: directory)
+
+            #expect(isolated.preferences.general.isAutoSaveOn)
+            #expect(CodeFileDocument.autosavesInPlace == false)
+        }
+    }
 }

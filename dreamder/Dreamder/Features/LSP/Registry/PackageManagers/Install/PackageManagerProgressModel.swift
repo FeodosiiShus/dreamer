@@ -23,11 +23,15 @@ final class PackageManagerProgressModel {
 
     let outputStream: AsyncStream<OutputItem>
 
-    private let shellClient: ShellClient
+    nonisolated static let envExecutable = URL(filePath: "/usr/bin/env")
+
+    private let runner: any ProcessRunning
+    private let shellEnvironment: ShellEnvironment
     private let outputContinuation: AsyncStream<OutputItem>.Continuation
 
-    init(shellClient: ShellClient) {
-        self.shellClient = shellClient
+    init(runner: any ProcessRunning = ProcessRunner(), shellEnvironment: ShellEnvironment = .shared) {
+        self.runner = runner
+        self.shellEnvironment = shellEnvironment
         (outputStream, outputContinuation) = AsyncStream<OutputItem>.makeStream()
     }
 
@@ -51,20 +55,35 @@ final class PackageManagerProgressModel {
         )
     }
 
-    /// Executes commands in the specified directory
     @discardableResult
-    func executeInDirectory(in packagePath: String, _ args: [String]) async throws -> [String] {
-        return try await runCommand("cd \"\(packagePath)\" && \(args.joined(separator: " "))")
-    }
-
-    /// Runs a shell command and returns output
-    @discardableResult
-    func runCommand(_ command: String) async throws -> [String] {
+    func run(
+        _ argv: [String],
+        in directory: URL? = nil,
+        environment overrides: [String: String] = [:]
+    ) async throws -> [String] {
+        guard let executable = argv.first, RegistryInputValidation.isAllowedExecutable(executable) else {
+            throw PackageManagerError.unsafeValue(argv.first ?? "")
+        }
+        status(argv.joined(separator: " "))
+        var environment = await shellEnvironment.load()
+        environment.merge(overrides) { _, override in override }
+        let invocation = ProcessInvocation(
+            executable: Self.envExecutable,
+            arguments: argv,
+            workingDirectory: directory,
+            environment: environment
+        )
         var output: [String] = []
-        status("\(command)")
-        for try await line in shellClient.runAsync(command) {
-            output.append(line)
-            outputContinuation.yield(.output(line))
+        for try await event in runner.stream(invocation) {
+            switch event {
+            case .line(_, let line):
+                output.append(line)
+                outputContinuation.yield(.output(line))
+            case let .exit(code, terminatedBySignal):
+                if code != 0 || terminatedBySignal {
+                    throw ShellClientError.taskTerminated(code: Int(code))
+                }
+            }
         }
         return output
     }

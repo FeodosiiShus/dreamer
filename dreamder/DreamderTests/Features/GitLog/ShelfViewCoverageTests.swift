@@ -7,7 +7,7 @@ import Testing
 @Suite(.uiGate)
 struct ShelfViewCoverage {
     @MainActor
-    private struct Session {
+    struct Session {
         let workspace: WorkspaceDocument
         let manager: SourceControlManager
         let model: ShelfModel
@@ -55,7 +55,7 @@ struct ShelfViewCoverage {
         }
     }
 
-    private func makeSession(_ directory: URL, livePresenter: Bool = false) async throws -> Session {
+    func makeSession(_ directory: URL, livePresenter: Bool = false) async throws -> Session {
         let repo = try await ShelfRepo.make(in: directory)
         let workspace = try HostedViewFixture.makeWorkspace(in: directory)
         let manager = try #require(workspace.sourceControlManager)
@@ -71,7 +71,15 @@ struct ShelfViewCoverage {
         let input = GitToolWindowCovInput(hosted: hosted)
         try await eventually { model.isLoaded }
         try await hosted.settle(.milliseconds(150))
-        return Session(workspace: workspace, manager: manager, model: model, probe: probe, repo: repo, hosted: hosted, input: input)
+        return Session(
+            workspace: workspace,
+            manager: manager,
+            model: model,
+            probe: probe,
+            repo: repo,
+            hosted: hosted,
+            input: input
+        )
     }
 
     @Test
@@ -269,138 +277,6 @@ struct ShelfViewCoverage {
             #expect(session.model.shelves.map(\.hash) == [shelf.hash])
             #expect(session.probe.notifications.count == 1)
             #expect(try await session.repo.fixture.unmergedPaths() == ["a.txt"])
-        }
-    }
-
-    @Test
-    func rowMenuOffersAndRunsEveryShelfAction() async throws {
-        try await withTempDir { directory in
-            let session = try await makeSession(directory)
-            defer { session.close() }
-            try session.repo.fixture.write("a.txt", "a2\n")
-            let shelf = try await session.shelve(["a.txt"], name: "menu")
-            let menu = session.rowMenu(for: shelf)
-            defer { menu.close() }
-
-            #expect(menu.titles == ["Unshelve", "Unshelve and Keep", "Rename…", "Delete"])
-            #expect(menu.enabledStates == [true, true, true, true])
-
-            try menu.click(titled: "Unshelve and Keep")
-            await session.model.settle()
-            #expect(session.probe.errors.isEmpty)
-            #expect(session.text("a.txt") == "a2\n")
-            #expect(session.model.shelves.map(\.hash) == [shelf.hash])
-            try await session.repo.fixture.run("checkout", "--", "a.txt")
-
-            session.probe.confirmAnswer = false
-            try menu.click(titled: "Delete")
-            await session.model.settle()
-            #expect(session.probe.confirmMessages.count == 1)
-            #expect(session.model.shelves.map(\.hash) == [shelf.hash])
-
-            try menu.click(titled: "Unshelve")
-            await session.model.settle()
-            #expect(session.model.shelves.isEmpty)
-            #expect(try session.repo.fixture.read("a.txt") == "a2\n")
-        }
-    }
-
-    @Test
-    func rowMenuDeleteRemovesTheShelfAfterConfirmation() async throws {
-        try await withTempDir { directory in
-            let session = try await makeSession(directory)
-            defer { session.close() }
-            try session.repo.fixture.write("a.txt", "a2\n")
-            let shelf = try await session.shelve(["a.txt"], name: "menu")
-            let menu = session.rowMenu(for: shelf)
-            defer { menu.close() }
-            session.probe.confirmAnswer = true
-
-            try menu.click(titled: "Delete")
-
-            await session.model.settle()
-            #expect(session.model.shelves.isEmpty)
-            #expect(try await session.repo.stashHashes().isEmpty)
-        }
-    }
-
-    @Test
-    func rowMenuRenameAsksForTheNewName() async throws {
-        try await withTempDir { directory in
-            let session = try await makeSession(directory)
-            defer { session.close() }
-            try session.repo.fixture.write("a.txt", "a2\n")
-            let shelf = try await session.shelve(["a.txt"], name: "menu")
-            let menu = session.rowMenu(for: shelf)
-            defer { menu.close() }
-            session.probe.promptAnswer = "renamed"
-
-            try menu.click(titled: "Rename…")
-
-            await session.model.settle()
-            #expect(session.probe.errors.isEmpty)
-            #expect(session.model.shelves.first?.name == "renamed")
-            #expect(session.probe.promptInitials == ["menu"])
-        }
-    }
-
-    @Test
-    func contextMenuOffersTheShelfActionsForTheClickedRow() async throws {
-        try await withTempDir { directory in
-            let session = try await makeSession(directory)
-            defer { session.close() }
-            try session.repo.fixture.write("a.txt", "a2\n")
-            let older = try await session.shelve(["a.txt"], name: "older")
-            try session.repo.fixture.write("b.txt", "b2\n")
-            let newer = try await session.shelve(["b.txt"], name: "newer")
-            #expect(session.model.shelves.map(\.hash) == [newer.hash, older.hash])
-
-            let titles = try session.input.contextMenu(at: session.rowPoint(1)).items.map(\.title).filter { !$0.isEmpty }
-            #expect(titles == ["Unshelve", "Unshelve and Keep", "Rename…", "Delete"])
-
-            let (keepMenu, keepIndex) = try session.menuIndex("Unshelve and Keep", row: 1)
-            keepMenu.performActionForItem(at: keepIndex)
-            await session.model.settle()
-            #expect(session.probe.errors.isEmpty)
-            #expect(session.text("a.txt") == "a2\n")
-            #expect(session.model.shelves.count == 2)
-            try await session.repo.fixture.run("checkout", "--", "a.txt")
-
-            session.probe.promptAnswer = "newest"
-            let (renameMenu, renameIndex) = try session.menuIndex("Rename…", row: 0)
-            renameMenu.performActionForItem(at: renameIndex)
-            await session.model.settle()
-            #expect(session.probe.errors.isEmpty)
-            #expect(session.model.shelves.first?.name == "newest")
-
-            let (unshelveMenu, unshelveIndex) = try session.menuIndex("Unshelve", row: 1)
-            unshelveMenu.performActionForItem(at: unshelveIndex)
-            await session.model.settle()
-            #expect(session.model.shelves.map(\.hash) == [newer.hash])
-            #expect(try session.repo.fixture.read("a.txt") == "a2\n")
-
-            session.probe.confirmAnswer = true
-            let (deleteMenu, deleteIndex) = try session.menuIndex("Delete", row: 0)
-            deleteMenu.performActionForItem(at: deleteIndex)
-            await session.model.settle()
-            #expect(session.model.shelves.isEmpty)
-            #expect(try await session.repo.stashHashes().isEmpty)
-        }
-    }
-
-    @Test
-    func stashChangesMadeElsewhereReloadTheList() async throws {
-        try await withTempDir { directory in
-            let session = try await makeSession(directory)
-            defer { session.close() }
-            try session.repo.fixture.write("a.txt", "a2\n")
-            let shelf = try await session.repo.client.shelve(paths: ["a.txt"], name: "external")
-            #expect(session.model.shelves.isEmpty)
-
-            try await session.manager.refreshStashEntries()
-
-            try await eventually { session.model.shelves.map(\.hash) == [shelf.hash] }
-            #expect(session.model.selectedHash == shelf.hash)
         }
     }
 }

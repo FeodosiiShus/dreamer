@@ -21,14 +21,14 @@ final class GolangPackageManager: PackageManagerProtocol {
             throw PackageManagerError.invalidConfiguration
         }
 
-        let packagePath = installationDirectory.appending(path: source.entryName)
+        let packagePath = try RegistryInputValidation.child(of: installationDirectory, named: source.entryName)
         var steps = [
             initialize(in: packagePath),
-            runGoInstall(source, packagePath: packagePath)
+            try runGoInstall(source, packagePath: packagePath)
         ]
 
-        if source.options["subpath"] != nil {
-            steps.append(buildBinary(source, packagePath: packagePath))
+        if let subpath = source.options["subpath"] {
+            steps.append(try buildBinary(source, subpath: subpath, packagePath: packagePath))
         }
 
         return steps
@@ -40,7 +40,7 @@ final class GolangPackageManager: PackageManagerProtocol {
             name: "",
             confirmation: .required(message: "This package requires go to install. Allow Dreamder to run go commands?")
         ) { model in
-            let versionOutput = try await model.runCommand("go version")
+            let versionOutput = try await model.run(["go", "version"])
             let versionPattern = #"go version go\d+\.\d+"#
             let output = versionOutput.reduce(into: "") {
                 $0 += $1.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -54,12 +54,17 @@ final class GolangPackageManager: PackageManagerProtocol {
     /// Get the binary path for a Go package
     func getBinaryPath(for package: String) -> String {
         let binPath = installationDirectory.appending(path: package).appending(path: "bin")
-        let binaryName = package.components(separatedBy: "/").last ?? package
+        let binaryName = Self.lastPathComponent(of: package)
         let specificBinPath = binPath.appending(path: binaryName).path
         if FileManager.default.fileExists(atPath: specificBinPath) {
             return specificBinPath
         }
         return binPath.path
+    }
+
+    private static func lastPathComponent(of path: String) -> String {
+        guard let slash = path.lastIndex(of: "/") else { return path }
+        return String(path[path.index(after: slash)...])
     }
 
     // MARK: - Initialize
@@ -71,21 +76,15 @@ final class GolangPackageManager: PackageManagerProtocol {
         ) { model in
             try model.createDirectoryStructure(for: packagePath)
 
-            // For Go, we need to set up a proper module structure
-            let goModPath = packagePath.appending(path: "go.mod")
-            if !FileManager.default.fileExists(atPath: goModPath.path) {
-                let moduleName = "dreamder.temp/placeholder"
-                _ = try await model.executeInDirectory(
-                    in: packagePath.path, ["go mod init \(moduleName)"]
-                )
-            }
+            _ = try await model.run(["go", "mod", "init", "dreamder.temp/placeholder"], in: packagePath)
         }
     }
 
     // MARK: - Install Using Go
 
-    func runGoInstall(_ source: PackageSource, packagePath: URL) -> PackageManagerInstallStep {
-        let installCommand = getGoInstallCommand(source)
+    func runGoInstall(_ source: PackageSource, packagePath: URL) throws -> PackageManagerInstallStep {
+        let installCommand = try RegistryInputValidation.argument(getGoInstallCommand(source))
+        let gobinPath = packagePath.appending(path: "bin", directoryHint: .isDirectory).path
         return PackageManagerInstallStep(
             name: "Install Package Using go",
             confirmation: .required(
@@ -93,45 +92,39 @@ final class GolangPackageManager: PackageManagerProtocol {
                 + "\nAllow Dreamder to install this package?"
             )
         ) { model in
-            let gobinPath = packagePath.appending(path: "bin", directoryHint: .isDirectory).path
-            var goInstallCommand = ["env", "GOBIN=\(gobinPath)", "go", "install"]
-
-            goInstallCommand.append(installCommand)
-            _ = try await model.executeInDirectory(in: packagePath.path, goInstallCommand)
+            _ = try await model.run(
+                ["go", "install", installCommand],
+                in: packagePath,
+                environment: ["GOBIN": gobinPath]
+            )
         }
     }
 
     // MARK: - Build Binary
 
-    func buildBinary(_ source: PackageSource, packagePath: URL) -> PackageManagerInstallStep {
-        PackageManagerInstallStep(
+    func buildBinary(
+        _ source: PackageSource,
+        subpath: String,
+        packagePath: URL
+    ) throws -> PackageManagerInstallStep {
+        let binPath = packagePath.appending(path: "bin")
+        let binaryName = try RegistryInputValidation.component(Self.lastPathComponent(of: subpath))
+        let execPath = try RegistryInputValidation.child(of: binPath, named: binaryName)
+        let target = try RegistryInputValidation.argument(
+            source.pkgName.contains("/") ? "\(source.pkgName)/\(subpath)" : subpath
+        )
+        let buildArgs = ["go", "build", "-o", "bin/\(binaryName)", target]
+
+        return PackageManagerInstallStep(
             name: "Build From Source",
             confirmation: .none
         ) { model in
-            // If there's a subpath, build the binary
-            if let subpath = source.options["subpath"] {
-                let binPath = packagePath.appending(path: "bin")
-                if !FileManager.default.fileExists(atPath: binPath.path) {
-                    try FileManager.default.createDirectory(at: binPath, withIntermediateDirectories: true)
-                }
-
-                let binaryName = subpath.components(separatedBy: "/").last ??
-                source.pkgName.components(separatedBy: "/").last ?? source.pkgName
-                let buildArgs = ["go", "build", "-o", "bin/\(binaryName)"]
-
-                // If source.pkgName includes the full import path (like github.com/owner/repo)
-                if source.pkgName.contains("/") {
-                    _ = try await model.executeInDirectory(
-                        in: packagePath.path, buildArgs + ["\(source.pkgName)/\(subpath)"]
-                    )
-                } else {
-                    _ = try await model.executeInDirectory(
-                        in: packagePath.path, buildArgs + [subpath]
-                    )
-                }
-                let execPath = packagePath.appending(path: "bin").appending(path: binaryName)
-                try FileManager.default.makeExecutable(execPath)
+            if !FileManager.default.fileExists(atPath: binPath.path) {
+                try FileManager.default.createDirectory(at: binPath, withIntermediateDirectories: true)
             }
+
+            _ = try await model.run(buildArgs, in: packagePath)
+            try FileManager.default.makeExecutable(execPath)
         }
     }
 

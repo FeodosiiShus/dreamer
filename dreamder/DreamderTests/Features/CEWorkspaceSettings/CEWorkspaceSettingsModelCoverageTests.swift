@@ -5,15 +5,15 @@ import Testing
 @MainActor
 @Suite(.uiGate)
 struct CEWorkspaceSettingsModelCoverageTests {
-    private func makeSettings(in directory: URL) -> CEWorkspaceSettings {
+    func makeSettings(in directory: URL) -> CEWorkspaceSettings {
         CEWorkspaceSettings(workspaceURL: directory)
     }
 
-    private func settingsFileExists(_ settings: CEWorkspaceSettings) -> Bool {
+    func settingsFileExists(_ settings: CEWorkspaceSettings) -> Bool {
         FileManager.default.fileExists(atPath: settings.settingsURL.path(percentEncoded: false))
     }
 
-    private func folderExists(_ settings: CEWorkspaceSettings) -> Bool {
+    func folderExists(_ settings: CEWorkspaceSettings) -> Bool {
         FileManager.default.fileExists(atPath: settings.folderURL.path(percentEncoded: false))
     }
 

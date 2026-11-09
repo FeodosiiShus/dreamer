@@ -376,7 +376,7 @@ struct EditorTabViewCoverageTests {
     }
 
     @Test
-    func hoveredPressedAndDraggedInactiveTabsShowTheHoverCapsule() async throws {
+    func hoveredPressedAndDraggedInactiveTabsShowTheRoundedHoverBackground() async throws {
         try await withTempDir { directory in
             let harness = try EditorTabsCoverageHarness.make(in: directory, names: ["a.swift", "b.swift"])
             defer { harness.close() }

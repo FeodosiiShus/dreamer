@@ -213,4 +213,36 @@ struct WorkspaceSheetsTests {
             #expect(manager.switchToBranch == nil)
         }
     }
+
+    @Test
+    func cancellingTheDiscardAllAlertClearsItsFlag() throws {
+        try withTempDir { directory in
+            let manager = makeManager(in: directory)
+            let presentation = WorkspaceSheetPresentation(manager: manager)
+            manager.discardAllAlertIsPresented = true
+
+            presentation.dismissDiscardAllAlert()
+
+            #expect(manager.discardAllAlertIsPresented == false)
+        }
+    }
+
+    @Test
+    func acknowledgingTheNoChangesAlertClearsItsBinding() throws {
+        try withTempDir { directory in
+            let manager = makeManager(in: directory)
+            manager.noChangesToStageAlertIsPresented = true
+            let alert = NoUncommittedChangesAlert(
+                title: "Cannot Stage Changes",
+                isPresented: Binding(
+                    get: { manager.noChangesToStageAlertIsPresented },
+                    set: { manager.noChangesToStageAlertIsPresented = $0 }
+                )
+            )
+
+            alert.dismiss()
+
+            #expect(manager.noChangesToStageAlertIsPresented == false)
+        }
+    }
 }

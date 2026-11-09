@@ -19,14 +19,24 @@ final class WorkspaceDocument: NSDocument, NSToolbarDelegate {
     /// Whether the workspace only shows files with changes.
     var sourceControlFilter = false
 
+    @ObservationIgnored private var transientWorkspaceState: [String: Any] = [:]
+    @ObservationIgnored var stateDefaults: UserDefaults = .standard
+
+    static func workspaceStateKey(for url: URL) -> String {
+        "workspaceState-\(url.standardizedFileURL.absoluteString)"
+    }
+
     private var workspaceState: [String: Any] {
         get {
-            let key = "workspaceState-\(self.fileURL?.absoluteString ?? "")"
-            return UserDefaults.standard.object(forKey: key) as? [String: Any] ?? [:]
+            guard let key = fileURL.map(Self.workspaceStateKey(for:)) else { return transientWorkspaceState }
+            return stateDefaults.object(forKey: key) as? [String: Any] ?? [:]
         }
         set {
-            let key = "workspaceState-\(self.fileURL?.absoluteString ?? "")"
-            UserDefaults.standard.set(newValue, forKey: key)
+            guard let key = fileURL.map(Self.workspaceStateKey(for:)) else {
+                transientWorkspaceState = newValue
+                return
+            }
+            stateDefaults.set(newValue, forKey: key)
         }
     }
 
@@ -196,6 +206,7 @@ final class WorkspaceDocument: NSDocument, NSToolbarDelegate {
         if let utilityAreaModel {
             utilityAreaModel.removeTerminals(Set(utilityAreaModel.terminals.map(\.id)))
         }
+        closeOpenCodeFiles()
 
         statusBarViewModel = nil
         utilityAreaModel = nil
@@ -212,21 +223,6 @@ final class WorkspaceDocument: NSDocument, NSToolbarDelegate {
         taskManager = nil
     }
 
-    /// Determines the windows should be closed.
-    ///
-    /// This method iterates all edited documents If there are any edited documents.
-    ///
-    /// A panel giving the user the choice of canceling, discarding changes, or saving is presented while iteration.
-    ///
-    /// If the user chooses cancel on the panel, iteration is broken.
-    ///
-    /// In the last step, `shouldCloseSelector` is called with true if all documents are clean, otherwise false
-    ///
-    /// - Parameters:
-    ///   - windowController: The windowController may be closed.
-    ///   - delegate: The object which is a target of `shouldCloseSelector`.
-    ///   - shouldClose: The callback which receives result of this method.
-    ///   - contextInfo: The additional info which is not used in this method.
     override func shouldCloseWindowController(
         _ windowController: NSWindowController,
         delegate: Any?,
@@ -234,72 +230,51 @@ final class WorkspaceDocument: NSDocument, NSToolbarDelegate {
         contextInfo: UnsafeMutableRawPointer?
     ) {
         guard let object = (delegate as? NSObject),
-              let shouldCloseSelector = shouldCloseSelector,
-              let contextInfo = contextInfo
+              let shouldCloseSelector = shouldCloseSelector
         else {
             super.shouldCloseWindowController(
                 windowController,
-                delegate: delegate,
-                shouldClose: shouldCloseSelector,
+                delegate: nil,
+                shouldClose: nil,
                 contextInfo: contextInfo
             )
             return
         }
-        // Save unsaved changes before closing
-        let editedCodeFiles = editorManager?.editorLayout
-            .gatherOpenFiles()
-            .compactMap(\.fileDocument)
-            .filter(\.isDocumentEdited) ?? []
-
-        for editedCodeFile in editedCodeFiles {
-            let shouldClose = UnsafeMutablePointer<Bool>.allocate(capacity: 1)
-            shouldClose.initialize(to: true)
-            defer {
-                _ = shouldClose.move()
-                shouldClose.deallocate()
-            }
-            // Present a panel giving the user the choice of canceling, discarding changes, or saving.
-            editedCodeFile.canClose(
-                withDelegate: self,
-                shouldClose: #selector(document(_:shouldClose:contextInfo:)),
-                contextInfo: shouldClose
+        let answer: (Bool) -> Void = { shouldClose in
+            DocumentCloseCallback.invoke(
+                on: object,
+                selector: shouldCloseSelector,
+                document: self,
+                shouldClose: shouldClose,
+                contextInfo: contextInfo
             )
-            // pointee becomes false when user select cancel
-            guard shouldClose.pointee else {
-                break
-            }
         }
-        // Invoke shouldCloseSelector at delegate
-        let areAllOpenedCodeFilesClean = editorManager?.editorLayout.gatherOpenFiles()
-            .compactMap(\.fileDocument)
-            .allSatisfy { !$0.isDocumentEdited } ?? false
-        DocumentCloseCallback.invoke(
-            on: object,
-            selector: shouldCloseSelector,
-            document: self,
-            shouldClose: areAllOpenedCodeFilesClean,
-            contextInfo: contextInfo
-        )
+        guard let editorManager else {
+            answer(false)
+            return
+        }
+        DocumentCloseConfirmation.ask(openCodeFiles(in: editorManager), completion: answer)
     }
 
-    // MARK: NSDocument delegate
+    func isShowing(_ document: CodeFileDocument) -> Bool {
+        editorManager?.editorLayout.gatherOpenFiles().contains { $0.fileDocument === document } ?? false
+    }
 
-    /// Receives result of `canClose` and then, set `shouldClose` to `contextInfo`'s `pointee`.
-    ///
-    /// - Parameters:
-    ///   - document: The document may be closed.
-    ///   - shouldClose: The result of user selection.
-    ///      `shouldClose` becomes false if the user selects cancel, otherwise true.
-    ///   - contextInfo: The additional info which will be set `shouldClose`.
-    ///       `contextInfo` must be `UnsafeMutablePointer<Bool>`.
-    @objc
-    func document(
-        _ document: NSDocument,
-        shouldClose: Bool,
-        contextInfo: UnsafeMutableRawPointer
-    ) {
-        let opaquePtr = OpaquePointer(contextInfo)
-        let mutablePointer = UnsafeMutablePointer<Bool>(opaquePtr)
-        mutablePointer.pointee = shouldClose
+    private func openCodeFiles(in editorManager: EditorManager) -> [CodeFileDocument] {
+        var seen = Set<ObjectIdentifier>()
+        return editorManager.editorLayout.gatherOpenFiles()
+            .sorted { $0.url.path < $1.url.path }
+            .compactMap(\.fileDocument)
+            .filter { seen.insert(ObjectIdentifier($0)).inserted }
+    }
+
+    private func closeOpenCodeFiles() {
+        for file in editorManager?.editorLayout.gatherOpenFiles() ?? [] {
+            guard let document = file.fileDocument else { continue }
+            file.fileDocument = nil
+            if !document.isInUse(outside: self) {
+                document.close()
+            }
+        }
     }
 }

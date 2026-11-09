@@ -5,20 +5,34 @@ import Testing
 @MainActor
 @Suite(.uiGate)
 struct NPMPackageManagerTests {
-    private static let initializeName = "Initialize Directory Structure"
+    static let initializeName = "Initialize Directory Structure"
     private static let installName = "Install Package Using npm"
     private static let verifyName = "Verify Installation"
-    private static let english = Locale(identifier: "en_US")
+    static let english = Locale(identifier: "en_US")
+    static let hostileNames = [
+        "../../x", "a;rm -rf ~", "-rf", "..", ".", "", "a/b", "a\u{0}b", "a b", "$(touch x)", "`id`"
+    ]
+    static let hostileArguments = [
+        "", "-rf", "a;rm -rf ~", "a b", "$(touch x)", "`id`", "a\u{0}b", "a\"b", "a'b", "a=b", "a:b", "a|b", "a&b"
+    ]
 
-    private func manager(_ root: URL = URL(filePath: "/tmp/ls")) -> NPMPackageManager {
+    func manager(_ root: URL = URL(filePath: "/tmp/ls")) -> NPMPackageManager {
         NPMPackageManager(installationDirectory: root, locale: Self.english)
     }
 
-    private func npmSource(
+    func npmSource(
+        pkgName: String = "tool",
+        entryName: String = "tool-entry",
         version: String = "1.0.0",
         options: [String: String] = [:]
     ) -> PackageSource {
-        PackageManagerFixtures.source(type: .npm, version: version, options: options)
+        PackageManagerFixtures.source(
+            type: .npm, pkgName: pkgName, entryName: entryName, version: version, options: options
+        )
+    }
+
+    func unsafeInstall(_ source: PackageSource, root: URL = URL(filePath: "/tmp/ls")) -> String {
+        errorKind(thrownError { try manager(root).install(method: .standardPackage(source: source)) })
     }
 
     private func writePackageJson(_ json: String, in package: URL) throws {
@@ -56,7 +70,8 @@ struct NPMPackageManagerTests {
             .binaryDownload(source: source, url: URL(filePath: "/tmp/tool.zip"))
         ]
         for method in rejected {
-            #expect(errorKind(thrownError { try manager().install(method: method) }) == "PackageManagerError.invalidConfiguration")
+            let failure = thrownError { try manager().install(method: method) }
+            #expect(errorKind(failure) == "PackageManagerError.invalidConfiguration")
         }
     }
 
@@ -79,16 +94,38 @@ struct NPMPackageManagerTests {
             try writePackageJson("{}", in: package)
             try Data("{}".utf8).write(to: package.appending(path: "package-lock.json"))
             let steps = try manager(root).install(method: .standardPackage(source: npmSource()))
-            let shell = ScriptedShell()
+            let shell = ScriptedProcesses()
 
             let outcome = await runStep(try stepNamed(Self.initializeName, in: steps), shell: shell)
 
             #expect(outcome.error == nil)
-            #expect(shell.commands == ["cd \"\(package.path(percentEncoded: false))\" && npm init --yes --scope=dreamder"])
-            #expect(!FileManager.default.fileExists(atPath: package.appending(path: "package.json").path(percentEncoded: false)))
-            #expect(!FileManager.default.fileExists(atPath: package.appending(path: "package-lock.json").path(percentEncoded: false)))
+            #expect(shell.arguments == [["npm", "init", "--yes", "--scope=dreamder"]])
+            #expect(shell.workingDirectories == [package.path(percentEncoded: false)])
+            #expect(shell.invocations.map(\.executable) == [PackageManagerProgressModel.envExecutable])
+            let packageJsonPath = package.appending(path: "package.json").path(percentEncoded: false)
+            let lockPath = package.appending(path: "package-lock.json").path(percentEncoded: false)
+            #expect(!FileManager.default.fileExists(atPath: packageJsonPath))
+            #expect(!FileManager.default.fileExists(atPath: lockPath))
             let npmrc = try String(contentsOf: package.appending(path: ".npmrc"), encoding: .utf8)
             #expect(npmrc == "install-strategy=shallow")
+        }
+    }
+
+    @Test
+    func initializeKeepsAnNpmrcCreatedByNpmInit() async throws {
+        try await withTempDir { root in
+            let package = root.appending(path: "tool-entry")
+            let npmrc = package.appending(path: ".npmrc")
+            let steps = try manager(root).install(method: .standardPackage(source: npmSource()))
+            let shell = ScriptedProcesses { _ in
+                try? Data("custom=1".utf8).write(to: npmrc)
+                return FakeProcessRunner.output("")
+            }
+
+            let outcome = await runStep(try stepNamed(Self.initializeName, in: steps), shell: shell)
+
+            #expect(outcome.error == nil)
+            #expect(try String(contentsOf: npmrc, encoding: .utf8) == "custom=1")
         }
     }
 
@@ -100,39 +137,89 @@ struct NPMPackageManagerTests {
             let outcome = await runStep(try stepNamed(Self.initializeName, in: steps))
 
             #expect(outcome.error == nil)
-            #expect(FileManager.default.fileExists(atPath: root.appending(path: "tool-entry/.npmrc").path(percentEncoded: false)))
+            let npmrcPath = root.appending(path: "tool-entry/.npmrc").path(percentEncoded: false)
+            #expect(FileManager.default.fileExists(atPath: npmrcPath))
         }
     }
 
     @Test
-    func npmInstallCommandListsTheMainAndExtraPackages() async {
-        let cases: [(PackageSource, String)] = [
-            (npmSource(), "npm install tool@1.0.0"),
-            (npmSource(options: ["dev": "TRUE"]), "npm install tool@1.0.0 --save-dev"),
-            (npmSource(options: ["dev": "false"]), "npm install tool@1.0.0"),
-            (npmSource(options: ["extraPackages": "a, b"]), "npm install tool@1.0.0 a b"),
-            (npmSource(options: ["dev": "true", "extraPackages": "typescript"]), "npm install tool@1.0.0 --save-dev typescript")
+    func initializeStopsWhenNpmInitFails() async throws {
+        try await withTempDir { root in
+            let steps = try manager(root).install(method: .standardPackage(source: npmSource()))
+            let shell = ScriptedProcesses { _ in ScriptedProcesses.failing(3) }
+
+            let outcome = await runStep(try stepNamed(Self.initializeName, in: steps), shell: shell)
+
+            #expect(errorKind(outcome.error) == "ShellClientError.taskTerminated(code: 3)")
+            let npmrcPath = root.appending(path: "tool-entry/.npmrc").path(percentEncoded: false)
+            #expect(!FileManager.default.fileExists(atPath: npmrcPath))
+        }
+    }
+
+    @Test
+    func npmInstallCommandListsTheMainAndExtraPackages() async throws {
+        let cases: [(PackageSource, [String])] = [
+            (npmSource(), ["npm", "install", "tool@1.0.0"]),
+            (npmSource(options: ["dev": "TRUE"]), ["npm", "install", "tool@1.0.0", "--save-dev"]),
+            (npmSource(options: ["dev": "false"]), ["npm", "install", "tool@1.0.0"]),
+            (npmSource(options: ["dev": "true; rm -rf ~"]), ["npm", "install", "tool@1.0.0"]),
+            (npmSource(options: ["extraPackages": "a, b"]), ["npm", "install", "tool@1.0.0", "a", "b"]),
+            (npmSource(options: ["extraPackages": "a,,b"]), ["npm", "install", "tool@1.0.0", "a", "b"]),
+            (npmSource(options: ["extraPackages": ","]), ["npm", "install", "tool@1.0.0"]),
+            (
+                npmSource(options: ["dev": "true", "extraPackages": "typescript"]),
+                ["npm", "install", "tool@1.0.0", "--save-dev", "typescript"]
+            )
         ]
         let package = URL(filePath: "/tmp/ls/Application Support/tool")
 
-        for (source, command) in cases {
-            let shell = ScriptedShell()
-            let outcome = await runStep(manager().runNpmInstall(source, installDir: package), shell: shell)
+        for (source, expected) in cases {
+            let shell = ScriptedProcesses()
+            let outcome = await runStep(try manager().runNpmInstall(source, installDir: package), shell: shell)
             #expect(outcome.error == nil)
-            #expect(shell.commands == ["cd \"/tmp/ls/Application Support/tool\" && \(command)"])
+            #expect(shell.arguments == [expected])
+            #expect(shell.workingDirectories == ["/tmp/ls/Application Support/tool"])
+            #expect(shell.invocations.map(\.executable) == [PackageManagerProgressModel.envExecutable])
+            #expect(outcome.statuses == [expected.joined(separator: " ")])
         }
     }
 
     @Test
-    func confirmationMessageListsEveryPackageWithAProperList() {
-        let single = manager().runNpmInstall(npmSource(), installDir: URL(filePath: "/tmp/ls/tool"))
-        #expect(single.confirmation.message == "This requires the npm package tool@1.0.0.\nAllow Dreamder to install this package?")
+    func oddButAllowedValuesArriveAsSingleArguments() async throws {
+        let package = URL(filePath: "/tmp/ls/tool")
+        let source = npmSource(
+            pkgName: "@types/node",
+            version: "^1.2.3",
+            options: ["extraPackages": "x@~2.0.0, @a/b@^1,y"]
+        )
+        let shell = ScriptedProcesses()
 
-        let pair = manager().runNpmInstall(npmSource(options: ["extraPackages": "a"]), installDir: URL(filePath: "/tmp/ls/tool"))
-        #expect(pair.confirmation.message == "This requires the npm packages tool@1.0.0 and a.\nAllow Dreamder to install these packages?")
+        let outcome = await runStep(try manager().runNpmInstall(source, installDir: package), shell: shell)
 
-        let many = manager().runNpmInstall(npmSource(options: ["extraPackages": "a,b"]), installDir: URL(filePath: "/tmp/ls/tool"))
-        #expect(many.confirmation.message == "This requires the npm packages tool@1.0.0, a, and b.\nAllow Dreamder to install these packages?")
+        #expect(outcome.error == nil)
+        #expect(shell.arguments == [["npm", "install", "@types/node@^1.2.3", "x@~2.0.0", "@a/b@^1", "y"]])
+    }
+
+    @Test
+    func confirmationMessageListsEveryPackageWithAProperList() throws {
+        let package = URL(filePath: "/tmp/ls/tool")
+        let single = try manager().runNpmInstall(npmSource(), installDir: package)
+        #expect(
+            single.confirmation.message
+                == "This requires the npm package tool@1.0.0.\nAllow Dreamder to install this package?"
+        )
+
+        let pair = try manager().runNpmInstall(npmSource(options: ["extraPackages": "a"]), installDir: package)
+        #expect(
+            pair.confirmation.message
+                == "This requires the npm packages tool@1.0.0 and a.\nAllow Dreamder to install these packages?"
+        )
+
+        let many = try manager().runNpmInstall(npmSource(options: ["extraPackages": "a,b"]), installDir: package)
+        #expect(
+            many.confirmation.message
+                == "This requires the npm packages tool@1.0.0, a, and b.\nAllow Dreamder to install these packages?"
+        )
     }
 
     @Test
@@ -141,39 +228,14 @@ struct NPMPackageManagerTests {
             let package = root.appending(path: "tool-entry")
             let modules = package.appending(path: "node_modules/partial", directoryHint: .isDirectory)
             try FileManager.default.createDirectory(at: modules, withIntermediateDirectories: true)
-            let shell = ScriptedShell { _ in ScriptedShell.failing(1) }
+            let shell = ScriptedProcesses { _ in ScriptedProcesses.failing(1) }
 
-            let outcome = await runStep(manager(root).runNpmInstall(npmSource(), installDir: package), shell: shell)
+            let outcome = await runStep(try manager(root).runNpmInstall(npmSource(), installDir: package), shell: shell)
 
             #expect(errorKind(outcome.error) == "ShellClientError.taskTerminated(code: 1)")
-            #expect(!FileManager.default.fileExists(atPath: package.appending(path: "node_modules").path(percentEncoded: false)))
+            let modulesPath = package.appending(path: "node_modules").path(percentEncoded: false)
+            #expect(!FileManager.default.fileExists(atPath: modulesPath))
         }
-    }
-
-    @Test
-    func isInstalledRequiresConfirmationAndASemanticVersion() async {
-        let good = ScriptedShell { _ in FakeProcessRunner.output("10.2.4\n") }
-        let step = manager().isInstalled(method: .unknown)
-        let goodOutcome = await runStep(step, shell: good)
-        #expect(step.confirmation.message == "This package requires npm to install. Allow Dreamder to run npm commands?")
-        #expect(goodOutcome.error == nil)
-        #expect(good.commands == ["npm --version"])
-
-        for output in ["v10.2.4", "10.2", "command not found: npm"] {
-            let shell = ScriptedShell { _ in FakeProcessRunner.output(output + "\n") }
-            let outcome = await runStep(manager().isInstalled(method: .unknown), shell: shell)
-            #expect(errorKind(outcome.error) == "PackageManagerError.packageManagerNotInstalled", "\(output)")
-        }
-
-        let failing = ScriptedShell { _ in ScriptedShell.failing(127) }
-        let failingOutcome = await runStep(manager().isInstalled(method: .unknown), shell: failing)
-        #expect(errorKind(failingOutcome.error) == "ShellClientError.taskTerminated(code: 127)")
-    }
-
-    @Test
-    func binaryPathIsTheNodeModulesBinEntry() {
-        let path = manager(URL(filePath: "/tmp/Language Servers")).getBinaryPath(for: "tool")
-        #expect(path == "/tmp/Language Servers/tool/node_modules/.bin/tool")
     }
 
     @Test

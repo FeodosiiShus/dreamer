@@ -18,12 +18,11 @@ struct ToolWindowStripe: View {
     }
 
     var body: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 0) {
             anchorGroup(.left)
             Spacer(minLength: 0)
             anchorGroup(.bottom)
         }
-        .padding(.vertical, Islands.isCompact ? 2 : 6)
         .frame(width: Islands.stripeWidth)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(backgroundColor)
@@ -31,20 +30,26 @@ struct ToolWindowStripe: View {
 
     private func anchorGroup(_ anchor: ToolWindowAnchor) -> some View {
         let groups = toolWindowManager.placement.stripeGroups(on: anchor, ordered: ToolWindowID.allCases)
-        return VStack(spacing: 2) {
+        return VStack(spacing: 0) {
             ForEach(groups.main) { id in
                 stripeButton(id)
             }
             if !groups.main.isEmpty, !groups.split.isEmpty {
-                Rectangle()
-                    .fill(Islands.separator)
-                    .frame(width: Islands.stripeIconSize, height: 1)
-                    .padding(.vertical, 2)
+                stripeSeparator
             }
             ForEach(groups.split) { id in
                 stripeButton(id)
             }
         }
+    }
+
+    private var stripeSeparator: some View {
+        Rectangle()
+            .fill(Islands.stripeSeparator)
+            .frame(width: Islands.stripeSeparatorWidth, height: 1)
+            .frame(width: Islands.stripeButtonWidth, height: Islands.stripeSeparatorCellHeight)
+            .padding(.leading, Islands.stripeButtonInsets.leading)
+            .padding(.trailing, Islands.stripeButtonInsets.trailing)
     }
 
     @ViewBuilder
@@ -86,7 +91,7 @@ struct LanguageServicesStripeButton: View {
                     .padding(.horizontal, 3)
                     .frame(minWidth: 12, minHeight: 12)
                     .background(Capsule().fill(Color(hex: 0xE55765)))
-                    .offset(x: -1, y: 1)
+                    .offset(x: -Islands.stripeButtonInsets.trailing - 1, y: Islands.stripeButtonInsets.top + 1)
             }
         }
     }
@@ -103,27 +108,16 @@ struct ToolWindowStripeButton: View {
         toolWindowManager.isVisible(id)
     }
 
-    private var backgroundColor: Color {
-        if isSelected {
-            return Color.white.opacity(0.12)
-        }
-        return isHovering ? Islands.hover : Color.clear
-    }
-
     var body: some View {
         Button(action: bound(toolWindowManager.toggle, id)) {
             Image(id.icon)
+                .renderingMode(isSelected ? .template : .original)
                 .resizable()
                 .interpolation(.high)
                 .frame(width: Islands.stripeIconSize, height: Islands.stripeIconSize)
-                .frame(width: Islands.stripeButtonSize, height: Islands.stripeButtonSize)
-                .background(
-                    RoundedRectangle(cornerRadius: Islands.controlRadius)
-                        .fill(backgroundColor)
-                )
-                .contentShape(RoundedRectangle(cornerRadius: Islands.controlRadius))
+                .foregroundStyle(Islands.stripeSelectedForeground)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.actionButton(look: .toolWindowStripe, isHovering: isHovering, isSelected: isSelected))
         .help("\(id.title) \(id.shortcutHint)")
         .onHover(perform: setHovering)
         .contextMenu { ToolWindowSplitMenuItem(id: id) }

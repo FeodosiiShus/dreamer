@@ -1,6 +1,32 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import Dreamder
+
+private final class GatedFileSystem: WorkspaceFileSystem {
+    private let inner = DiskWorkspaceFileSystem()
+    private let gate = DispatchSemaphore(value: 0)
+    private let entered = Mutex(0)
+
+    var hasEntered: Bool {
+        entered.withLock { $0 > 0 }
+    }
+
+    func release() {
+        gate.signal()
+    }
+
+    func entries(in directory: URL) -> [WorkspaceFileEntry] {
+        entered.withLock { $0 += 1 }
+        gate.wait()
+        gate.signal()
+        return inner.entries(in: directory)
+    }
+
+    func entry(at url: URL) -> WorkspaceFileEntry? {
+        inner.entry(at: url)
+    }
+}
 
 @MainActor
 @Suite(.uiGate)
@@ -148,6 +174,59 @@ struct SearchStateFindCoverageTests {
 
             #expect(state.findNavigatorStatus == .found)
             #expect(state.searchResult.map(\.file.name) == ["a.txt", "b.txt", "c.txt"])
+        }
+    }
+
+    @Test
+    func aSearchSupersededWhileItsPlanIsBuildingPublishesNothing() async throws {
+        try await withTempDir { dir in
+            let (workspace, state) = try openWorkspace(dir, files: ["a.txt": "needle\n"])
+            let fileSystem = GatedFileSystem()
+            workspace.tearDownFileScope()
+            workspace.fileScope = WorkspaceFileScope(rootURL: dir, fileSystem: fileSystem)
+            defer {
+                fileSystem.release()
+                workspace.close()
+            }
+
+            let search = Task { await state.search("needle") }
+            try await eventually(timeout: .seconds(30)) { fileSystem.hasEntered }
+            state.clearResults()
+            fileSystem.release()
+            await search.value
+
+            #expect(state.findNavigatorStatus == .none)
+            #expect(state.searchResult.isEmpty)
+            #expect(state.searchResultsCount == 0)
+        }
+    }
+
+    @Test
+    func resultsAreOrderedByScoreAndThenByPath() throws {
+        try withTempDir { dir in
+            let (workspace, state) = try openWorkspace(dir, files: [:])
+            defer { workspace.close() }
+            @MainActor
+            func result(_ name: String, score: Float) -> SearchResultModel {
+                SearchResultModel(file: CEWorkspaceFile(url: dir.appending(path: name)), score: score)
+            }
+            state.tempSearchResults = [result("b.txt", score: 1), result("z.txt", score: 5), result("a.txt", score: 1)]
+
+            state.setSearchResults()
+
+            #expect(state.searchResult.map(\.file.name) == ["z.txt", "a.txt", "b.txt"])
+            #expect(state.findNavigatorStatus == .found)
+        }
+    }
+
+    @Test
+    func aWorkspaceWithoutAnEditorManagerHasNoOpenDocuments() throws {
+        try withTempDir { dir in
+            let (workspace, state) = try openWorkspace(dir, files: [:])
+            defer { workspace.close() }
+            workspace.editorManager = nil
+
+            #expect(state.openDocuments().isEmpty)
         }
     }
 }

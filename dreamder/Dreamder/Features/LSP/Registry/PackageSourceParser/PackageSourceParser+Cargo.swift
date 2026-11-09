@@ -15,16 +15,12 @@ nonisolated extension PackageSourceParser {
         let pkgString = sourceId.dropFirst(pkgPrefix.count)
         guard let firstCharacter = pkgString.first, !"?@".contains(firstCharacter) else { return .unknown }
 
-        let components = pkgString.split(separator: "?", maxSplits: 1)
-        guard let packageVersionString = components.first else { return .unknown }
-        let packageVersion = String(packageVersionString)
-        let parameters = components.count > 1 ? String(components[1]) : ""
+        let components = splitOnFirst(pkgString, separator: "?")
+        let parameters = components.tail.map(String.init) ?? ""
 
-        let packageVersionParts = packageVersion.split(separator: "@", maxSplits: 1)
-        guard let packageNameString = packageVersionParts.first else { return .unknown }
-
-        let packageName = String(packageNameString)
-        let version = packageVersionParts.count > 1 ? String(packageVersionParts[1]) : "latest"
+        let packageVersionParts = splitOnFirst(components.head, separator: "@")
+        let packageName = String(packageVersionParts.head)
+        let version = packageVersionParts.tail.map(String.init) ?? "latest"
 
         // Parse parameters as options
         var options: [String: String] = ["buildTool": "cargo"]

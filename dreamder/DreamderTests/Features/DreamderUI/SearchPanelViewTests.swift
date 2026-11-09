@@ -6,7 +6,24 @@ import Testing
 @MainActor
 private final class SearchPanelBuildLog {
     var rows: Set<Int> = []
+    var widths: [Int: CGFloat] = [:]
     var previews: [Int] = []
+}
+
+private struct SearchPanelProbeRow: View {
+    let id: Int
+    let log: SearchPanelBuildLog
+
+    var body: some View {
+        recordBuild()
+        return Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.width }, action: { log.widths[id] = $0 })
+    }
+
+    private func recordBuild() {
+        log.rows.insert(id)
+    }
 }
 
 @MainActor
@@ -23,15 +40,14 @@ struct SearchPanelViewTests {
     ) -> AnyView {
         if withPreview {
             return AnyView(
-                SearchPanelView<Text, Text, SearchPanelTestItem>(
+                SearchPanelView<SearchPanelProbeRow, Text, SearchPanelTestItem>(
                     title: "Preview panel",
                     image: Image(systemName: "magnifyingglass"),
                     options: .constant(options),
                     text: .constant(text),
                     alwaysShowOptions: alwaysShowOptions,
                     content: { item in
-                        log.rows.insert(item.id)
-                        return Text("row \(item.id)")
+                        SearchPanelProbeRow(id: item.id, log: log)
                     },
                     preview: { item in
                         log.previews.append(item.id)
@@ -43,15 +59,14 @@ struct SearchPanelViewTests {
             )
         }
         return AnyView(
-            SearchPanelView<Text, EmptyView, SearchPanelTestItem>(
+            SearchPanelView<SearchPanelProbeRow, EmptyView, SearchPanelTestItem>(
                 title: "Plain panel",
                 image: Image(systemName: "magnifyingglass"),
                 options: .constant(options),
                 text: .constant(text),
                 alwaysShowOptions: alwaysShowOptions,
                 content: { item in
-                    log.rows.insert(item.id)
-                    return Text("row \(item.id)")
+                    SearchPanelProbeRow(id: item.id, log: log)
                 },
                 onRowClick: { _ in },
                 onClose: {}
@@ -69,7 +84,6 @@ struct SearchPanelViewTests {
 
         try await hosted.settle(.milliseconds(100))
 
-        #expect(hosted.views(of: NSTableView.self).isEmpty)
         #expect(log.rows.isEmpty)
     }
 
@@ -81,10 +95,6 @@ struct SearchPanelViewTests {
         }
         defer { hosted.close() }
 
-        try await eventually(timeout: .seconds(30)) {
-            hosted.layout()
-            return hosted.views(of: NSTableView.self).first?.numberOfRows == Self.items.count
-        }
         try await eventually(timeout: .seconds(30)) { log.rows == Set(Self.items.map(\.id)) }
     }
 
@@ -98,7 +108,7 @@ struct SearchPanelViewTests {
 
         try await hosted.settle(.milliseconds(100))
 
-        #expect(hosted.views(of: NSTableView.self).isEmpty)
+        #expect(log.rows.isEmpty)
         #expect(hosted.renders())
     }
 
@@ -110,10 +120,7 @@ struct SearchPanelViewTests {
         }
         defer { hosted.close() }
 
-        try await eventually(timeout: .seconds(30)) {
-            hosted.layout()
-            return hosted.views(of: NSTableView.self).first?.numberOfRows == Self.items.count
-        }
+        try await eventually(timeout: .seconds(30)) { log.rows == Set(Self.items.map(\.id)) }
     }
 
     @Test
@@ -141,7 +148,7 @@ struct SearchPanelViewTests {
 
         try await hosted.settle(.milliseconds(100))
 
-        #expect(hosted.views(of: NSTableView.self).isEmpty)
+        #expect(log.rows.isEmpty)
         #expect(log.previews.isEmpty)
         #expect(hosted.renders())
     }
@@ -168,25 +175,28 @@ struct SearchPanelViewTests {
 
     @Test
     func previewReservesTheTrailingPaneAndNarrowsTheOptionList() async throws {
-        let log = SearchPanelBuildLog()
+        let withPreviewLog = SearchPanelBuildLog()
+        let withoutPreviewLog = SearchPanelBuildLog()
         let withPreview = HostedViewFixture.host {
-            panel(options: Self.items, text: "query", withPreview: true, log: log)
+            panel(options: Self.items, text: "query", withPreview: true, log: withPreviewLog)
         }
         let withoutPreview = HostedViewFixture.host {
-            panel(options: Self.items, text: "query", log: log)
+            panel(options: Self.items, text: "query", log: withoutPreviewLog)
         }
         defer {
             withPreview.close()
             withoutPreview.close()
         }
-        func tableWidth(_ hosted: HostedView) -> CGFloat {
+        func rowWidth(_ hosted: HostedView, _ log: SearchPanelBuildLog) -> CGFloat {
             hosted.layout()
-            return hosted.views(of: NSTableView.self).first?.enclosingScrollView?.frame.width ?? 0
+            return log.widths[1] ?? 0
         }
 
-        try await eventually(timeout: .seconds(30)) { tableWidth(withPreview) > 0 && tableWidth(withoutPreview) > 0 }
+        try await eventually(timeout: .seconds(30)) {
+            rowWidth(withPreview, withPreviewLog) > 0 && rowWidth(withoutPreview, withoutPreviewLog) > 0
+        }
 
-        #expect(tableWidth(withPreview) <= 272)
-        #expect(tableWidth(withoutPreview) > 600)
+        #expect(rowWidth(withPreview, withPreviewLog) <= 272)
+        #expect(rowWidth(withoutPreview, withoutPreviewLog) > 600)
     }
 }

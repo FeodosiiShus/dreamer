@@ -2,40 +2,44 @@ import AppKit
 import SwiftUI
 
 struct SearchEverywhereToolbarWidget: View {
-    @State private var hover: MainToolbarHoverState
     private let send: @MainActor (Selector) -> Void
 
-    init(
-        hover: MainToolbarHoverState = MainToolbarHoverState(),
-        send: @escaping @MainActor (Selector) -> Void = SearchEverywhereToolbarWidget.sendToResponderChain
-    ) {
-        _hover = State(initialValue: hover)
+    init(send: @escaping @MainActor (Selector) -> Void = SearchEverywhereToolbarWidget.sendToResponderChain) {
         self.send = send
+    }
+
+    private var fieldShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: MainToolbarMetrics.searchFieldRadius, style: .continuous)
     }
 
     var body: some View {
         Button(action: openSearchEverywhere) {
-            HStack(spacing: 6) {
+            HStack(spacing: MainToolbarMetrics.searchFieldIconTextGap) {
                 Image("general/search")
                     .resizable()
                     .interpolation(.high)
-                    .frame(width: 14, height: 14)
+                    .frame(
+                        width: MainToolbarMetrics.searchFieldIconSize,
+                        height: MainToolbarMetrics.searchFieldIconSize
+                    )
                 Text("Search everywhere")
                     .font(Islands.uiFont)
                     .foregroundColor(Islands.secondaryForeground)
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 Text("⇧⇧")
-                    .font(Islands.smallFont)
+                    .font(Islands.uiFont)
                     .foregroundColor(Islands.disabledForeground)
             }
-            .padding(.horizontal, 12)
-            .frame(width: 260, height: Islands.toolbarControlHeight)
-            .mainToolbarGlass(isHovering: hover.isHovering)
-            .contentShape(Capsule())
+            .padding(.horizontal, MainToolbarMetrics.searchFieldPadding)
+            .frame(width: MainToolbarMetrics.searchFieldWidth, height: MainToolbarMetrics.searchFieldHeight)
+            .background(fieldShape.fill(Islands.island))
+            .overlay {
+                fieldShape.strokeBorder(Islands.componentBorder, lineWidth: MainToolbarMetrics.searchFieldBorderWidth)
+            }
+            .contentShape(fieldShape)
         }
         .buttonStyle(.plain)
-        .onHover(perform: hover.setHovering)
         .help("Search everywhere")
         .accessibilityLabel("Search everywhere")
         .fixedSize()

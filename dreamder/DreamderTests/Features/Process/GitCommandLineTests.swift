@@ -23,6 +23,8 @@ struct GitCommandLineTests {
         ("log \\\r\n-n 5", ["log", "-n", "5"]),
         ("\"line one\nline two\"", ["line one\nline two"]),
         ("\"a\\\nb\"", ["ab"]),
+        ("\"a\\b\"", ["a\\b"]),
+        ("\"a\\\rb\"", ["a\\\rb"]),
         ("stash apply stash@{0}", ["stash", "apply", "stash@{0}"]),
         ("-c core.quotePath=false diff --name-status 'a' 'b'", ["-c", "core.quotePath=false", "diff", "--name-status", "a", "b"]),
         ("\"é ü\" 'ñ'", ["é ü", "ñ"]),

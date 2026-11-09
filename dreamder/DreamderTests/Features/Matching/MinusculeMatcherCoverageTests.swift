@@ -37,4 +37,23 @@ struct MinusculeMatcherCoverageTests {
 
         #expect(atEnd == early + 1)
     }
+
+    @Test
+    func aFragmentCharacterAbsentFromThePatternStopsTheCaseEvaluationOfItsFragment() {
+        let core = MinusculeMatcherCore(pattern: "a", mode: .ignoreCase, hardSeparators: "")
+        let name = Array("xbc".utf16)
+
+        let degree = core.matchingDegree(name, valueStartCaseMatch: false, fragments: [1..<2])
+
+        #expect(degree == 1)
+    }
+
+    @Test
+    func aNonAsciiPatternCharacterIsFoundIgnoringCaseOrReportedMissing() {
+        let core = MinusculeMatcherCore(pattern: "ü", mode: .ignoreCase, hardSeparators: "")
+        #expect(core.indexOfIgnoreCase(Array("ab".utf16), 5, 0) == -1)
+
+        #expect(core.indexOfIgnoreCase(Array("abÜc".utf16), 0, 0) == 2)
+        #expect(core.indexOfIgnoreCase(Array("abc".utf16), 0, 0) == -1)
+    }
 }

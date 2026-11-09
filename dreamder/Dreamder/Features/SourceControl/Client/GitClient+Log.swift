@@ -134,6 +134,10 @@ nonisolated extension GitClient {
         )
     }
 
+    private static let localBranchRefPrefix = "refs/heads/"
+    private static let remoteBranchRefPrefix = "refs/remotes/"
+    private static let tagRefPrefix = "refs/tags/"
+
     static func logGraphRefs(from decoration: String) -> [GitLogRef] {
         let trimmed = decoration.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
@@ -142,29 +146,44 @@ nonisolated extension GitClient {
         var seen = Set<String>()
 
         for entry in trimmed.split(separator: ",") {
-            var name = String(entry).trimmingCharacters(in: .whitespaces)
-            guard !name.isEmpty, name != "grafted", !name.hasSuffix("/HEAD") else { continue }
-
-            let kind: GitLogRef.Kind
-            if let arrow = name.range(of: "->") {
-                let source = String(name[..<arrow.lowerBound]).trimmingCharacters(in: .whitespaces)
-                guard source == "HEAD" else { continue }
-                name = String(name[arrow.upperBound...]).trimmingCharacters(in: .whitespaces)
-                kind = .head
-            } else if name.hasPrefix("tag: ") {
-                name = String(name.dropFirst("tag: ".count)).trimmingCharacters(in: .whitespaces)
-                kind = .tag
-            } else if name.contains("/") {
-                kind = .remote
-            } else {
-                kind = .branch
-            }
-
-            guard !name.isEmpty, seen.insert("\(kind.rawValue):\(name)").inserted else { continue }
-            refs.append(GitLogRef(name: name, kind: kind))
+            let text = String(entry).trimmingCharacters(in: .whitespaces)
+            guard let ref = logGraphRef(fromFullDecoration: text),
+                  seen.insert("\(ref.kind.rawValue):\(ref.name)").inserted else { continue }
+            refs.append(ref)
         }
 
         return refs
+    }
+
+    private static func logGraphRef(fromFullDecoration entry: String) -> GitLogRef? {
+        if let arrow = entry.range(of: "->") {
+            let source = String(entry[..<arrow.lowerBound]).trimmingCharacters(in: .whitespaces)
+            let target = String(entry[arrow.upperBound...]).trimmingCharacters(in: .whitespaces)
+            guard source == "HEAD", let name = logGraphShortName(of: target, prefix: localBranchRefPrefix) else {
+                return nil
+            }
+            return GitLogRef(name: name, kind: .head)
+        }
+        if entry.hasPrefix("tag: ") {
+            let target = String(entry.dropFirst("tag: ".count)).trimmingCharacters(in: .whitespaces)
+            return logGraphShortName(of: target, prefix: tagRefPrefix).map { GitLogRef(name: $0, kind: .tag) }
+        }
+        if entry == "HEAD" {
+            return GitLogRef(name: "HEAD", kind: .branch)
+        }
+        if let name = logGraphShortName(of: entry, prefix: localBranchRefPrefix) {
+            return GitLogRef(name: name, kind: .branch)
+        }
+        if let name = logGraphShortName(of: entry, prefix: remoteBranchRefPrefix), !name.hasSuffix("/HEAD") {
+            return GitLogRef(name: name, kind: .remote)
+        }
+        return nil
+    }
+
+    private static func logGraphShortName(of ref: String, prefix: String) -> String? {
+        guard ref.hasPrefix(prefix) else { return nil }
+        let name = String(ref.dropFirst(prefix.count))
+        return name.isEmpty ? nil : name
     }
 
     static func logGraphQuote(_ value: String) -> String {

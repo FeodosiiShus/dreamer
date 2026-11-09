@@ -58,12 +58,13 @@ final class RecentProjectsManager {
             ),
             at: 0
         )
-        Self.trim(&allProjects)
+        discardWorkspaceState(of: Self.trim(&allProjects))
         persist()
     }
 
     func removeRecentProject(path: String) {
         guard hasPath(path) else { return }
+        discardWorkspaceState(of: allProjects.filter { $0.path == path })
         allProjects.removeAll { $0.path == path }
         persist()
     }
@@ -76,6 +77,7 @@ final class RecentProjectsManager {
     }
 
     func clear() {
+        discardWorkspaceState(of: allProjects)
         allProjects = []
         persist()
     }
@@ -88,17 +90,22 @@ final class RecentProjectsManager {
 
     func applyValidation(kinds: [String: Bool], checkedPaths: Set<String>) {
         var validated: [RecentProject] = []
+        var dropped: [RecentProject] = []
         for project in allProjects {
             guard checkedPaths.contains(project.path) else {
                 validated.append(project)
                 continue
             }
-            guard let isDirectory = kinds[project.path] else { continue }
+            guard let isDirectory = kinds[project.path] else {
+                dropped.append(project)
+                continue
+            }
             var updated = project
             updated.isDirectory = isDirectory
             validated.append(updated)
         }
         guard validated != allProjects else { return }
+        discardWorkspaceState(of: dropped)
         allProjects = validated
         persist()
     }
@@ -119,9 +126,21 @@ final class RecentProjectsManager {
         url.standardizedFileURL.path
     }
 
-    private static func trim(_ projects: inout [RecentProject]) {
-        if projects.count > maxRecentProjects {
-            projects.removeLast(projects.count - maxRecentProjects)
+    private static func trim(_ projects: inout [RecentProject]) -> [RecentProject] {
+        guard projects.count > maxRecentProjects else { return [] }
+        let evicted = Array(projects.suffix(projects.count - maxRecentProjects))
+        projects.removeLast(evicted.count)
+        return evicted
+    }
+
+    private func discardWorkspaceState(of projects: [RecentProject]) {
+        Self.discardWorkspaceState(of: projects, in: defaults)
+    }
+
+    private static func discardWorkspaceState(of projects: [RecentProject], in defaults: UserDefaults) {
+        for project in projects {
+            let workspaceURL = URL(filePath: project.path, directoryHint: .isDirectory)
+            defaults.removeObject(forKey: WorkspaceDocument.workspaceStateKey(for: workspaceURL))
         }
     }
 
@@ -145,7 +164,7 @@ final class RecentProjectsManager {
                 hidden: false
             )
         }
-        trim(&migrated)
+        discardWorkspaceState(of: trim(&migrated), in: defaults)
         defaults.set(try? JSONEncoder().encode(migrated), forKey: storageKey)
         defaults.removeObject(forKey: legacyBookmarksKey)
         return migrated

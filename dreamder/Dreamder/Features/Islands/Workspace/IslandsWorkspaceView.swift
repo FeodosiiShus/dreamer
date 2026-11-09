@@ -86,46 +86,48 @@ struct IslandsWorkspaceView: View {
 
     private var islandsColumn: some View {
         GeometryReader { geometry in
+            let metrics = Islands.layoutMetrics
+            let inner = metrics.innerSize(of: geometry.size)
             GlassEffectContainer(spacing: 0) {
-                columnContent(available: geometry.size)
+                IslandsColumnLayout(metrics: metrics, input: layoutInput) {
+                    columnContent(available: inner)
+                }
             }
         }
-        .padding(.top, Islands.islandGap)
-        .padding(.trailing, Islands.islandGap)
-        .padding(.bottom, Islands.islandGap)
+    }
+
+    private var layoutInput: IslandsLayoutMetrics.Input {
+        IslandsLayoutMetrics.Input(
+            hasLeft: toolWindowManager.active(.left) != nil,
+            leftWidth: toolWindowManager.leftWidth,
+            hasBottom: toolWindowManager.active(.bottom) != nil,
+            bottomHeight: toolWindowManager.bottomHeight,
+            bottomMaximized: toolWindowManager.bottomMaximized
+        )
     }
 
     @ViewBuilder
     private func columnContent(available: CGSize) -> some View {
-        VStack(spacing: 0) {
-            if toolWindowManager.bottomMaximized, toolWindowManager.active(.bottom) != nil {
+        let input = layoutInput
+        if input.bottomMaximized, input.hasBottom {
+            anchorGroup(.bottom)
+                .islandSlot(.bottom)
+        } else {
+            if input.hasLeft {
+                anchorGroup(.left)
+                    .islandSlot(.left)
+                leftResizeHandle(availableWidth: available.width)
+                    .islandSlot(.leftDivider)
+            }
+            editorIsland
+                .islandSlot(.editor)
+            if input.hasBottom {
+                bottomResizeHandle(availableHeight: available.height)
+                    .islandSlot(.bottomDivider)
                 anchorGroup(.bottom)
-                    .frame(maxHeight: .infinity)
-            } else {
-                HStack(spacing: 0) {
-                    if toolWindowManager.active(.left) != nil {
-                        anchorGroup(.left)
-                            .frame(width: ToolWindowLayout.clampLeftWidth(
-                                toolWindowManager.leftWidth,
-                                availableWidth: available.width
-                            ))
-                        leftResizeHandle(availableWidth: available.width)
-                    }
-                    editorIsland
-                }
-                .frame(maxHeight: .infinity)
-
-                if toolWindowManager.active(.bottom) != nil {
-                    bottomResizeHandle(availableHeight: available.height)
-                    anchorGroup(.bottom)
-                        .frame(height: ToolWindowLayout.clampBottomHeight(
-                            toolWindowManager.bottomHeight,
-                            availableHeight: available.height
-                        ))
-                }
+                    .islandSlot(.bottom)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     @ViewBuilder
@@ -189,8 +191,6 @@ struct IslandsWorkspaceView: View {
             onDrag: toolWindowManager.leftResizeDrag(availableWidth: availableWidth),
             onDragEnded: saveLayout
         )
-        .frame(width: Islands.islandGap)
-        .frame(maxHeight: .infinity)
     }
 
     private func bottomResizeHandle(availableHeight: CGFloat) -> some View {
@@ -199,8 +199,6 @@ struct IslandsWorkspaceView: View {
             onDrag: toolWindowManager.bottomResizeDrag(availableHeight: availableHeight),
             onDragEnded: saveLayout
         )
-        .frame(maxWidth: .infinity)
-        .frame(height: Islands.islandGap)
     }
 
     private var editorIsland: some View {
@@ -238,76 +236,6 @@ struct IslandsWorkspaceView: View {
 
     private func saveLayout() {
         ToolWindowLayout(manager: toolWindowManager).save(to: workspace)
-    }
-
-    static func openDroppedFiles(_ providers: [NSItemProvider], in editorManager: EditorManager) -> Bool {
-        for provider in providers {
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-                guard let data = item as? Data,
-                      let url = URL(dataRepresentation: data, relativeTo: nil) else {
-                    return
-                }
-
-                Task { @MainActor in
-                    let file = CEWorkspaceFile(url: url)
-                    editorManager.activeEditor.openTab(file: file)
-                }
-            }
-        }
-        return true
-    }
-
-    static func recordWindowSize(closing object: Any?, window: NSWindow?, in workspace: WorkspaceDocument) {
-        if let closingWindow = object as? NSWindow, window == closingWindow {
-            workspace.addToWorkspaceState(
-                key: .workspaceWindowSize,
-                value: NSStringFromRect(closingWindow.frame)
-            )
-        }
-    }
-
-    static func refreshRemotesAndStashes(_ manager: SourceControlManager) async throws {
-        try await manager.refreshRemotes()
-        try await manager.refreshStashEntries()
-    }
-
-    static func refreshGitData(
-        enabled: Bool,
-        in workspace: WorkspaceDocument,
-        refresh: (SourceControlManager) async throws -> Void = IslandsWorkspaceView.refreshRemotesAndStashes
-    ) async {
-        guard enabled, let sourceControlManager = workspace.sourceControlManager else { return }
-        do {
-            try await refresh(sourceControlManager)
-        } catch {
-            await sourceControlManager.showAlertForError(
-                title: "Error refreshing Git data",
-                error: error
-            )
-        }
-    }
-
-    static func syncCurrentBranch(_ enabled: Bool, in workspace: WorkspaceDocument) async {
-        guard let sourceControlManager = workspace.sourceControlManager else { return }
-        if enabled {
-            await sourceControlManager.refreshCurrentBranch()
-        } else {
-            sourceControlManager.currentBranch = nil
-        }
-    }
-
-    static func utilityWindow(showingOutput: Bool) -> ToolWindowID {
-        showingOutput ? .run : .terminal
-    }
-
-    static func dropHandler(editorManager: EditorManager) -> ([NSItemProvider]) -> Bool {
-        { openDroppedFiles($0, in: editorManager) }
-    }
-
-    static func branchSync(in workspace: WorkspaceDocument) -> (Bool, Bool) -> Void {
-        { _, enabled in
-            Task { await syncCurrentBranch(enabled, in: workspace) }
-        }
     }
 }
 

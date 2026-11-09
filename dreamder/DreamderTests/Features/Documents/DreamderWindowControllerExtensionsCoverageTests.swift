@@ -131,7 +131,7 @@ struct DreamderWindowControllerExtensionsCoverageTests {
             try harness.openTab("One.swift")
             let codeFile = try #require(harness.controller.getSelectedCodeFile())
             codeFile.autosavingInPlace = { false }
-            codeFile.closeConfirmation = { _ in true }
+            CloseConfirmationDouble(answering: .discard).install(on: [codeFile])
             codeFile.updateChangeCount(.changeDone)
             try await eventually(timeout: .seconds(30)) { harness.window.isDocumentEdited }
 
@@ -222,5 +222,31 @@ struct DreamderWindowControllerExtensionsCoverageTests {
 
         #expect(controller.workspaceSettingsWindow == nil)
         #expect(window.attachedSheet == nil)
+    }
+
+    @Test
+    func theSettingsViewDismissesItsSheetThroughTheController() async throws {
+        try await withTempDir { directory in
+            let harness = try makeHarness(in: directory)
+            defer { harness.close() }
+            harness.controller.openWorkspaceSettings(harness.controller)
+            let sheet = try #require(harness.controller.workspaceSettingsWindow)
+            #expect(harness.window.attachedSheet === sheet)
+
+            harness.controller.makeWorkspaceSettingsView().dismiss()
+
+            try await eventually(timeout: .seconds(30)) { harness.window.attachedSheet == nil }
+        }
+    }
+
+    @Test
+    func listeningToDocumentEditsNeedsAnEditorManager() {
+        let workspace = WorkspaceDocument()
+        let controller = DreamderWindowController(window: nil, workspace: nil)
+        workspace.editorManager = nil
+
+        controller.listenToDocumentEdited(workspace: workspace)
+
+        #expect(controller.documentEditedObservation == nil)
     }
 }

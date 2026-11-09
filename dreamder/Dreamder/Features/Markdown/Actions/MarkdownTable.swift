@@ -91,11 +91,12 @@ nonisolated enum MarkdownTableCharacterWidth {
         var width = 0
         let size = max(tabSize, 1)
         for character in string {
-            guard let scalar = character.unicodeScalars.first else { continue }
-            if scalar.value == 9 {
-                width += size - (startColumn + width) % size
-            } else {
-                width += columns(of: scalar)
+            for scalar in character.unicodeScalars.prefix(1) {
+                if scalar.value == 9 {
+                    width += size - (startColumn + width) % size
+                } else {
+                    width += columns(of: scalar)
+                }
             }
         }
         return width

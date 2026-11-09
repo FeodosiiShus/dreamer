@@ -45,7 +45,7 @@ struct GlobPatternListItem: View {
             .autocorrectionDisabled()
             .labelsHidden()
             .onSubmit(submitCurrentValue)
-            .onChange(of: isFocused) { _, newIsFocused in focusChanged(newIsFocused, value: value) }
+            .onChange(of: isFocused, focusDidChange)
     }
 
     func submitCurrentValue() {
@@ -56,6 +56,10 @@ struct GlobPatternListItem: View {
         if !value.isEmpty, isLast {
             addPattern()
         }
+    }
+
+    func focusDidChange(from _: Bool, to newIsFocused: Bool) {
+        focusChanged(newIsFocused, value: value)
     }
 
     func focusChanged(_ newIsFocused: Bool, value: String) {

@@ -24,7 +24,7 @@ struct EditorTabBarView: View {
             .frame(height: Islands.tabStripHeight)
             .padding(.horizontal, 4)
             Rectangle()
-                .fill(Islands.glassBorder)
+                .fill(Islands.underTabsBorder)
                 .frame(height: 1)
         }
     }

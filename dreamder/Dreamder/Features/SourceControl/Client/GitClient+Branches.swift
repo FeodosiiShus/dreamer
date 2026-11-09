@@ -53,6 +53,7 @@ nonisolated extension GitClient {
     func getCurrentBranch() async throws -> GitBranch? {
         let branchName = try await run(arguments: ["branch", "--show-current"])
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !branchName.isEmpty else { return nil }
         let output = try await run(arguments: [
             "for-each-ref",
             "--format=%(refname)|%(upstream:short) %(upstream:track)",

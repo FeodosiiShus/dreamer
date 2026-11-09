@@ -14,7 +14,7 @@ nonisolated final class ProcessExecution: Sendable {
 
     private enum StopReason: Sendable {
         case cancelled
-        case timedOut
+        case timedOut(Duration)
     }
 
     private struct UnsafeSendable<Value>: @unchecked Sendable {
@@ -45,12 +45,10 @@ nonisolated final class ProcessExecution: Sendable {
 
     private let state = Mutex(State())
     private let sink: Sink?
-    private let timeout: Duration?
     private let tuning: Tuning
 
-    private init(sink: Sink?, timeout: Duration?, tuning: Tuning) {
+    private init(sink: Sink?, tuning: Tuning) {
         self.sink = sink
-        self.timeout = timeout
         self.tuning = tuning
     }
 
@@ -59,7 +57,7 @@ nonisolated final class ProcessExecution: Sendable {
         sink: Sink? = nil,
         tuning: Tuning = Tuning()
     ) async throws -> ProcessOutput {
-        let execution = ProcessExecution(sink: sink, timeout: invocation.timeout, tuning: tuning)
+        let execution = ProcessExecution(sink: sink, tuning: tuning)
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 execution.begin(invocation, continuation)
@@ -151,7 +149,12 @@ nonisolated final class ProcessExecution: Sendable {
             completeIfDrained()
             return
         }
-        guard !chunk.isEmpty else { return }
+        if !chunk.isEmpty {
+            deliver(chunk, from: stream)
+        }
+    }
+
+    private func deliver(_ chunk: Data, from stream: ProcessStream) {
         if let sink {
             sink(stream, chunk)
         } else {
@@ -204,11 +207,13 @@ nonisolated final class ProcessExecution: Sendable {
             state.timeoutTask = Task { [self] in
                 try? await Task.sleep(for: timeout)
                 guard !Task.isCancelled else { return }
-                stop(.timedOut)
+                stop(.timedOut(timeout))
             }
         }
     }
+}
 
+nonisolated extension ProcessExecution {
     private func finish(launchError: (any Error)? = nil) {
         let outcome = state.withLock { state -> Outcome? in
             guard !state.finished else { return nil }
@@ -217,8 +222,8 @@ nonisolated final class ProcessExecution: Sendable {
             switch state.stopReason {
             case .cancelled:
                 result = .failure(CancellationError())
-            case .timedOut:
-                result = .failure(ProcessRunnerError.timedOut(timeout ?? .zero))
+            case .timedOut(let limit):
+                result = .failure(ProcessRunnerError.timedOut(limit))
             case nil:
                 if let launchError {
                     result = .failure(launchError)

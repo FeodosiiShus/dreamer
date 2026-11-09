@@ -62,9 +62,10 @@ enum DreamderHeadless {
         }
     }
 
-    private static func hideBeforeOrdering() {
-        let selector = NSSelectorFromString("orderWindow:relativeTo:")
-        guard let method = class_getInstanceMethod(NSWindow.self, selector) else { return }
+    static let orderSelector = NSSelectorFromString("orderWindow:relativeTo:")
+
+    static func hideBeforeOrdering(method: Method? = class_getInstanceMethod(NSWindow.self, orderSelector)) {
+        guard let method else { return }
         let original = method_getImplementation(method)
         typealias OrderFunction = @convention(c) (NSWindow, Selector, NSWindow.OrderingMode, Int) -> Void
         let originalOrder = unsafeBitCast(original, to: OrderFunction.self)
@@ -74,7 +75,7 @@ enum DreamderHeadless {
                     hide(window)
                 }
             }
-            originalOrder(window, selector, mode, relative)
+            originalOrder(window, orderSelector, mode, relative)
         }
         method_setImplementation(method, imp_implementationWithBlock(block))
     }
@@ -95,7 +96,10 @@ enum DreamderHeadless {
     }
 
     static var offscreenOrigin: NSPoint {
-        let screens = NSScreen.screens.map(\.frame)
+        origin(beyond: NSScreen.screens.map(\.frame))
+    }
+
+    static func origin(beyond screens: [NSRect]) -> NSPoint {
         let maxX = screens.map(\.maxX).max() ?? 0
         let maxY = screens.map(\.maxY).max() ?? 0
         return NSPoint(x: maxX + offscreenGap, y: maxY + offscreenGap)
@@ -103,9 +107,11 @@ enum DreamderHeadless {
 
     private static let offscreenGap: CGFloat = 20_000
 
-    private static func keepOffscreenFrames() {
-        let selector = #selector(NSWindow.constrainFrameRect(_:to:))
-        guard let method = class_getInstanceMethod(NSWindow.self, selector) else { return }
+    static let constrainSelector = #selector(NSWindow.constrainFrameRect(_:to:))
+
+    static func keepOffscreenFrames(method: Method? = class_getInstanceMethod(NSWindow.self, constrainSelector)) {
+        let selector = constrainSelector
+        guard let method else { return }
         let original = method_getImplementation(method)
         typealias ConstrainFunction = @convention(c) (NSWindow, Selector, NSRect, NSScreen?) -> NSRect
         let originalConstrain = unsafeBitCast(original, to: ConstrainFunction.self)

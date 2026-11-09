@@ -218,6 +218,28 @@ struct TextEditingSettingsModelCoverageTests {
     }
 
     @Test
+    func commandsReadTheSharedSettingsByDefault() {
+        #expect(Model.sharedStore() === Settings.shared)
+    }
+
+    @Test
+    func registeredCommandsToggleTheScopedStoreAndLeaveTheSharedOneAlone() throws {
+        let directory = try makeTemporaryDirectory(label: "TextEditingSettingsModelCoverageTests")
+        defer { removeTemporaryDirectory(directory) }
+        let store = Settings(baseURL: directory)
+        _ = Model()
+        let isolatedBefore = store.preferences.textEditing.showMinimap
+        let sharedBefore = Settings.shared.preferences.textEditing.showMinimap
+
+        SettingsScope.$current.withValue(store) {
+            CommandManager.shared.executeCommand("prefs.text_editing.toggle_minimap")
+        }
+
+        #expect(store.preferences.textEditing.showMinimap == !isolatedBefore)
+        #expect(Settings.shared.preferences.textEditing.showMinimap == sharedBefore)
+    }
+
+    @Test
     func commandsAreRegisteredWithTitles() {
         _ = Model()
         let titles = Set(CommandManager.shared.commands.map(\.title))

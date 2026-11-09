@@ -9,10 +9,10 @@ import Testing
 @MainActor
 @Suite(.serialized, .uiGate)
 struct IntentionPopupControllerTests {
-    private static let source = "let x = 1\n"
+    static let source = "let x = 1\n"
 
     @MainActor
-    private struct Session {
+    struct Session {
         let workspace: LSPServiceWorkspace
         let service: LSPService
         let document: CodeFileDocument
@@ -47,7 +47,7 @@ struct IntentionPopupControllerTests {
         }
     }
 
-    private func openSession(in directory: URL, response: CodeActionResponse?) async throws -> Session {
+    func openSession(in directory: URL, response: CodeActionResponse?) async throws -> Session {
         let fixture = LSPServiceFixture()
         var capabilities = ScriptedServerConnection.incrementalCapabilities()
         capabilities.codeActionProvider = .optionA(true)
@@ -83,7 +83,7 @@ struct IntentionPopupControllerTests {
         )
     }
 
-    private func replaceXEdit(title: String, preferred: Bool, uri: String) -> TwoTypeOption<LSPCommand, CodeAction> {
+    func replaceXEdit(title: String, preferred: Bool, uri: String) -> TwoTypeOption<LSPCommand, CodeAction> {
         let edit = TextEdit(
             range: LSPRange(start: Position(line: 0, character: 4), end: Position(line: 0, character: 5)),
             newText: "y"
@@ -96,7 +96,7 @@ struct IntentionPopupControllerTests {
         ))
     }
 
-    private func key(_ code: UInt16) throws -> NSEvent {
+    func key(_ code: UInt16) throws -> NSEvent {
         try IntentionPopupFixtures.keyEvent(code)
     }
 
@@ -139,7 +139,9 @@ struct IntentionPopupControllerTests {
     @Test
     func actionsThatCannotBePerformedReportTheFailure() async throws {
         try await withTempDir { directory in
-            let useless = TwoTypeOption<LSPCommand, CodeAction>.optionB(CodeAction(title: "Does nothing", kind: CodeActionKind.Refactor))
+            let useless = TwoTypeOption<LSPCommand, CodeAction>.optionB(
+                CodeAction(title: "Does nothing", kind: CodeActionKind.Refactor)
+            )
             let session = try await openSession(in: directory, response: [useless])
             defer { session.close() }
             var failures = 0
@@ -222,59 +224,6 @@ struct IntentionPopupControllerTests {
             )
 
             let model = try #require(session.model())
-            #expect(model.message == IntentionPopupController.missingServerMessage)
-        }
-    }
-
-    @Test
-    func defaultRequestFactoryNeedsAnAttachedServerDocument() async throws {
-        try withTempDir { directory in
-            let workspace = try LSPServiceWorkspace(directory: directory, files: ["plain.txt": "text\n"])
-            defer { workspace.close() }
-            let document = try workspace.document("plain.txt")
-
-            #expect(IntentionPopupController.defaultRequest(codeFile: document, diagnostics: []) == nil)
-            IntentionPopupController.reportFailure()
-        }
-    }
-
-    @Test
-    func showContextActionsIgnoresWindowsWithoutAnActiveDocumentAndPresentsForOpenTabs() async throws {
-        try await withTempDir { directory in
-            try "let one = 1\n".write(to: directory.appending(path: "One.swift"), atomically: true, encoding: .utf8)
-            let workspace = WorkspaceDocument()
-            try workspace.read(from: directory, ofType: "")
-            DreamderDocumentController.shared.addDocument(workspace)
-            workspace.makeWindowControllers()
-            let controller = try #require(workspace.windowControllers.first as? DreamderWindowController)
-            let window = try #require(controller.window)
-            window.isReleasedWhenClosed = false
-            defer {
-                for child in window.childWindows ?? [] {
-                    child.close()
-                }
-                window.close()
-                workspace.close()
-            }
-            @MainActor func panel() -> IntentionPopupPanel? {
-                window.childWindows?.compactMap { $0 as? IntentionPopupPanel }.first
-            }
-
-            controller.showContextActions(nil)
-            #expect(panel() == nil)
-
-            let manager = try #require(workspace.editorManager)
-            let file = try #require(workspace.workspaceFileManager?.getFile(
-                directory.appending(path: "One.swift").path(percentEncoded: false),
-                createIfNotFound: true
-            ))
-            manager.openTab(item: file)
-            controller.showContextActions(nil)
-
-            try await eventually(timeout: .seconds(10)) { panel() != nil }
-            let model = try #require(
-                (panel()?.contentView as? NSHostingView<IntentionPopupView>)?.rootView.model
-            )
             #expect(model.message == IntentionPopupController.missingServerMessage)
         }
     }

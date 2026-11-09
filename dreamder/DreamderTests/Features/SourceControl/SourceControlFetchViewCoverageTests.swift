@@ -83,4 +83,16 @@ struct SourceControlFetchViewCoverage {
 
         #expect(model.manager == nil)
     }
+
+    @Test
+    func projectNameIsTheWorkspaceFolderOrEmptyWithoutOne() async throws {
+        #expect(SourceControlFetchView.projectName(of: WorkspaceDocument()) == "Empty")
+
+        try withTempDir { dir in
+            let workspace = try HostedViewFixture.makeWorkspace(in: dir)
+            defer { workspace.close() }
+
+            #expect(SourceControlFetchView.projectName(of: workspace) == dir.lastPathComponent)
+        }
+    }
 }

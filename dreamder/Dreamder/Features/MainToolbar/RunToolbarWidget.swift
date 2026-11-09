@@ -28,30 +28,36 @@ struct RunToolbarWidget: View {
     }
 
     static func runButton(taskManager: TaskManager, workspace: WorkspaceDocument) -> MainToolbarIconButton {
-        MainToolbarIconButton(
+        let running = isRunning(taskManager)
+        return MainToolbarIconButton(
             icon: "run/run",
             help: "Run",
             isEnabled: !taskManager.availableTasks.isEmpty,
+            iconSize: MainToolbarMetrics.runIconSize,
+            tint: running ? ActionButtonAccent.iconOverAccent : MainToolbarMetrics.runIconColor,
+            accent: running ? .run : nil,
             action: { run(taskManager: taskManager, workspace: workspace) }
         )
     }
 
     static func stopButton(taskManager: TaskManager) -> MainToolbarIconButton {
-        MainToolbarIconButton(
+        let running = isRunning(taskManager)
+        return MainToolbarIconButton(
             icon: "run/stop",
             help: "Stop",
-            isEnabled: isRunning(taskManager),
+            isEnabled: running,
+            iconSize: MainToolbarMetrics.runIconSize,
+            tint: running ? ActionButtonAccent.iconOverAccent : MainToolbarMetrics.defaultIconColor,
+            accent: running ? .stop : nil,
             action: { taskManager.terminateActiveTask() }
         )
     }
 
     var body: some View {
-        GlassEffectContainer(spacing: 4) {
-            HStack(spacing: 2) {
-                RunTaskSelector(taskManager: taskManager, menuAnchor: menuAnchor)
-                Self.runButton(taskManager: taskManager, workspace: workspace)
-                Self.stopButton(taskManager: taskManager)
-            }
+        HStack(spacing: MainToolbarMetrics.runWidgetSpacing) {
+            RunTaskSelector(taskManager: taskManager, menuAnchor: menuAnchor)
+            Self.runButton(taskManager: taskManager, workspace: workspace)
+            Self.stopButton(taskManager: taskManager)
         }
         .fixedSize()
     }
@@ -95,28 +101,11 @@ struct RunTaskSelector: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
-            Text(taskName)
-                .font(Islands.uiFont)
-                .foregroundColor(Islands.foreground)
-                .lineLimit(1)
-            Image("general/chevronDown")
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 12, height: 12)
+        Button(action: showMenu) {
+            MainToolbarDropdownLabel(text: taskName)
         }
-        .padding(.horizontal, 10)
-        .frame(
-            minWidth: 84,
-            maxWidth: 180,
-            minHeight: Islands.toolbarControlHeight,
-            maxHeight: Islands.toolbarControlHeight,
-            alignment: .leading
-        )
-        .mainToolbarGlass(isHovering: hover.isHovering)
+        .buttonStyle(.actionButton(look: .mainToolbarDropdown, isHovering: hover.isHovering))
         .background(MainToolbarMenuAnchorView(anchor: menuAnchor))
-        .contentShape(Capsule())
-        .onTapGesture(perform: showMenu)
         .onHover(perform: hover.setHovering)
         .help("Select Run Configuration")
         .accessibilityElement(children: .ignore)

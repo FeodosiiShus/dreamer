@@ -1,12 +1,17 @@
 import Foundation
 
 actor CoalescedRefresh {
+    private let clock: any Clock<Duration>
     private var running: Task<Void, Never>?
     private var requested = false
     private var urgent = false
     private var pendingDebounce: Duration = .zero
     private var debounceTimer: Task<Void, Never>?
     private(set) var requestCount = 0
+
+    init(clock: any Clock<Duration> = ContinuousClock()) {
+        self.clock = clock
+    }
 
     func run(debounce: Duration = .zero, _ work: @escaping @Sendable () async -> Void) async {
         requestCount += 1
@@ -30,8 +35,9 @@ actor CoalescedRefresh {
         while requested {
             if pendingDebounce > .zero {
                 let duration = pendingDebounce
+                let clock = clock
                 let timer = Task<Void, Never> {
-                    _ = try? await Task.sleep(for: duration)
+                    _ = try? await Task.sleep(for: duration, clock: clock)
                 }
                 debounceTimer = timer
                 await timer.value

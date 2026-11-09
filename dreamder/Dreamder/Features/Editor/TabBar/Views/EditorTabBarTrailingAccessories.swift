@@ -29,11 +29,12 @@ struct EditorTabBarTrailingAccessories: View {
         return MarkdownPreviewLayoutStore.isMarkdownFile(url) ? url : nil
     }
 
+    private var inactiveOpacity: Double {
+        activeState == .inactive ? 0.5 : 1
+    }
+
     private var accessoryOpacity: Double {
-        if activeState == .inactive {
-            return 0.5
-        }
-        return editorManager.isFocusingActiveEditor ? 0.5 : 1
+        editorManager.isFocusingActiveEditor ? 0.5 : inactiveOpacity
     }
 
     var body: some View {
@@ -71,23 +72,13 @@ struct EditorTabBarTrailingAccessories: View {
             Button("Close Others", action: actions.closeOthers)
             .disabled(editor.tabs.count < 2)
         } label: {
-            Image("general/moreVertical")
-                .resizable()
-                .frame(width: 16, height: 16)
-                .frame(width: 26, height: 26)
-                .background {
-                    if isHovering {
-                        Capsule()
-                            .fill(Islands.tabHoverFill)
-                    }
-                }
-                .contentShape(Capsule())
+            EditorTabBarAccessoryIcon(icon: "general/moreVertical", isHovering: isHovering)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
         .disabled(editorManager.isFocusingActiveEditor)
-        .opacity(accessoryOpacity)
+        .opacity(inactiveOpacity)
         .help("Tab Actions")
         .onHover(perform: setHovering)
     }

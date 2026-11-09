@@ -11,10 +11,8 @@ struct StatusBarLineEndSelector: View {
     let document: CodeFileDocument?
 
     var body: some View {
-        Text(label)
-            .font(Islands.smallFont)
-            .foregroundColor(Islands.secondaryForeground)
-            .lineLimit(1)
+        StatusBarWidgetText(text: label)
+            .statusBarWidgetFrame()
             .fixedSize()
             .help("Line separator")
     }

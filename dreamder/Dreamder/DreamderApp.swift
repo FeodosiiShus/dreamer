@@ -24,7 +24,7 @@ struct DreamderApp: App {
 
     var body: some Scene {
         Group {
-            WelcomeScene()
+            WelcomeScene(installSceneOpener: appdelegate.installSceneOpener)
             AboutWindow(
                 title: "Dreamder",
                 subtitleView: { AboutSubtitleView() },
@@ -38,7 +38,7 @@ struct DreamderApp: App {
 
             SettingsWindow()
                 .commands {
-                    DreamderCommands()
+                    DreamderCommands(installSceneOpener: appdelegate.installSceneOpener)
                     RefactorCommands()
                     CodeCommands()
                     ProblemsCommands()

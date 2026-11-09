@@ -423,7 +423,7 @@ struct MarkdownEmphasisToggleTests {
         let result = MarkdownEmphasisToggle.toggle(.bold, text: parsed.text, selections: parsed.selections)
         let applied = result?.applied(to: parsed.text)
         #expect(applied == "Simple **test** text")
-        #expect(result?.edits.count == 1)
+        #expect(result?.edit != nil)
     }
 
     @Test

@@ -108,6 +108,15 @@ nonisolated final class GitClient: Sendable {
     }
 
     @concurrent
+    internal func runData(arguments: [String]) async throws -> Data {
+        let result = try await runResult(arguments: arguments)
+        guard result.success else {
+            throw Self.error(for: result)
+        }
+        return result.standardOutput
+    }
+
+    @concurrent
     internal func runResult(_ command: String) async throws -> GitCommandResult {
         try await execute(arguments: try Self.arguments(from: command), display: command)
     }

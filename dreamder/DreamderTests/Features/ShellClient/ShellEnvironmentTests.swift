@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import Dreamder
 
@@ -175,6 +176,54 @@ struct ShellEnvironmentTests {
     }
 
     @Test
+    func aFailedLoginShellIsRetriedOnceTheRetryIntervalPassedInsteadOfStayingFallbackForever() async throws {
+        let probe = ShellRetryProbe(failingAttempts: 1)
+        let shell = probe.shell(output: Self.loginOutput(["PATH=/login/bin"]))
+
+        let first = await shell.resolve()
+        #expect(!first.isLoginEnvironment)
+        #expect(shell.cachedEnvironment == nil)
+
+        probe.advance(to: .seconds(29))
+        let early = await shell.resolve()
+        #expect(!early.isLoginEnvironment)
+        #expect(probe.attempts == 1)
+
+        probe.advance(to: .seconds(30))
+        let due = await shell.resolve()
+        #expect(!due.isLoginEnvironment)
+        let loaded = try await ProcessTestSupport.waitUntil { shell.cachedEnvironment != nil }
+        #expect(loaded)
+        #expect(await shell.load()["PATH"] == "/login/bin")
+        #expect(await shell.resolve().isLoginEnvironment)
+        #expect(probe.attempts == 2)
+    }
+
+    @Test
+    func aFailingRetryKeepsTheFallbackAndWaitsAnotherIntervalBeforeTryingAgain() async throws {
+        let probe = ShellRetryProbe(failingAttempts: 2)
+        let shell = probe.shell(output: Self.loginOutput(["PATH=/login/bin"]))
+
+        _ = await shell.resolve()
+        probe.advance(to: .seconds(30))
+        _ = shell.environment
+        let retried = try await ProcessTestSupport.waitUntil { probe.attempts == 2 }
+        #expect(retried)
+
+        _ = await shell.resolve()
+        #expect(probe.attempts == 2)
+        #expect(shell.cachedEnvironment == nil)
+
+        probe.advance(to: .seconds(60))
+        let loaded = try await ProcessTestSupport.waitUntil {
+            _ = shell.environment
+            return shell.cachedEnvironment != nil
+        }
+        #expect(loaded)
+        #expect(probe.attempts == 3)
+    }
+
+    @Test
     func parseSkipsInvalidEntriesAndKeepsValuesContainingEquals() throws {
         var data = Data()
         for entry in ["PATH=/p", "1BAD=x", "BAD-NAME=x", "=empty", "novalue", "OPTS=a=b=c", "_UNDER=ok", "EMPTY="] {
@@ -214,5 +263,43 @@ struct ShellEnvironmentTests {
     func fallbackWorksWithoutAnyPath() {
         let fallback = ShellEnvironment.fallbackEnvironment(base: [:])
         #expect((fallback["PATH"] ?? "").contains("/opt/homebrew/bin"))
+    }
+}
+
+nonisolated final class ShellRetryProbe: Sendable {
+    private let origin = ContinuousClock.now
+    private let elapsed = Mutex(Duration.zero)
+    private let started = Mutex(0)
+    private let failingAttempts: Int
+
+    init(failingAttempts: Int) {
+        self.failingAttempts = failingAttempts
+    }
+
+    var attempts: Int {
+        started.withLock { $0 }
+    }
+
+    func advance(to offset: Duration) {
+        elapsed.withLock { $0 = offset }
+    }
+
+    func shell(output: String) -> ShellEnvironment {
+        let runner = FakeProcessRunner { [self] _ in
+            let attempt = started.withLock { count in
+                count += 1
+                return count
+            }
+            if attempt <= failingAttempts {
+                throw ProcessRunnerError.timedOut(.seconds(10))
+            }
+            return FakeProcessRunner.output(output)
+        }
+        return ShellEnvironment(
+            runner: runner,
+            retryInterval: .seconds(30),
+            now: { [self] in origin.advanced(by: elapsed.withLock { $0 }) },
+            baseEnvironment: { ["PATH": "/usr/bin"] }
+        )
     }
 }

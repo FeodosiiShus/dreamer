@@ -179,7 +179,7 @@ final class MainToolbarMenuActions: NSObject {
     }
 
     @objc private func openSettings(_ sender: Any?) {
-        (NSApp.delegate as? AppDelegate)?.openWindow(sceneID: .settings)
+        AppDelegate.openScene(.settings)
     }
 
     @objc private func openWorkspaceSettings(_ sender: Any?) {

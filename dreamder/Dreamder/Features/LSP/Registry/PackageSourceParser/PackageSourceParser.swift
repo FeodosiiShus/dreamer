@@ -91,4 +91,13 @@ nonisolated enum PackageSourceParser {
         }
         return .sourceBuild(source: pkgSource, command: command)
     }
+
+    static func splitOnFirst(
+        _ text: Substring,
+        separator: Character
+    ) -> (head: Substring, tail: Substring?) {
+        guard let index = text.firstIndex(of: separator) else { return (text, nil) }
+        let tail = text[text.index(after: index)...]
+        return (text[..<index], tail.isEmpty ? nil : tail)
+    }
 }

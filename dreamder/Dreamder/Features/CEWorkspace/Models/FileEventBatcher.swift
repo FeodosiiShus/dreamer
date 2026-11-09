@@ -11,11 +11,17 @@ nonisolated final class FileEventBatcher: Sendable {
     }
 
     private let window: Duration
+    private let clock: any Clock<Duration>
     private let handler: Handler
     private let state = Mutex(State())
 
-    init(window: Duration = .milliseconds(100), handler: @escaping Handler) {
+    init(
+        window: Duration = .milliseconds(100),
+        clock: any Clock<Duration> = ContinuousClock(),
+        handler: @escaping Handler
+    ) {
         self.window = window
+        self.clock = clock
         self.handler = handler
     }
 
@@ -42,7 +48,7 @@ nonisolated final class FileEventBatcher: Sendable {
 
     private func drain() async {
         while true {
-            try? await Task.sleep(for: window)
+            try? await clock.sleep(for: window)
             let batch = state.withLock { state -> [DirectoryEventStream.Event] in
                 let batch = state.pending
                 state.pending = []

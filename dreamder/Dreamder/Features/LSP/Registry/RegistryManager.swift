@@ -14,7 +14,7 @@ import ZIPFoundation
 final class RegistryManager {
     static let shared = RegistryManager()
 
-    let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "RegistryManager")
+    let logger = Logger(subsystem: "dev.dreamder.Dreamder", category: "RegistryManager")
     let installPath: URL
 
     static let defaultRegistryURL = URL(
@@ -23,6 +23,8 @@ final class RegistryManager {
     static let defaultChecksumURL = URL(
         string: "https://github.com/mason-org/mason-registry/releases/latest/download/checksums.txt"
     )
+
+    static let stagingDirectoryName = ".registry-staging"
 
     nonisolated static let cacheExpirationInterval: TimeInterval = 300
 
@@ -106,7 +108,7 @@ final class RegistryManager {
     @MainActor
     func removeLanguageServer(packageName: String) async throws {
         let packageName = packageName.removingPercentEncoding ?? packageName
-        let packageDirectory = installPath.appending(path: packageName)
+        let packageDirectory = try RegistryInputValidation.child(of: installPath, named: packageName)
 
         guard FileManager.default.fileExists(atPath: packageDirectory.path) else {
             installedLanguageServers.removeValue(forKey: packageName)

@@ -321,4 +321,24 @@ struct TerminalViewCoverageTests {
             }
         }
     }
+
+    @Test
+    func startProcessWithTheBundledIntegrationScriptsRunsTheShellThroughThem() async throws {
+        try await withTempDir { directory in
+            try await withTerminalCoverageSettings(shellIntegration: true) {
+                let view = terminalCoverageView()
+                let delegate = TerminalCoverageDelegate()
+                view.processDelegate = delegate
+                defer { view.terminateSession() }
+
+                view.startProcess(workspaceURL: directory, shell: .bash)
+
+                #expect(delegate.titles == ["bash"])
+                #expect(view.process.running)
+                view.send(source: view, data: Array("echo integration-$((20+1))\n".utf8)[...])
+                try await eventually { terminalCoverageText(view).contains("integration-21") }
+                #expect(!terminalCoverageText(view).contains("Failed to start a terminal session"))
+            }
+        }
+    }
 }

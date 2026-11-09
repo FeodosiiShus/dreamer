@@ -3,11 +3,11 @@ import SwiftUI
 struct StatusBarNotificationsButton: View {
     @Environment(WorkspaceDocument.self) private var workspace
     private let notificationManager: NotificationManager
+    private let isHovering: Bool
 
-    @State private var isHovering = false
-
-    init(notificationManager: NotificationManager = .shared) {
+    init(notificationManager: NotificationManager = .shared, isHovering: Bool = false) {
         self.notificationManager = notificationManager
+        self.isHovering = isHovering
     }
 
     static func toggle(panel: NotificationPanelViewModel, notificationManager: NotificationManager) {
@@ -25,12 +25,15 @@ struct StatusBarNotificationsButton: View {
     }
 
     var body: some View {
-        Button(action: Self.togglingAction(panel: workspace.notificationPanel, notificationManager: notificationManager)) {
+        StatusBarWidgetButton(
+            isHovering: isHovering,
+            action: Self.togglingAction(panel: workspace.notificationPanel, notificationManager: notificationManager)
+        ) { _ in
             ZStack(alignment: .topTrailing) {
                 Image("toolwindows/notifications")
                     .resizable()
                     .interpolation(.high)
-                    .frame(width: 16, height: 16)
+                    .frame(width: StatusBarWidgetMetrics.iconSize, height: StatusBarWidgetMetrics.iconSize)
                 if notificationManager.unreadCount > 0 {
                     Circle()
                         .fill(Islands.accent)
@@ -38,19 +41,7 @@ struct StatusBarNotificationsButton: View {
                         .offset(x: 3, y: -2)
                 }
             }
-            .frame(width: 22, height: 22)
-            .background(
-                RoundedRectangle(cornerRadius: Islands.rowRadius)
-                    .fill(isHovering ? Islands.islandRaised.opacity(0.8) : Color.clear)
-            )
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
         .help("Notifications")
-        .onHover(perform: setHovering)
-    }
-
-    func setHovering(_ hovering: Bool) {
-        isHovering = hovering
     }
 }

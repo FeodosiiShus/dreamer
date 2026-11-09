@@ -31,7 +31,7 @@ struct ShowUsagesRowView: View {
             }
         }
         .padding(.horizontal, 6)
-        .frame(height: Islands.isCompact ? 22 : 24)
+        .frame(height: Self.rowHeight(isCompact: Islands.isCompact))
         .background(
             RoundedRectangle(cornerRadius: Islands.rowRadius)
                 .fill(Self.backgroundColor(isSelected: isSelected, isHovering: isHovering))
@@ -39,7 +39,15 @@ struct ShowUsagesRowView: View {
         .contentShape(Rectangle())
         .onTapGesture(count: 2, perform: onOpen)
         .onTapGesture(perform: onSelect)
-        .onHover { isHovering = $0 }
+        .onHover(perform: hoverChanged)
+    }
+
+    func hoverChanged(_ hovering: Bool) {
+        isHovering = hovering
+    }
+
+    static func rowHeight(isCompact: Bool) -> CGFloat {
+        isCompact ? 22 : 24
     }
 
     private var codeLine: some View {

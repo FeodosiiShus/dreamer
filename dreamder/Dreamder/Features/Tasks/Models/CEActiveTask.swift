@@ -36,6 +36,8 @@ class CEActiveTask: Identifiable, Hashable {
     var workspaceURL: URL?
 
     @ObservationIgnored let settings: Settings
+    @ObservationIgnored var terminationGrace: Duration = .seconds(5)
+    @ObservationIgnored var sleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
 
     init(task: CETask, settings: Settings = SettingsScope.current ?? .shared) {
         self.task = task
@@ -76,7 +78,7 @@ class CEActiveTask: Identifiable, Hashable {
                 message: "",
                 isLoading: false
             )
-        case 2, 15: // SIGINT or SIGTERM
+        case 2, 9, 15: // SIGINT or SIGTERM
             output?.newline()
             output?.sendOutputMessage("\(task.name) cancelled.")
             output?.newline()
@@ -108,7 +110,7 @@ class CEActiveTask: Identifiable, Hashable {
     @MainActor
     func suspend() {
         if let shellPID = output?.runningPID(), status == .running {
-            kill(shellPID, SIGSTOP)
+            ProcessTree.send(SIGSTOP, to: shellPID)
             updateTaskStatus(to: .stopped)
         }
     }
@@ -116,21 +118,66 @@ class CEActiveTask: Identifiable, Hashable {
     @MainActor
     func resume() {
         if let shellPID = output?.runningPID(), status == .stopped {
-            kill(shellPID, SIGCONT)
+            ProcessTree.send(SIGCONT, to: shellPID)
             updateTaskStatus(to: .running)
         }
     }
 
+    @MainActor
     func terminate() {
-        if let shellPID = output?.runningPID() {
-            kill(shellPID, SIGTERM)
+        guard let shellPID = output?.runningPID() else { return }
+        ProcessTree.send(SIGTERM, to: shellPID)
+        resume()
+    }
+
+    @MainActor
+    func forceTerminate() {
+        guard let shellPID = output?.runningPID() else { return }
+        ProcessTree.send(SIGKILL, to: shellPID)
+        resume()
+    }
+
+    @MainActor
+    func interrupt() {
+        guard let shellPID = output?.runningPID() else { return }
+        ProcessTree.send(SIGINT, to: shellPID)
+        resume()
+    }
+
+    var isActive: Bool {
+        status == .running || status == .stopped
+    }
+
+    @MainActor
+    func terminateAndWait() async {
+        guard isActive else { return }
+        terminate()
+        if await waitUntilInactive(within: terminationGrace) { return }
+        forceTerminate()
+        _ = await waitUntilInactive(within: terminationGrace)
+    }
+
+    @MainActor
+    private func waitUntilInactive(within timeout: Duration) async -> Bool {
+        let sleeper = self.sleep
+        return await withTaskGroup(of: Bool.self) { group in
+            group.addTask { await self.becameInactive() }
+            group.addTask {
+                try? await sleeper(timeout)
+                return false
+            }
+            let finished = await group.next() == true
+            group.cancelAll()
+            return finished
         }
     }
 
-    func interrupt() {
-        if let shellPID = output?.runningPID() {
-            kill(shellPID, SIGINT)
+    @MainActor
+    private func becameInactive() async -> Bool {
+        for await active in Observations({ self.isActive }) where !active {
+            return true
         }
+        return false
     }
 
     func waitForExit() async {

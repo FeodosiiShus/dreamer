@@ -28,7 +28,20 @@ struct IslandsThemeTests {
             Islands.tabLabelFontSize,
             Islands.statusBarHeight,
             Islands.stripeWidth,
-            Islands.stripeButtonSize,
+            Islands.stripeButtonWidth,
+            Islands.stripeButtonHeight,
+            Islands.stripeButtonCellHeight,
+            Islands.stripeButtonRadius,
+            Islands.stripeSeparatorWidth,
+            Islands.stripeSeparatorCellHeight,
+            Islands.actionButtonSize,
+            Islands.actionButtonRadius,
+            Islands.actionIconSize,
+            Islands.headerLabelLeadingInset,
+            Islands.headerLabelTrailingInset,
+            Islands.headerToolbarLeadingInset,
+            Islands.headerToolbarTrailingInset,
+            Islands.headerTabHorizontalInset,
             Islands.stripeIconSize,
             Islands.treeRowHeight,
             Islands.listRowHeight,
@@ -47,9 +60,9 @@ struct IslandsThemeTests {
         let colors: [Color] = [
             Islands.glassIslandTint,
             Islands.glassPopupTint,
-            Islands.glassBorder,
-            Islands.glassHoverTint,
-            Islands.tabHoverFill,
+            Islands.stripeSelectedForeground,
+            Islands.stripeSeparator,
+            Islands.underTabsBorder,
             Islands.glassRaisedFill,
             Islands.glassFieldFill
         ]
@@ -59,10 +72,11 @@ struct IslandsThemeTests {
             Islands.uiFont,
             Islands.smallFont,
             Islands.headerTitleFont,
+            Islands.toolWindowTitleFont,
             Islands.tabLabelFont,
             Islands.codeFont
         ]
-        #expect(fonts.count == 5)
+        #expect(fonts.count == 6)
         #expect(Islands.codeNSFont.pointSize == Islands.codeFontSize)
         _ = IntelliJIcon.image("general/search")
         _ = IntelliJIcon.nsImage("general/search")

@@ -104,17 +104,21 @@ extension WorkspaceDocument.SearchState {
 
     func performReplacements(_ jobs: [FindReplaceJob]) async -> [FindReplaceOutcome] {
         let documents = openDocuments()
-        var outcomes: [Int: FindReplaceOutcome] = [:]
-        var diskJobs: [Int: FindReplaceJob] = [:]
+        var outcomes = [FindReplaceOutcome](repeating: .stale, count: jobs.count)
+        var diskIndices: [Int] = []
+        var diskJobs: [FindReplaceJob] = []
         for (index, job) in jobs.enumerated() {
             if let document = documents[job.url.workspacePathKey] {
                 outcomes[index] = FindBufferReplacer.apply(job, to: document)
             } else {
-                diskJobs[index] = job
+                diskIndices.append(index)
+                diskJobs.append(job)
             }
         }
-        outcomes.merge(await FindFileRewriter.rewrite(diskJobs)) { buffer, _ in buffer }
-        return jobs.indices.map { outcomes[$0] ?? .stale }
+        for (index, outcome) in zip(diskIndices, await FindFileRewriter.rewrite(diskJobs)) {
+            outcomes[index] = outcome
+        }
+        return outcomes
     }
 
     private func replace(_ selections: [ReplaceSelection]) async {

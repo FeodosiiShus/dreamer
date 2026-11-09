@@ -17,7 +17,7 @@ struct CodeFileSaveCaretTests {
         """
 
     @MainActor
-    private struct Session {
+    struct Session {
         let fixture: HostedSourceEditorFixture
         let hosted: HostedSourceEditor
         let textView: TextView
@@ -41,7 +41,7 @@ struct CodeFileSaveCaretTests {
 
     private static let silentEditorConfig = "root = true\n"
 
-    private func openSession(
+    func openSession(
         in directory: URL,
         name: String = "caret.txt",
         contents: String,
@@ -262,35 +262,6 @@ struct CodeFileSaveCaretTests {
 
             #expect(session.document.modifiedLines == IndexSet([1]))
             #expect(session.textView.string == "ax\nby  \n")
-        }
-    }
-
-    @Test
-    func theBinderAttachesTheTextViewAndDetachesItOnDestroy() async throws {
-        try await withTempDir { dir in
-            let session = try await openSession(in: dir, contents: "a\n")
-            defer { session.close() }
-
-            #expect(session.document.attachedTextView === session.textView)
-
-            session.document.textViewBinder.destroy()
-
-            #expect(session.document.attachedTextView == nil)
-        }
-    }
-
-    @Test
-    func destroyingABinderDoesNotDetachAnotherSplitsTextView() async throws {
-        try await withTempDir { dir in
-            let first = try await openSession(in: dir, name: "first.txt", contents: "a\n")
-            defer { first.close() }
-            let second = try await openSession(in: dir, name: "second.txt", contents: "b\n")
-            defer { second.close() }
-            first.document.attachedController = second.hosted.controller
-
-            first.document.textViewBinder.destroy()
-
-            #expect(first.document.attachedTextView === second.textView)
         }
     }
 }

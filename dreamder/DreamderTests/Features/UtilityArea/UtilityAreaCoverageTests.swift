@@ -28,7 +28,7 @@ struct UtilityAreaViewModelCoverageTests {
 
     private func forgetState(of workspace: WorkspaceDocument) {
         guard let url = workspace.fileURL else { return }
-        UserDefaults.standard.removeObject(forKey: "workspaceState-\(url.absoluteString)")
+        UserDefaults.standard.removeObject(forKey: WorkspaceDocument.workspaceStateKey(for: url))
     }
 
     @Test
@@ -190,6 +190,52 @@ struct UtilityAreaViewModelCoverageTests {
 
         try await eventually { !view.process.running }
         #expect(TerminalCache.shared.getTerminalView(id) == nil)
+    }
+
+    private func startShellWithBackgroundChild(in view: CELocalShellTerminalView) async throws -> pid_t {
+        view.process.startProcess(
+            executable: "/bin/zsh",
+            args: ["-f", "-i", "-c", "sleep 600 & echo child-pid-$!-end; wait"],
+            environment: nil,
+            execName: "zsh",
+            currentDirectory: nil
+        )
+        try await eventually { TasksCoverageProcessProbe.announcedPID(in: terminalCoverageText(view)) != nil }
+        return try #require(TasksCoverageProcessProbe.announcedPID(in: terminalCoverageText(view)))
+    }
+
+    @Test
+    func removingATerminalKillsTheShellAndEverythingItStarted() async throws {
+        let model = UtilityAreaViewModel()
+        model.addTerminal(shell: .zsh, rootURL: URL(filePath: "/tmp"))
+        let id = model.terminals[0].id
+        let view = CELocalShellTerminalView(frame: .zero)
+        view.terminationEscalationDelay = .milliseconds(20)
+        let child = try await startShellWithBackgroundChild(in: view)
+        defer { kill(child, SIGKILL) }
+        TerminalCache.shared.cacheTerminalView(for: id, view: view)
+
+        model.removeTerminals([id])
+
+        try await eventually { TasksCoverageProcessProbe.isGone(child) }
+        try await eventually { !view.process.running }
+        #expect(TerminalCache.shared.getTerminalView(id) == nil)
+    }
+
+    @Test
+    func replacingATerminalKillsTheShellAndEverythingItStarted() async throws {
+        let model = UtilityAreaViewModel()
+        model.addTerminal(shell: .zsh, rootURL: URL(filePath: "/tmp"))
+        let id = model.terminals[0].id
+        let view = CELocalShellTerminalView(frame: .zero)
+        let child = try await startShellWithBackgroundChild(in: view)
+        defer { kill(child, SIGKILL) }
+        TerminalCache.shared.cacheTerminalView(for: id, view: view)
+
+        model.replaceTerminal(id)
+
+        try await eventually { TasksCoverageProcessProbe.isGone(child) }
+        try await eventually { !view.process.running }
     }
 
     @Test

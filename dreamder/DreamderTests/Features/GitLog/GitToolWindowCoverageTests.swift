@@ -4,6 +4,16 @@ import Testing
 @testable import Dreamder
 
 @MainActor
+@Observable
+private final class GitPaneDividerWidthBox {
+    var width: CGFloat
+
+    init(width: CGFloat) {
+        self.width = width
+    }
+}
+
+@MainActor
 @Suite(.uiGate)
 struct GitToolWindowCoverage {
     private static let windowSize = NSSize(width: 900, height: 600)
@@ -168,6 +178,63 @@ struct GitToolWindowCoverage {
     func dividerShowsTheResizeCursorOnlyWhileHovering() {
         #expect(GitPaneDivider.cursor(isHovering: true) == NSCursor.resizeLeftRight)
         #expect(GitPaneDivider.cursor(isHovering: false) == NSCursor.arrow)
+    }
+
+    @Test
+    func dividerHoverAppliesTheResizeCursorAndLeavingRestoresTheArrow() {
+        let divider = GitPaneDivider(width: .constant(200), range: 100...300)
+
+        divider.hover(true)
+        #expect(NSCursor.current == NSCursor.resizeLeftRight)
+
+        divider.hover(false)
+        #expect(NSCursor.current == NSCursor.arrow)
+    }
+
+    @Test
+    func dividerDragMovesTheBoundWidthAndClampsToTheRange() {
+        let box = GitPaneDividerWidthBox(width: 200)
+        let divider = GitPaneDivider(width: Bindable(box).width, range: 100...300)
+
+        divider.dragChanged(CGSize(width: 40, height: 7))
+        #expect(box.width == 240)
+
+        divider.dragChanged(CGSize(width: 1000, height: 0))
+        #expect(box.width == 300)
+
+        divider.dragEnded()
+        divider.dragChanged(CGSize(width: -50, height: 0))
+        #expect(box.width == 250)
+
+        let inverted = GitPaneDivider(width: Bindable(box).width, range: 100...300, inverted: true)
+        inverted.dragChanged(CGSize(width: 1000, height: 0))
+        #expect(box.width == 100)
+    }
+
+    @Test
+    func headerActionsRefreshTheBranchesAndHideTheWindow() async throws {
+        try await withTempDir { directory in
+            _ = try await GitToolWindowCovRepo.make(in: directory)
+            let session = try await makeSession(directory)
+            defer { session.close() }
+            try await eventually { session.manager.currentBranch != nil }
+            let toolWindows = session.workspace.toolWindowManager
+            let actions = GitToolWindowActions(
+                model: session.model,
+                manager: session.manager,
+                toolWindows: toolWindows
+            )
+
+            session.manager.branches = []
+            actions.startRefresh()
+            try await eventually { !session.manager.branches.isEmpty }
+            try await eventually { session.model.logModel.commits.contains { $0.subject == "Remove guide" } }
+
+            toolWindows.show(.git)
+            #expect(toolWindows.isVisible(.git))
+            actions.hide()
+            #expect(!toolWindows.isVisible(.git))
+        }
     }
 }
 

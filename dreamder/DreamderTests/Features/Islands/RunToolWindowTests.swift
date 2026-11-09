@@ -156,7 +156,14 @@ struct RunToolWindowTests {
             }
             let workspace = try HostedViewFixture.makeWorkspace(in: dir)
             defer { workspace.close() }
-            let manager = try makeTaskManager(workspace)
+            let leases = PooledDefaultsLeases()
+            let trust = WorkspaceTrust(defaults: try leases.make(), confirm: { _ in true })
+            let manager = TaskManager(
+                workspaceSettings: try makeTaskManager(workspace).workspaceSettings,
+                workspaceURL: dir,
+                selectionDefaults: try leases.make(),
+                trust: trust
+            )
             let task = CETask(
                 name: "echo",
                 command: "echo run-window-marker",

@@ -4,7 +4,7 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-private final class KeyProbeView: NSView {
+final class KeyProbeView: NSView {
     var keyDowns = 0
 
     override var acceptsFirstResponder: Bool { true }
@@ -15,16 +15,21 @@ private final class KeyProbeView: NSView {
 }
 
 @MainActor
-private final class PanelCallLog {
+final class PanelCallLog {
     var keyCodes: [UInt16] = []
     var closes = 0
+}
+
+@MainActor
+final class ScreenlessWindow: NSWindow {
+    override var screen: NSScreen? { nil }
 }
 
 @MainActor
 @Suite(.serialized, .isolatedDefaults, .uiGate)
 struct SearchEverywherePanelTests {
     @MainActor
-    private struct Rig {
+    struct Rig {
         let workspace: WorkspaceDocument
         let controller: DreamderWindowController
         let window: NSWindow
@@ -47,7 +52,7 @@ struct SearchEverywherePanelTests {
         }
     }
 
-    private func makeRig(_ dir: URL) throws -> Rig {
+    func makeRig(_ dir: URL) throws -> Rig {
         let defaults = try IsolatedDefaults.require()
         let workspace = try SearchEverywhereFixtures.makeWorkspace(dir)
         let window = NSWindow(
@@ -67,7 +72,7 @@ struct SearchEverywherePanelTests {
         return Rig(workspace: workspace, controller: controller, window: window, host: host)
     }
 
-    private func hide(_ panel: SearchEverywherePanel) {
+    func hide(_ panel: SearchEverywherePanel) {
         let delegate = panel.delegate
         panel.delegate = nil
         panel.orderOut(nil)
@@ -186,81 +191,5 @@ struct SearchEverywherePanelTests {
             #expect(recent.isVisible)
             #expect(recent.frame.size == NSSize(width: 560, height: 400))
         }
-    }
-
-    @Test
-    func theKeyHandlerFeedsTheModelAndEscapeClosesThePanel() throws {
-        try withTempDir { dir in
-            let rig = try makeRig(dir)
-            defer { rig.close() }
-            rig.host.toggle(in: rig.controller)
-            let panel = try #require(rig.panels.first)
-            let handler = try #require(panel.onKeyEvent)
-
-            #expect(handler(try SearchEverywhereFixtures.keyEvent(0)) == false)
-            #expect(panel.isVisible)
-
-            #expect(handler(try SearchEverywhereFixtures.keyEvent(53)))
-            #expect(!panel.isVisible)
-            #expect(rig.panels.isEmpty)
-        }
-    }
-
-    @Test
-    func sendEventLetsTheHandlerConsumeKeyDownsAndForwardsEverythingElse() throws {
-        let panel = SearchEverywherePanel()
-        defer { panel.close() }
-        let probe = KeyProbeView(frame: NSRect(x: 0, y: 0, width: 40, height: 40))
-        panel.contentView = probe
-        #expect(panel.makeFirstResponder(probe))
-        let log = PanelCallLog()
-        panel.onKeyEvent = { event in
-            log.keyCodes.append(event.keyCode)
-            return event.keyCode == 53
-        }
-
-        panel.sendEvent(try SearchEverywhereFixtures.keyEvent(53))
-        #expect(log.keyCodes == [53])
-        #expect(probe.keyDowns == 0)
-
-        panel.sendEvent(try SearchEverywhereFixtures.keyEvent(0))
-        #expect(log.keyCodes == [53, 0])
-        #expect(probe.keyDowns == 1)
-
-        let flagsChanged = try #require(NSEvent.keyEvent(
-            with: .flagsChanged,
-            location: .zero,
-            modifierFlags: .shift,
-            timestamp: 0,
-            windowNumber: 0,
-            context: nil,
-            characters: "",
-            charactersIgnoringModifiers: "",
-            isARepeat: false,
-            keyCode: 56
-        ))
-        panel.sendEvent(flagsChanged)
-        #expect(log.keyCodes == [53, 0])
-
-        panel.onKeyEvent = nil
-        panel.sendEvent(try SearchEverywhereFixtures.keyEvent(53))
-        #expect(probe.keyDowns == 2)
-    }
-
-    @Test
-    func resigningKeyClosesThePanelAndNotifiesOnce() {
-        let panel = SearchEverywherePanel()
-        let log = PanelCallLog()
-        panel.onClose = { log.closes += 1 }
-        panel.orderFront(nil)
-        #expect(panel.isVisible)
-        #expect(panel.canBecomeKey)
-        #expect(!panel.canBecomeMain)
-
-        panel.windowDidResignKey(Notification(name: NSWindow.didResignKeyNotification))
-
-        #expect(log.closes == 1)
-        #expect(!panel.isVisible)
-        #expect(panel.onClose == nil)
     }
 }

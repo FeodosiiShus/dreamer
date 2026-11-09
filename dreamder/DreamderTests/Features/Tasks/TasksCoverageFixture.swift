@@ -104,12 +104,26 @@ final class TasksCoverageNotificationRecorder {
 
 nonisolated enum TasksCoverageProcessProbe {
     private static let stoppedStatus: UInt32 = 4
+    static let backgroundChildCommand = "sleep 600 & echo child-pid-$!-end; wait"
+    static let childPIDPrefix = "child-pid-"
+    static let childPIDSuffix = "-end"
 
     static func isStopped(_ pid: pid_t) -> Bool {
         var info = proc_bsdinfo()
         let size = Int32(MemoryLayout<proc_bsdinfo>.size)
         let written = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size)
         return written == size && info.pbi_status == stoppedStatus
+    }
+
+    static func isGone(_ pid: pid_t) -> Bool {
+        kill(pid, 0) != 0
+    }
+
+    static func announcedPID(in text: String) -> pid_t? {
+        guard let start = text.range(of: childPIDPrefix, options: .backwards) else { return nil }
+        let rest = text[start.upperBound...]
+        guard let end = rest.range(of: childPIDSuffix) else { return nil }
+        return pid_t(rest[..<end.lowerBound])
     }
 }
 
@@ -138,6 +152,14 @@ func withTerminalCoverageSettings(
         configure(&store.preferences.terminal)
         try await body()
     }
+}
+
+@MainActor
+func withTerminalCoverageSettings(
+    shellIntegration: Bool,
+    perform body: () async throws -> Void
+) async rethrows {
+    try await withTerminalCoverageSettings({ $0.useShellIntegration = shellIntegration }, perform: body)
 }
 
 func makeEmptyShellIntegrationBundle(in directory: URL) throws -> Bundle {

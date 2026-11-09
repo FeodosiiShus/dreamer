@@ -7,11 +7,6 @@ import Testing
 @testable import Dreamder
 
 @MainActor
-private final class CloseCounter {
-    var count = 0
-}
-
-@MainActor
 private final class QuickDocFlowHarness {
     static let mainText = "value = helper()\n"
     static let notesText = "plain notes\n"
@@ -263,160 +258,102 @@ struct QuickDocumentationFlowCoverageTests {
             }
         }
     }
-}
 
-@MainActor
-@Suite(.uiGate)
-struct QuickDocumentationPanelCoverageTests {
-    private func makeParent(in visible: NSRect) -> NSWindow {
-        let parent = NSWindow(
-            contentRect: NSRect(x: visible.minX + 100, y: visible.minY + 100, width: 800, height: 600),
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
-        parent.isReleasedWhenClosed = false
-        return parent
-    }
+    @Test
+    func panelOriginPrefersBelowTheAnchorFlipsAboveAndSurvivesMissingScreens() {
+        let size = NSSize(width: 400, height: 200)
+        let parent = NSRect(x: 0, y: 0, width: 1200, height: 800)
+        let visible = NSRect(x: 0, y: 0, width: 1920, height: 1080)
+        let roomy = NSRect(x: 100, y: 500, width: 2, height: 16)
+        let cramped = NSRect(x: 100, y: 60, width: 2, height: 16)
 
-    private func visibleFrame() throws -> NSRect {
-        try #require(NSScreen.main).visibleFrame
+        func origin(_ anchor: NSRect?, _ visibleFrame: NSRect?) -> NSPoint {
+            QuickDocumentationPanel.origin(
+                size: size,
+                parentFrame: parent,
+                anchor: anchor,
+                visibleFrame: visibleFrame
+            )
+        }
+        let below = origin(roomy, visible)
+        let above = origin(cramped, visible)
+        let centered = origin(nil, nil)
+        let blindBelow = origin(roomy, nil)
+        let blindAbove = origin(NSRect(x: 100, y: 50, width: 2, height: 16), nil)
+
+        #expect(below == NSPoint(x: 100, y: 294))
+        #expect(above == NSPoint(x: 100, y: 82))
+        #expect(centered == NSPoint(x: 400, y: 508))
+        #expect(blindBelow == NSPoint(x: 100, y: 294))
+        #expect(blindAbove == NSPoint(x: 100, y: 72))
     }
 
     @Test
-    func panelNeverBecomesKeyOrMain() {
-        let panel = QuickDocumentationPanel(size: NSSize(width: 300, height: 100))
+    func hostWithoutAWindowPresentsNothing() {
+        let host = QuickDocumentationPanelHost()
+        let controller = DreamderWindowController(window: nil, workspace: nil)
 
-        #expect(!panel.canBecomeKey)
-        #expect(!panel.canBecomeMain)
+        host.showMessage("docs", in: controller)
+
+        let entries = Mirror(reflecting: host).children.first { $0.label == "entries" }
+        #expect(entries.map { Mirror(reflecting: $0.value).children.count } == 0)
+        #expect(controller.window == nil)
     }
 
     @Test
-    func panelWithoutAnchorIsCenteredNearTheTopOfItsParent() throws {
-        let parent = makeParent(in: try visibleFrame())
-        defer { parent.close() }
-        let panel = QuickDocumentationPanel(size: NSSize(width: 400, height: 200))
+    func movingTheCaretDoesNotCloseAPanelThatIsAlreadyHidden() async throws {
+        try await withTempDir { directory in
+            let harness = try await QuickDocFlowHarness.make(in: directory)
+            defer { harness.close() }
+            harness.open("main.py")
+            try harness.scriptHover(#"{"contents":{"kind":"plaintext","value":"docs"}}"#)
+            await QuickDocumentationController.present(in: harness.controller, lspService: harness.service)?.value
+            let tab = try #require(harness.selectedTab)
+            let panel = try #require(harness.panels.first)
+            panel.orderOut(nil)
+            var line = 2
 
-        panel.place(in: parent, beside: nil)
+            try await eventually(timeout: .seconds(30)) {
+                line += 1
+                tab.cursorPositions = [CursorPosition(line: line, column: 1)]
+                return line > 40
+            }
 
-        #expect(panel.frame.size == NSSize(width: 400, height: 200))
-        #expect(panel.frame.midX == parent.frame.midX)
-        #expect(panel.frame.maxY == parent.frame.maxY - 92)
-    }
-
-    @Test
-    func panelIsPlacedBelowTheAnchorWhenThereIsRoom() throws {
-        let visible = try visibleFrame()
-        let parent = makeParent(in: visible)
-        defer { parent.close() }
-        let panel = QuickDocumentationPanel(size: NSSize(width: 400, height: 200))
-        let anchor = NSRect(x: visible.minX + 150, y: visible.minY + 500, width: 4, height: 18)
-
-        panel.place(in: parent, beside: anchor)
-
-        #expect(panel.frame.minX == anchor.minX)
-        #expect(panel.frame.maxY == anchor.minY - 6)
-    }
-
-    @Test
-    func panelIsPlacedAboveTheAnchorWhenTheScreenBottomIsTooClose() throws {
-        let visible = try visibleFrame()
-        let parent = makeParent(in: visible)
-        defer { parent.close() }
-        let panel = QuickDocumentationPanel(size: NSSize(width: 400, height: 200))
-        let anchor = NSRect(x: visible.minX + 150, y: visible.minY + 20, width: 4, height: 18)
-
-        panel.place(in: parent, beside: anchor)
-
-        #expect(panel.frame.minY == anchor.maxY + 6)
-    }
-
-    @Test
-    func panelIsClampedInsideTheVisibleScreenArea() throws {
-        let visible = try visibleFrame()
-        let parent = makeParent(in: visible)
-        defer { parent.close() }
-        let panel = QuickDocumentationPanel(size: NSSize(width: 400, height: 200))
-
-        panel.place(in: parent, beside: NSRect(x: visible.maxX + 500, y: visible.minY + 500, width: 4, height: 18))
-        #expect(panel.frame.maxX == visible.maxX - 8)
-
-        panel.place(in: parent, beside: NSRect(x: visible.minX - 500, y: visible.minY + 500, width: 4, height: 18))
-        #expect(panel.frame.minX == visible.minX + 8)
-
-        panel.place(in: parent, beside: NSRect(x: visible.minX + 150, y: visible.maxY + 500, width: 4, height: 18))
-        #expect(panel.frame.maxY == visible.maxY - 8)
-    }
-
-    @Test
-    func closingThePanelDetachesItAndRunsTheCloseHandlerOnce() throws {
-        let parent = makeParent(in: try visibleFrame())
-        defer { parent.close() }
-        let panel = QuickDocumentationPanel(size: NSSize(width: 300, height: 100))
-        let counter = CloseCounter()
-        panel.onClose = { counter.count += 1 }
-        parent.addChildWindow(panel, ordered: .above)
-
-        panel.close()
-        panel.windowWillClose(Notification(name: NSWindow.willCloseNotification, object: panel))
-
-        #expect(counter.count == 1)
-        #expect(panel.onClose == nil)
-        #expect(parent.childWindows?.contains(panel) != true)
-    }
-}
-
-@MainActor
-@Suite(.uiGate)
-struct QuickDocumentationViewCoverageTests {
-    private func host(_ model: QuickDocumentationViewModel) -> HostedView {
-        HostedViewFixture.host(size: model.size) {
-            QuickDocumentationView(model: model)
+            #expect(!panel.isVisible)
+            #expect(panel.onClose != nil)
         }
     }
 
     @Test
-    func everyBlockKindRendersVisibleContent() async throws {
-        let markdown = "**Int** — a `number` with [link](https://example.com)\n\n```swift\nlet value = 1\n```\n\nTail."
-        let models = [
-            QuickDocumentationViewModel(content: QuickDocumentationContent(text: markdown, isMarkdown: true)),
-            QuickDocumentationViewModel(content: QuickDocumentationContent(text: "Int\nA number", isMarkdown: false)),
-            QuickDocumentationViewModel(message: "No documentation found")
-        ]
+    func escapeForAnEntryWhosePanelIsGoneAndWhoseEntryWasDroppedChangesNothing() async throws {
+        try await withTempDir { directory in
+            let harness = try await QuickDocFlowHarness.make(in: directory)
+            defer { harness.close() }
+            let otherWindow = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
+                styleMask: [.titled],
+                backing: .buffered,
+                defer: true
+            )
+            otherWindow.isReleasedWhenClosed = false
+            let otherController = DreamderWindowController(window: otherWindow, workspace: nil)
+            defer { otherWindow.close() }
+            let host = QuickDocumentationPanelHost()
 
-        for model in models {
-            let hosted = host(model)
-            defer { hosted.close() }
-            try await hosted.settle()
-            #expect(hosted.renders())
+            host.showMessage("first", in: harness.controller)
+            weak let weakPanel: QuickDocumentationPanel? = harness.panels.first
+            harness.panels.first?.onClose = nil
+            harness.panels.first?.close()
+            try await eventually { weakPanel == nil }
+            host.showMessage("second", in: otherController)
+            let secondPanel = try #require(otherWindow.childWindows?.first as? QuickDocumentationPanel)
+
+            NSApp.sendEvent(try harness.keyEvent(Self.escapeKey))
+            NSApp.sendEvent(try harness.keyEvent(Self.escapeKey))
+
+            #expect(harness.panels.isEmpty)
+            #expect(!secondPanel.isVisible)
+            withExtendedLifetime(host) {}
         }
-    }
-
-    @Test
-    func differentContentRendersDifferently() async throws {
-        let prose = host(QuickDocumentationViewModel(message: "Int"))
-        let code = host(QuickDocumentationViewModel(
-            content: QuickDocumentationContent(text: "```swift\nfunc run() -> Int\n```", isMarkdown: true)
-        ))
-        defer {
-            prose.close()
-            code.close()
-        }
-        try await prose.settle()
-        try await code.settle()
-
-        #expect(HostedView.pixelsDiffer(prose.snapshot(), code.snapshot()))
-    }
-
-    @Test
-    func closingTheModelCallsTheDismissHandlerWhenOneIsSet() {
-        let model = QuickDocumentationViewModel(message: "docs")
-        let counter = CloseCounter()
-
-        model.close()
-        model.dismiss = { counter.count += 1 }
-        model.close()
-
-        #expect(counter.count == 1)
     }
 }

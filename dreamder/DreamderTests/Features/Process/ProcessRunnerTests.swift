@@ -325,6 +325,42 @@ struct ProcessSupportTypesTests {
     }
 
     @Test
+    func sanitizedForGitDropsDyldAndRepositoryRedirectingGitVariablesOnly() {
+        let environment = [
+            "DYLD_LIBRARY_PATH": "/a",
+            "GIT_DIR": "/repo/.git",
+            "GIT_WORK_TREE": "/repo",
+            "GIT_INDEX_FILE": "/tmp/index",
+            "GIT_CONFIG_PARAMETERS": "'a.b=c'",
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "a.b",
+            "GIT_CONFIG_VALUE_0": "c",
+            "GIT_LITERAL_PATHSPECS": "1",
+            "GIT_CONFIG_GLOBAL": "/tmp/gitconfig",
+            "GIT_CONFIG_SYSTEM": "/tmp/gitconfig-system",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_AUTHOR_NAME": "Someone",
+            "GIT_COMMITTER_EMAIL": "x@y",
+            "GIT_SSH_COMMAND": "ssh",
+            "GIT_ASKPASS": "askpass",
+            "MY_GIT_DIR": "kept",
+            "PATH": "/usr/bin"
+        ]
+        #expect(ProcessEnvironment.sanitizedForGit(environment) == [
+            "GIT_CONFIG_GLOBAL": "/tmp/gitconfig",
+            "GIT_CONFIG_SYSTEM": "/tmp/gitconfig-system",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_AUTHOR_NAME": "Someone",
+            "GIT_COMMITTER_EMAIL": "x@y",
+            "GIT_SSH_COMMAND": "ssh",
+            "GIT_ASKPASS": "askpass",
+            "MY_GIT_DIR": "kept",
+            "PATH": "/usr/bin"
+        ])
+        #expect(ProcessEnvironment.sanitizedForGit([:]).isEmpty)
+    }
+
+    @Test
     func processOutputDecodesText() {
         let output = ProcessOutput(
             exitCode: 0,
