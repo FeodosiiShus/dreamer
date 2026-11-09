@@ -5,11 +5,17 @@ import Testing
 
 @MainActor
 final class TasksCoverageFixture {
+    static let markersDirectoryVariable = "TASKS_COVERAGE_MARKERS"
+    static let readyFile = "ready"
+    static let terminateFile = "terminate"
+    static let interruptFile = "interrupt"
+    static let unhandledSignalExitCode: Int32 = 7
+
     static let signalLoopCommand = """
-    trap 'echo got-term-$((20+2)); exit 0' TERM; \
-    trap 'echo got-int-$((30+3)); exit 0' INT; \
-    echo ready-$((40+2)); \
-    i=0; while [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done
+    trap 'm=got-term-$((20+2)); echo $m >> "$\(markersDirectoryVariable)/\(terminateFile)"; echo $m; exit 0' TERM; \
+    trap 'm=got-int-$((30+3)); echo $m >> "$\(markersDirectoryVariable)/\(interruptFile)"; echo $m; exit 0' INT; \
+    m=ready-$((40+2)); echo $m >> "$\(markersDirectoryVariable)/\(readyFile)"; echo $m; \
+    i=0; while [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; exit \(unhandledSignalExitCode)
     """
 
     static let readyMarker = "ready-42"
@@ -17,10 +23,14 @@ final class TasksCoverageFixture {
     static let interruptMarker = "got-int-33"
 
     let zdotdir: URL
+    let homeDirectory: URL
+    let markersDirectory: URL
     let settingsStore: Dreamder.Settings
 
     init() throws {
         zdotdir = try makeTemporaryDirectory(label: "tasks-coverage-zdotdir")
+        homeDirectory = try makeTemporaryDirectory(label: "tasks-coverage-home")
+        markersDirectory = try makeTemporaryDirectory(label: "tasks-coverage-markers")
         for name in [".zshenv", ".zprofile", ".zshrc", ".zlogin"] {
             try "".write(to: zdotdir.appending(path: name), atomically: true, encoding: .utf8)
         }
@@ -30,6 +40,8 @@ final class TasksCoverageFixture {
 
     deinit {
         try? FileManager.default.removeItem(at: zdotdir)
+        try? FileManager.default.removeItem(at: homeDirectory)
+        try? FileManager.default.removeItem(at: markersDirectory)
     }
 
     var zdotdirPath: String {
@@ -40,7 +52,14 @@ final class TasksCoverageFixture {
         CETask(
             name: name,
             command: command,
-            environmentVariables: [CETask.EnvironmentVariable(key: "ZDOTDIR", value: zdotdirPath)]
+            environmentVariables: [
+                CETask.EnvironmentVariable(key: "ZDOTDIR", value: zdotdirPath),
+                CETask.EnvironmentVariable(key: "HOME", value: homeDirectory.path(percentEncoded: false)),
+                CETask.EnvironmentVariable(
+                    key: Self.markersDirectoryVariable,
+                    value: markersDirectory.path(percentEncoded: false)
+                )
+            ]
         )
     }
 
@@ -58,6 +77,21 @@ final class TasksCoverageFixture {
         try await eventually {
             output.getBufferAsString().contains(marker)
         }
+    }
+
+    func waitUntilSignalTaskIsReady(timeout: Duration) async throws {
+        try await waitForMarker(Self.readyMarker, in: Self.readyFile, timeout: timeout)
+    }
+
+    func waitForMarker(_ marker: String, in fileName: String, timeout: Duration) async throws {
+        try await eventually(timeout: timeout) {
+            markerFileContents(fileName).contains(marker)
+        }
+    }
+
+    func markerFileContents(_ fileName: String) -> String {
+        let url = markersDirectory.appending(path: fileName)
+        return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
     }
 }
 

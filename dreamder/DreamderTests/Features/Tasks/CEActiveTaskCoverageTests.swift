@@ -7,6 +7,11 @@ import Testing
 @MainActor
 @Suite(.serialized, .uiGate)
 struct CEActiveTaskCoverageTests {
+    private static let readinessTimeout = Duration.seconds(40)
+    private static let statusTimeout = Duration.seconds(20)
+    private static let markerTimeout = Duration.seconds(20)
+    private static let stepTimeout = Duration.seconds(15)
+
     private let fixture: TasksCoverageFixture
 
     init() throws {
@@ -156,26 +161,32 @@ struct CEActiveTaskCoverageTests {
     func terminateAsksARunningTaskToExit(_ shell: Shell) async throws {
         let activeTask = CEActiveTask(task: fixture.makeSignalTask())
         activeTask.run(workspaceURL: nil, shell: shell)
-        let output = try #require(activeTask.output)
-        try await fixture.waitUntilReady(output)
+        try await fixture.waitUntilSignalTaskIsReady(timeout: Self.readinessTimeout)
 
         activeTask.terminate()
 
-        try await eventually { activeTask.status == .finished }
-        try await fixture.waitForOutput(output, containing: TasksCoverageFixture.terminateMarker)
+        try await eventually(timeout: Self.statusTimeout) { activeTask.status == .finished }
+        try await fixture.waitForMarker(
+            TasksCoverageFixture.terminateMarker,
+            in: TasksCoverageFixture.terminateFile,
+            timeout: Self.markerTimeout
+        )
     }
 
     @Test(arguments: [Shell.zsh, Shell.bash])
     func interruptSendsSigintToARunningTask(_ shell: Shell) async throws {
         let activeTask = CEActiveTask(task: fixture.makeSignalTask())
         activeTask.run(workspaceURL: nil, shell: shell)
-        let output = try #require(activeTask.output)
-        try await fixture.waitUntilReady(output)
+        try await fixture.waitUntilSignalTaskIsReady(timeout: Self.readinessTimeout)
 
         activeTask.interrupt()
 
-        try await eventually { activeTask.status == .finished }
-        try await fixture.waitForOutput(output, containing: TasksCoverageFixture.interruptMarker)
+        try await eventually(timeout: Self.statusTimeout) { activeTask.status == .finished }
+        try await fixture.waitForMarker(
+            TasksCoverageFixture.interruptMarker,
+            in: TasksCoverageFixture.interruptFile,
+            timeout: Self.markerTimeout
+        )
     }
 
     @Test(arguments: [Shell.zsh, Shell.bash])
@@ -183,7 +194,7 @@ struct CEActiveTaskCoverageTests {
         let activeTask = CEActiveTask(task: fixture.makeSignalTask())
         activeTask.run(workspaceURL: nil, shell: shell)
         let output = try #require(activeTask.output)
-        try await fixture.waitUntilReady(output)
+        try await fixture.waitUntilSignalTaskIsReady(timeout: Self.readinessTimeout)
         let pid = try #require(output.runningPID())
 
         activeTask.resume()
@@ -191,17 +202,17 @@ struct CEActiveTaskCoverageTests {
 
         activeTask.suspend()
         #expect(activeTask.status == .stopped)
-        try await eventually { TasksCoverageProcessProbe.isStopped(pid) }
+        try await eventually(timeout: Self.stepTimeout) { TasksCoverageProcessProbe.isStopped(pid) }
 
         activeTask.suspend()
         #expect(activeTask.status == .stopped)
 
         activeTask.resume()
         #expect(activeTask.status == .running)
-        try await eventually { !TasksCoverageProcessProbe.isStopped(pid) }
+        try await eventually(timeout: Self.stepTimeout) { !TasksCoverageProcessProbe.isStopped(pid) }
 
         activeTask.terminate()
-        try await eventually { activeTask.status == .finished }
+        try await eventually(timeout: Self.stepTimeout) { activeTask.status == .finished }
     }
 
     @Test

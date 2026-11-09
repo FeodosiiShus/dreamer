@@ -5,15 +5,21 @@ on:
     paths:
       - dreamder/**
       - .github/workflows/dreamder.yml
+      - .github/workflows/dreamder-platform.yml
   pull_request:
     paths:
       - dreamder/**
       - .github/workflows/dreamder.yml
+      - .github/workflows/dreamder-platform.yml
   workflow_dispatch:
 
 concurrency:
   group: dreamder-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   guard:
@@ -30,10 +36,8 @@ jobs:
       - name: Crash guard
         run: make check
 
-  build-test:
-    name: Build and test (${{ matrix.name }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+  platform:
+    name: ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
@@ -41,118 +45,51 @@ jobs:
           - name: macOS 26 / Xcode 26.6
             runner: macos-26
             xcode: /Applications/Xcode_26.6.app/Contents/Developer
-            primary: true
           - name: macOS 27 / Xcode 27.2
             runner: xcode-27
             xcode: /Applications/Xcode_27.2.app/Contents/Developer
-            primary: false
+    uses: ./.github/workflows/dreamder-platform.yml
+    with:
+      runner: ${{ matrix.runner }}
+      xcode: ${{ matrix.xcode }}
+
+  release:
+    name: Release app (macOS 26 / Xcode 26.6)
+    runs-on: macos-26
+    timeout-minutes: 45
     env:
-      XCODE_DEVELOPER_DIR: ${{ matrix.xcode }}
+      XCODE_DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     defaults:
       run:
         working-directory: dreamder
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: |
-            dreamder
-            platform/vcs-log/graph/testData
-            platform/platform-tests/testData/diff
-            platform/platform-tests/testData/editor/multiCaret
-            platform/platform-tests/testData/codeInsight/commentByLine
-            platform/platform-tests/testData/codeInsight/selectWordAction
-            platform/platform-tests/testData/codeInsight/selectWordWithoutPSIAction
-            platform/platform-resources/src/keymaps
-            platform/lang-impl/testData/editor/findInEditor
-            plugins/git4idea/testData/widgetTree
-            plugins/markdown/test/data
-            java/java-tests/testData/codeInsight/commentByLine
-            java/java-tests/testData/codeInsight/commentByBlock
-            java/java-tests/testData/codeInsight/joinLines
-            java/java-tests/testData/codeInsight/moveStatementAction
-            xml/tests/testData/codeInsight/commentByLine
-            xml/tests/testData/codeInsight/commentByBlock
-            json/backend/tests/testData/commenter
-            python/testData/joinLines
-      - name: Select Xcode
-        run: sudo xcode-select -s "$XCODE_DEVELOPER_DIR"
+          sparse-checkout: dreamder
       - uses: actions/cache@v6
         with:
           path: dreamder/.build/xcode/SourcePackages
-          key: spm-v2-${{ matrix.runner }}-${{ matrix.xcode }}-${{ hashFiles('dreamder/Dreamder.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
-          restore-keys: spm-v2-${{ matrix.runner }}-${{ matrix.xcode }}-
-      - name: Build
-        run: make build
-      - name: SwiftLint
-        run: make lint
-      - name: Unit tests with coverage
-        env:
-          TEST_RUNNER_DREAMDER_STALL_SAMPLE_DIR: ${{ github.workspace }}/dreamder/.build/logs/stalls
-        run: make coverage
-      - name: Headless smoke
-        run: make smoke
-      - name: Upload smoke result
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: smoke-${{ matrix.runner }}
-          path: dreamder/.build/smoke
-          if-no-files-found: ignore
-      - name: Coverage gate against the previous successful run
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BASELINE_BRANCH: ${{ github.head_ref || github.ref_name }}
-          FALLBACK_BASELINE_BRANCH: ${{ github.base_ref }}
-        run: |
-          python3 Scripts/coverage-report.py .build/coverage.xcresult --baseline .build/coverage-baseline.json --write-baseline
-          baseline_args=""
-          for branch in "$BASELINE_BRANCH" "$FALLBACK_BASELINE_BRANCH"; do
-            [ -n "$branch" ] || continue
-            previous=$(gh run list --repo "$GITHUB_REPOSITORY" --branch "$branch" --workflow "$GITHUB_WORKFLOW" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
-            if [ -n "$previous" ] && gh run download "$previous" --repo "$GITHUB_REPOSITORY" -n "coverage-baseline-${{ matrix.runner }}" -D .build/previous-coverage; then
-              echo "Coverage deltas against run $previous on $branch"
-              baseline_args="--baseline .build/previous-coverage/coverage-baseline.json"
-              break
-            fi
-          done
-          if [ -z "$baseline_args" ]; then
-            echo "No coverage baseline from a previous successful run on ${{ matrix.runner }}; deltas use the committed baseline"
-          fi
-          python3 Scripts/coverage-report.py .build/coverage.xcresult --check --summary $baseline_args
-      - name: Upload coverage baseline
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-baseline-${{ matrix.runner }}
-          path: dreamder/.build/coverage-baseline.json
-          if-no-files-found: error
+          key: spm-v3-release-macos-26-${{ hashFiles('dreamder/Dreamder.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: spm-v3-release-macos-26-
       - name: Build Release app
-        if: matrix.primary
         run: make release
       - name: Upload app
-        if: matrix.primary
         uses: actions/upload-artifact@v7
         with:
           name: Dreamder
           path: dreamder/.build/Dreamder.zip
           if-no-files-found: error
       - name: Upload dSYM
-        if: matrix.primary
         uses: actions/upload-artifact@v7
         with:
           name: Dreamder-dSYM
           path: dreamder/.build/Dreamder-dSYM.zip
           if-no-files-found: error
       - name: Upload logs
-        if: always()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: logs-${{ matrix.runner }}
+          name: logs-release
           path: dreamder/.build/logs
-          if-no-files-found: ignore
-      - name: Upload coverage result
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-${{ matrix.runner }}
-          path: dreamder/.build/coverage.xcresult
           if-no-files-found: ignore

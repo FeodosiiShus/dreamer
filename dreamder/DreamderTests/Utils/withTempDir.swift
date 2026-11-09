@@ -46,9 +46,13 @@ func removeStandardDefaultsKeys(referencing directory: URL) {
 func removeDefaultsKeys(referencing directory: URL, in defaults: UserDefaults, domain: String) {
     let fragments = defaultsKeyFragments(of: directory)
     let stored = defaults.persistentDomain(forName: domain) ?? [:]
-    for key in stored.keys where fragments.contains(where: { key.contains($0) }) {
+    for key in stored.keys where containsAnyFragment(key as NSString, fragments) {
         defaults.removeObject(forKey: key)
     }
+}
+
+private func containsAnyFragment(_ key: NSString, _ fragments: [String]) -> Bool {
+    fragments.contains { key.range(of: $0, options: .literal).location != NSNotFound }
 }
 
 private func defaultsKeyFragments(of directory: URL) -> [String] {
@@ -71,16 +75,19 @@ nonisolated enum StaleTestDefaults {
         guard let domain = Bundle.main.bundleIdentifier,
               let stored = UserDefaults.standard.persistentDomain(forName: domain) else { return }
         for key in stored.keys {
-            guard let path = referencedTemporaryPath(in: key),
+            guard let path = referencedTemporaryPath(in: key as NSString),
                   !FileManager.default.fileExists(atPath: path) else { continue }
             UserDefaults.standard.removeObject(forKey: key)
         }
     }
 
-    private static func referencedTemporaryPath(in key: String) -> String? {
-        let decoded = key.removingPercentEncoding ?? key
-        guard let start = temporaryRoots.compactMap({ decoded.range(of: $0)?.lowerBound }).min() else { return nil }
-        return String(decoded[start...])
+    private static func referencedTemporaryPath(in key: NSString) -> String? {
+        let decoded = (key.removingPercentEncoding ?? key as String) as NSString
+        let starts = temporaryRoots
+            .map { decoded.range(of: $0, options: .literal).location }
+            .filter { $0 != NSNotFound }
+        guard let start = starts.min() else { return nil }
+        return decoded.substring(from: start)
     }
 }
 

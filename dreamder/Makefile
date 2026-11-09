@@ -3,25 +3,35 @@ export DEVELOPER_DIR := $(XCODE_DEVELOPER_DIR)
 
 PROJECT := Dreamder.xcodeproj
 SCHEME := Dreamder
-DERIVED := .build/xcode
 LOGS := .build/logs
 CONFIGURATION ?= Debug
-APP := $(DERIVED)/Build/Products/$(CONFIGURATION)/Dreamder.app
-XCODEBUILD := xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration $(CONFIGURATION) \
+FLAVOR ?= plain
+SHARDS ?= 3
+COVERAGE_BUILD := -enableCodeCoverage YES 'OTHER_SWIFT_FLAGS=$$(inherited) -Xllvm -instrprof-atomic-counter-update-all'
+DERIVED = .build/xcode$(if $(filter coverage,$(FLAVOR)),-coverage)
+PRODUCTS = $(DERIVED)/Build/Products
+APP = $(PRODUCTS)/$(CONFIGURATION)/Dreamder.app
+TEST_PRODUCTS ?= .build/test-products.tar.zst
+XCODEBUILD_BASE = xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuration $(CONFIGURATION) \
 	-derivedDataPath $(DERIVED) -destination 'platform=macOS,arch=arm64' \
 	-skipPackagePluginValidation -skipMacroValidation \
 	CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
 	ENABLE_HARDENED_RUNTIME=NO
+XCODEBUILD = $(XCODEBUILD_BASE) $(if $(filter coverage,$(FLAVOR)),$(COVERAGE_BUILD))
+PACKAGES = sh Scripts/resolve-packages.sh $(DERIVED) $(XCODEBUILD_BASE) && sh Scripts/stub-swiftlint.sh $(DERIVED)/SourcePackages/artifacts
+TEST_ENVIRONMENT := TEST_RUNNER_DREAMDER_HEADLESS=1 TEST_RUNNER_SWIFT_DETERMINISTIC_HASHING=1
+COVERAGE_REPORT = python3 Scripts/coverage-report.py .build/coverage.xcresult --json .build/coverage.json | tee $(LOGS)/coverage.txt | tail -$(if $(TOP),$(TOP),40)
 
-.PHONY: build release run headless test test-sharded coverage coverage-sharded coverage-baseline check lint lint-baseline ui-test screenshot action open toolwindow contextmenu annotate menuitem merge smoke clean
+.PHONY: build build-for-testing release run headless test test-sharded test-shard coverage coverage-sharded coverage-merge coverage-baseline pack-test-products unpack-test-products check lint lint-baseline ui-test screenshot action open toolwindow contextmenu annotate menuitem merge smoke clean
+
+coverage coverage-sharded: FLAVOR = coverage
 
 check:
 	@python3 Scripts/crash-guard.py
 
 lint:
 	@mkdir -p $(LOGS)
-	@$(XCODEBUILD) -resolvePackageDependencies > $(LOGS)/resolve.log 2>&1
-	@sh Scripts/stub-swiftlint.sh $(DERIVED)/SourcePackages/artifacts
+	@$(PACKAGES)
 	@sh Scripts/swiftlint.sh $(DERIVED)/SourcePackages/artifacts check
 
 lint-baseline:
@@ -29,17 +39,21 @@ lint-baseline:
 
 build:
 	@mkdir -p $(LOGS)
-	@$(XCODEBUILD) -resolvePackageDependencies > $(LOGS)/resolve.log 2>&1
-	@sh Scripts/stub-swiftlint.sh $(DERIVED)/SourcePackages/artifacts
+	@$(PACKAGES)
 	@set -o pipefail; $(XCODEBUILD) build 2>&1 | tee $(LOGS)/build.log | grep -E "error:|BUILD (SUCCEEDED|FAILED)" | sort -u
 
+build-for-testing:
+	@mkdir -p $(LOGS)
+	@$(PACKAGES)
+	@set -o pipefail; $(XCODEBUILD) build-for-testing 2>&1 | tee $(LOGS)/build-for-testing.log | grep -E "error:|TEST BUILD (SUCCEEDED|FAILED)" | sort -u
+
 release:
-	@$(MAKE) build CONFIGURATION=Release
+	@$(MAKE) build CONFIGURATION=Release FLAVOR=plain
 	@rm -f .build/Dreamder.zip
-	@ditto -c -k --keepParent $(DERIVED)/Build/Products/Release/Dreamder.app .build/Dreamder.zip
+	@ditto -c -k --keepParent .build/xcode/Build/Products/Release/Dreamder.app .build/Dreamder.zip
 	@echo .build/Dreamder.zip
 	@rm -f .build/Dreamder-dSYM.zip
-	@ditto -c -k --keepParent $(DERIVED)/Build/Products/Release/Dreamder.app.dSYM .build/Dreamder-dSYM.zip
+	@ditto -c -k --keepParent .build/xcode/Build/Products/Release/Dreamder.app.dSYM .build/Dreamder-dSYM.zip
 	@echo .build/Dreamder-dSYM.zip
 
 run: build
@@ -54,29 +68,43 @@ headless: build
 
 test:
 	@mkdir -p $(LOGS)
-	@sh Scripts/stub-swiftlint.sh $(DERIVED)/SourcePackages/artifacts
-	@set -o pipefail; TEST_RUNNER_DREAMDER_HEADLESS=1 TEST_RUNNER_SWIFT_DETERMINISTIC_HASHING=1 $(XCODEBUILD) test $(if $(FILTER),-only-testing:DreamderTests/$(FILTER),-only-testing:DreamderTests) 2>&1 | tee $(LOGS)/test.log | grep -E "error:|failed|Executed|passed after|TEST (SUCCEEDED|FAILED)" | sort -u
+	@$(PACKAGES)
+	@set -o pipefail; $(TEST_ENVIRONMENT) $(XCODEBUILD) test $(if $(FILTER),-only-testing:DreamderTests/$(FILTER),-only-testing:DreamderTests) 2>&1 | tee $(LOGS)/test.log | grep -E "error:|failed|Executed|passed after|TEST (SUCCEEDED|FAILED)" | sort -u
 
 coverage:
 	@mkdir -p $(LOGS)
-	@sh Scripts/stub-swiftlint.sh $(DERIVED)/SourcePackages/artifacts
+	@$(PACKAGES)
 	@rm -rf .build/coverage.xcresult
-	@set -o pipefail; TEST_RUNNER_DREAMDER_HEADLESS=1 TEST_RUNNER_SWIFT_DETERMINISTIC_HASHING=1 $(XCODEBUILD) test -only-testing:DreamderTests -enableCodeCoverage YES -resultBundlePath .build/coverage.xcresult 2>&1 | tee $(LOGS)/coverage.log | grep -E "error:|Test run with|Executed [0-9]+ tests|TEST (SUCCEEDED|FAILED)" | sort -u
-	@set -o pipefail; python3 Scripts/coverage-report.py .build/coverage.xcresult --json .build/coverage.json | tee $(LOGS)/coverage.txt | tail -$(if $(TOP),$(TOP),40)
+	@set -o pipefail; $(TEST_ENVIRONMENT) $(XCODEBUILD) test -only-testing:DreamderTests -resultBundlePath .build/coverage.xcresult 2>&1 | tee $(LOGS)/coverage.log | grep -E "error:|Test run with|Executed [0-9]+ tests|TEST (SUCCEEDED|FAILED)" | sort -u
+	@set -o pipefail; $(COVERAGE_REPORT)
 	@$(if $(filter 1,$(COVERAGE_CHECK)),python3 Scripts/coverage-report.py .build/coverage.xcresult --check $(if $(GITHUB_STEP_SUMMARY),--summary),:)
 
-test-sharded:
-	@sh Scripts/stub-swiftlint.sh $(DERIVED)/SourcePackages/artifacts
-	@python3 Scripts/sharded-tests.py --shards $(if $(SHARDS),$(SHARDS),3)
+test-sharded: build-for-testing
+	@python3 Scripts/sharded-tests.py --flavor $(FLAVOR) --shards $(SHARDS)
 
-coverage-sharded:
-	@sh Scripts/stub-swiftlint.sh $(DERIVED)/SourcePackages/artifacts
-	@python3 Scripts/sharded-tests.py --shards $(if $(SHARDS),$(SHARDS),3) --coverage --result .build/coverage.xcresult; tests=$$?; \
-		set -o pipefail; python3 Scripts/coverage-report.py .build/coverage.xcresult --json .build/coverage.json | tee $(LOGS)/coverage.txt | tail -$(if $(TOP),$(TOP),40); report=$$?; \
+test-shard:
+	@python3 Scripts/sharded-tests.py --flavor $(FLAVOR) --shards $(SHARDS) --only $(SHARD)
+
+coverage-sharded: build-for-testing
+	@python3 Scripts/sharded-tests.py --flavor $(FLAVOR) --shards $(SHARDS) --result .build/coverage.xcresult; tests=$$?; \
+		set -o pipefail; $(COVERAGE_REPORT); report=$$?; \
 		[ $$tests -eq 0 ] && [ $$report -eq 0 ]
+
+coverage-merge:
+	@mkdir -p $(LOGS)
+	@python3 Scripts/sharded-tests.py --merge --result .build/coverage.xcresult
+	@set -o pipefail; $(COVERAGE_REPORT)
 
 coverage-baseline:
 	@python3 Scripts/coverage-report.py .build/coverage.xcresult --write-baseline
+
+pack-test-products:
+	@tar --zstd -cf $(TEST_PRODUCTS) -C $(PRODUCTS) $(CONFIGURATION) $$(cd $(PRODUCTS) && ls *.xctestrun)
+	@du -h $(TEST_PRODUCTS)
+
+unpack-test-products:
+	@mkdir -p $(PRODUCTS)
+	@tar --zstd -xf $(TEST_PRODUCTS) -C $(PRODUCTS)
 
 ui-test:
 	@mkdir -p $(LOGS)
@@ -110,4 +138,4 @@ smoke:
 	@bash Scripts/smoke.sh
 
 clean:
-	rm -rf $(DERIVED)
+	rm -rf .build/xcode .build/xcode-coverage

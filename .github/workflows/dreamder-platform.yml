@@ -1,0 +1,228 @@
+name: Dreamder platform
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+      xcode:
+        required: true
+        type: string
+      shards:
+        required: false
+        type: string
+        default: "[0]"
+
+env:
+  XCODE_DEVELOPER_DIR: ${{ inputs.xcode }}
+  DEVELOPER_DIR: ${{ inputs.xcode }}
+  FLAVOR: coverage
+  TEST_PRODUCTS: .build/test-products-${{ inputs.runner }}.tar.zst
+
+jobs:
+  build:
+    name: Build
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: dreamder
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: dreamder
+      - uses: actions/cache@v6
+        with:
+          path: dreamder/.build/xcode-coverage/SourcePackages
+          key: spm-v3-${{ inputs.runner }}-${{ hashFiles('dreamder/Dreamder.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: spm-v3-${{ inputs.runner }}-
+      - name: Build for testing
+        run: make build-for-testing
+      - name: SwiftLint
+        run: make lint
+      - name: Pack test products
+        run: make pack-test-products
+      - name: Upload test products
+        uses: actions/upload-artifact@v7
+        with:
+          path: dreamder/${{ env.TEST_PRODUCTS }}
+          archive: false
+          retention-days: 1
+          if-no-files-found: error
+      - name: Upload logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-${{ inputs.runner }}-build
+          path: dreamder/.build/logs
+          if-no-files-found: ignore
+
+  test:
+    name: Test shard ${{ matrix.shard }}
+    needs: build
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(inputs.shards) }}
+    defaults:
+      run:
+        working-directory: dreamder
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            dreamder
+            platform/vcs-log/graph/testData
+            platform/platform-tests/testData/diff
+            platform/platform-tests/testData/editor/multiCaret
+            platform/platform-tests/testData/codeInsight/commentByLine
+            platform/platform-tests/testData/codeInsight/selectWordAction
+            platform/platform-tests/testData/codeInsight/selectWordWithoutPSIAction
+            platform/platform-resources/src/keymaps
+            platform/lang-impl/testData/editor/findInEditor
+            plugins/git4idea/testData/widgetTree
+            plugins/markdown/test/data
+            java/java-tests/testData/codeInsight/commentByLine
+            java/java-tests/testData/codeInsight/commentByBlock
+            java/java-tests/testData/codeInsight/joinLines
+            java/java-tests/testData/codeInsight/moveStatementAction
+            xml/tests/testData/codeInsight/commentByLine
+            xml/tests/testData/codeInsight/commentByBlock
+            json/backend/tests/testData/commenter
+            python/testData/joinLines
+      - name: Download test products
+        uses: actions/download-artifact@v8
+        with:
+          name: test-products-${{ inputs.runner }}.tar.zst
+          path: dreamder/.build
+      - name: Unpack test products
+        run: |
+          archive=$(find .build -name "$(basename "$TEST_PRODUCTS")" -type f | head -n 1)
+          if [ -z "$archive" ]; then
+            echo "test products archive not found under .build"
+            find .build -maxdepth 3
+            exit 1
+          fi
+          make unpack-test-products TEST_PRODUCTS="$archive"
+      - name: Unit tests
+        env:
+          TEST_RUNNER_DREAMDER_STALL_SAMPLE_DIR: ${{ github.workspace }}/dreamder/.build/logs/stalls
+        run: make test-shard SHARD=${{ matrix.shard }} SHARDS=${{ strategy.job-total }}
+      - name: Pack shard result
+        if: ${{ !cancelled() }}
+        run: tar --zstd -cf .build/shard-${{ inputs.runner }}-${{ matrix.shard }}.xcresult.tar.zst -C .build/shards shard-${{ matrix.shard }}.xcresult
+      - name: Upload shard result
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          path: dreamder/.build/shard-${{ inputs.runner }}-${{ matrix.shard }}.xcresult.tar.zst
+          archive: false
+          retention-days: 3
+          if-no-files-found: error
+      - name: Upload logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-${{ inputs.runner }}-shard-${{ matrix.shard }}
+          path: dreamder/.build/logs
+          if-no-files-found: ignore
+
+  coverage:
+    name: Coverage gate
+    needs: test
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: dreamder
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: dreamder
+      - name: Download shard results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: shard-${{ inputs.runner }}-*.xcresult.tar.zst
+          path: dreamder/.build/shard-archives
+          merge-multiple: true
+      - name: Merge shard results
+        run: |
+          mkdir -p .build/shards
+          find .build/shard-archives -name '*.xcresult.tar.zst' -exec tar --zstd -xf {} -C .build/shards \;
+          make coverage-merge
+      - name: Coverage gate against the previous successful run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASELINE_BRANCH: ${{ github.head_ref || github.ref_name }}
+          FALLBACK_BASELINE_BRANCH: ${{ github.base_ref }}
+          BASELINE_ARTIFACT: coverage-baseline-${{ inputs.runner }}
+        run: |
+          python3 Scripts/coverage-report.py .build/coverage.xcresult --baseline .build/coverage-baseline.json --write-baseline
+          set --
+          for branch in "$BASELINE_BRANCH" "$FALLBACK_BASELINE_BRANCH"; do
+            [ -n "$branch" ] || continue
+            previous=$(gh run list --repo "$GITHUB_REPOSITORY" --branch "$branch" --workflow "$GITHUB_WORKFLOW" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+            if [ -n "$previous" ] && gh run download "$previous" --repo "$GITHUB_REPOSITORY" -n "$BASELINE_ARTIFACT" -D .build/previous-coverage; then
+              echo "Coverage deltas against run $previous on $branch"
+              set -- --baseline .build/previous-coverage/coverage-baseline.json
+              break
+            fi
+          done
+          if [ "$#" -eq 0 ]; then
+            echo "No coverage baseline from a previous successful run for $BASELINE_ARTIFACT; deltas use the committed baseline"
+          fi
+          python3 Scripts/coverage-report.py .build/coverage.xcresult --check --summary "$@"
+      - name: Upload coverage baseline
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-baseline-${{ inputs.runner }}
+          path: dreamder/.build/coverage-baseline.json
+          if-no-files-found: error
+      - name: Upload logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-${{ inputs.runner }}-coverage
+          path: dreamder/.build/logs
+          if-no-files-found: ignore
+
+  smoke:
+    name: Headless smoke
+    needs: build
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: dreamder
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: dreamder
+      - name: Download test products
+        uses: actions/download-artifact@v8
+        with:
+          name: test-products-${{ inputs.runner }}.tar.zst
+          path: dreamder/.build
+      - name: Unpack test products
+        run: |
+          archive=$(find .build -name "$(basename "$TEST_PRODUCTS")" -type f | head -n 1)
+          if [ -z "$archive" ]; then
+            echo "test products archive not found under .build"
+            find .build -maxdepth 3
+            exit 1
+          fi
+          make unpack-test-products TEST_PRODUCTS="$archive"
+      - name: Headless smoke
+        env:
+          SMOKE_SKIP_BUILD: 1
+        run: make smoke
+      - name: Upload smoke result
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-${{ inputs.runner }}
+          path: dreamder/.build/smoke
+          if-no-files-found: ignore
