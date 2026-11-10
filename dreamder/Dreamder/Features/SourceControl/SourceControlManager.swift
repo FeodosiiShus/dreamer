@@ -37,6 +37,8 @@ final class SourceControlManager {
     /// Current branch
     var currentBranch: GitBranch?
 
+    var currentHeadCommit: String?
+
     /// All branches, local and remote
     var branches: [GitBranch] = []
 

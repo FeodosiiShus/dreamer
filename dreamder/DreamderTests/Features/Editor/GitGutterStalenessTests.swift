@@ -60,10 +60,14 @@ struct GitGutterStalenessTests {
         try await eventually(timeout: Self.timeout, sourceLocation: sourceLocation, condition)
     }
 
-    private func openSession(in directory: URL) async throws -> Session {
+    private func openSession(
+        in directory: URL,
+        beforeOpening prepare: (GitMergeFixture) async throws -> Void = { _ in }
+    ) async throws -> Session {
         let git = try await GitMergeFixture(root: directory)
         try git.write(Self.fileName, Self.initialSource)
         try await git.commit("initial")
+        try await prepare(git)
         let workspace = try HostedSourceEditorFixture.registerWorkspace(at: directory)
         let fixture = try HostedSourceEditorFixture.make(
             in: directory,
@@ -135,6 +139,28 @@ struct GitGutterStalenessTests {
                 session.coordinator.loadedHeadText == Self.editedSource && session.coordinator.currentChanges.isEmpty
             }
             #expect(session.manager.changedFiles.isEmpty)
+        }
+    }
+
+    @Test
+    func fastForwardOnTheSameBranchWithCleanTreeReloadsHead() async throws {
+        try await withTempDir { directory in
+            let session = try await openSession(in: directory) { git in
+                try await git.run("checkout", "-q", "-b", "other")
+                try git.write(Self.fileName, Self.otherSource)
+                try await git.commit("other")
+                try await git.run("checkout", "-q", "-")
+            }
+            defer { session.close() }
+            let branchBefore = session.manager.currentBranch?.longName
+            let headBefore = session.manager.currentHeadCommit
+
+            try await session.git.run("merge", "-q", "--ff-only", "other")
+            await session.manager.refreshCurrentBranch()
+
+            #expect(session.manager.currentBranch?.longName == branchBefore)
+            #expect(session.manager.currentHeadCommit != headBefore)
+            try await awaitCondition { session.coordinator.loadedHeadText == Self.otherSource }
         }
     }
 

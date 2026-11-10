@@ -80,6 +80,19 @@ extension GitClientFakeRunnerCoverage {
     }
 
     @Test
+    func headCommitIsTheTrimmedHashAndNilWhenUnbornOrBlank() async {
+        let (client, fake) = ScmFakeGit.client { _ in ScmFakeGit.ok("abc123\n") }
+        #expect(await client.getHeadCommit() == "abc123")
+        #expect(fake.invocations.map(ScmFakeGit.arguments) == [["rev-parse", "--verify", "--quiet", "HEAD"]])
+
+        let (unborn, _) = ScmFakeGit.client { _ in ScmFakeGit.failure("", code: 1) }
+        #expect(await unborn.getHeadCommit() == nil)
+
+        let (blank, _) = ScmFakeGit.client { _ in ScmFakeGit.ok("\n") }
+        #expect(await blank.getHeadCommit() == nil)
+    }
+
+    @Test
     func checkoutOfARemoteBranchFallsBackToTheExistingLocalOne() async throws {
         let (client, fake) = ScmFakeGit.client { invocation in
             let arguments = ScmFakeGit.arguments(invocation)

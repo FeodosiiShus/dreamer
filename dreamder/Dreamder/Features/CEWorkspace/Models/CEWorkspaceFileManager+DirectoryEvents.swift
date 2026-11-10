@@ -137,6 +137,7 @@ extension CEWorkspaceFileManager {
         if gitBranchChange != nil {
             Task {
                 await self.sourceControlManager?.refreshBranches()
+                await self.sourceControlManager?.refreshCurrentBranch()
             }
         }
 

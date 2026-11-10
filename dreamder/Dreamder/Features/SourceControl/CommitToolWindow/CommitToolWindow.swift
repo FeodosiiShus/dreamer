@@ -116,7 +116,7 @@ struct CommitToolWindow: View {
                 .frame(height: 84)
 
             HStack(spacing: 8) {
-                Toggle(isOn: Binding(get: { viewModel.amend }, set: actions.startSetAmend)) {
+                Toggle(isOn: Binding(get: { viewModel.amend }, set: { actions.startSetAmend($0) })) {
                     Text("Amend")
                         .font(Islands.uiFont)
                         .foregroundStyle(Islands.secondaryForeground)

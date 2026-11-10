@@ -66,7 +66,7 @@ struct StatusBarProgressIndicator: View {
     var popoverBinding: Binding<Bool> {
         Binding(
             get: { presenter.isPresented(hasNotifications: !model.isEmpty) },
-            set: presenter.setPresented
+            set: { presenter.setPresented($0) }
         )
     }
 

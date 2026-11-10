@@ -25,8 +25,10 @@ extension SourceControlManager {
     /// Refresh current branch
     func refreshCurrentBranch() async {
         let currentBranch = try? await gitClient.getCurrentBranch()
+        let headCommit = await gitClient.getHeadCommit()
         await MainActor.run {
             self.currentBranch = currentBranch
+            self.currentHeadCommit = headCommit
         }
     }
 

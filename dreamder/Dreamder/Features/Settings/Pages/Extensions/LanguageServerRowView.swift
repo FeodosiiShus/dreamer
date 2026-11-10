@@ -205,7 +205,7 @@ struct LanguageServerRowView: View, Equatable {
             }
             Toggle(
                 "",
-                isOn: Binding(get: { isEnabled }, set: setEnabled)
+                isOn: Binding(get: { isEnabled }, set: { setEnabled($0) })
             )
             .toggleStyle(.switch)
             .controlSize(.small)

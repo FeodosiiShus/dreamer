@@ -38,7 +38,7 @@ jobs:
           key: spm-v3-${{ inputs.runner }}-${{ hashFiles('dreamder/Dreamder.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: spm-v3-${{ inputs.runner }}-
       - name: Build for testing
-        run: make build-for-testing
+        run: make build-for-testing KEEP_GOING=1
       - name: SwiftLint
         run: make lint
       - name: Pack test products

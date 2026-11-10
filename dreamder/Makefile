@@ -19,7 +19,9 @@ XCODEBUILD_BASE = xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuratio
 	-skipPackagePluginValidation -skipMacroValidation \
 	CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
 	ENABLE_HARDENED_RUNTIME=NO RUN_DOCUMENTATION_COMPILER=NO COMPILER_INDEX_STORE_ENABLE=NO
-XCODEBUILD = $(XCODEBUILD_BASE) $(if $(filter coverage,$(FLAVOR)),$(COVERAGE_BUILD))
+XCODEBUILD = $(XCODEBUILD_BASE) $(if $(filter coverage,$(FLAVOR)),$(COVERAGE_BUILD)) \
+	$(if $(filter 1,$(KEEP_GOING)),-IDEBuildingContinueBuildingAfterErrors=YES)
+BUILD_FAILURES := error:|failed with a nonzero exit code|While evaluating request|While emitting
 PACKAGES = sh Scripts/resolve-packages.sh $(DERIVED) $(XCODEBUILD_BASE) && sh Scripts/stub-swiftlint.sh $(DERIVED)/SourcePackages/artifacts
 TEST_ENVIRONMENT := TEST_RUNNER_DREAMDER_HEADLESS=1 TEST_RUNNER_SWIFT_DETERMINISTIC_HASHING=1
 COVERAGE_REPORT = python3 Scripts/coverage-report.py .build/coverage.xcresult --json .build/coverage.json | tee $(LOGS)/coverage.txt | tail -$(if $(TOP),$(TOP),40)
@@ -43,12 +45,12 @@ lint-baseline:
 build:
 	@mkdir -p $(LOGS)
 	@$(PACKAGES)
-	@set -o pipefail; $(XCODEBUILD) build 2>&1 | tee $(LOGS)/build.log | grep -E "error:|BUILD (SUCCEEDED|FAILED)" | sort -u
+	@set -o pipefail; $(XCODEBUILD) build 2>&1 | tee $(LOGS)/build.log | grep -E "$(BUILD_FAILURES)|BUILD (SUCCEEDED|FAILED)" | sort -u
 
 build-for-testing:
 	@mkdir -p $(LOGS)
 	@$(PACKAGES)
-	@set -o pipefail; $(XCODEBUILD) build-for-testing 2>&1 | tee $(LOGS)/build-for-testing.log | grep -E "error:|TEST BUILD (SUCCEEDED|FAILED)" | sort -u
+	@set -o pipefail; $(XCODEBUILD) build-for-testing 2>&1 | tee $(LOGS)/build-for-testing.log | grep -E "$(BUILD_FAILURES)|TEST BUILD (SUCCEEDED|FAILED)" | sort -u
 
 release:
 	@$(MAKE) build CONFIGURATION=Release FLAVOR=plain

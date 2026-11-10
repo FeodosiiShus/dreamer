@@ -105,16 +105,18 @@ struct ActiveTaskTerminalLaunchTests {
     @Test
     func anUnsupportedLoginShellFallsBackToZshAndTheTaskStillRuns() async throws {
         try await withSystemShellSettings {
-            let (task, view) = makeTaskView(command: "echo fallback-$((1+1))")
+            let (task, view) = makeTaskView(command: "echo fallback-$((1+1)) > \"$TASKS_COVERAGE_MARKERS/ran\"")
             view.systemShell = { "/opt/homebrew/bin/fish" }
 
             let started = view.startProcess(workspaceURL: nil)
 
             #expect(started)
-            try await eventually(timeout: .seconds(20)) { view.getBufferAsString().contains("fallback-2") }
-            try await eventually(timeout: .seconds(20)) { !task.exits.isEmpty }
-            #expect(task.exits == [.exited(code: 0)])
             #expect(view.getBufferAsString().contains("Shell /opt/homebrew/bin/fish cannot be used, using /bin/zsh."))
+            try await eventually(timeout: .seconds(60)) { fixture.markerFileContents("ran").contains("fallback-2") }
+            try await eventually(timeout: .seconds(60)) { !view.process.running }
+            view.drainProcessEvents()
+            try await eventually(timeout: .seconds(60)) { !task.exits.isEmpty }
+            #expect(task.exits == [.exited(code: 0)])
         }
     }
 

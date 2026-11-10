@@ -56,13 +56,13 @@ closure #1 in TreeSitterExecutor.execAsync(priority:operation:onCancel:)   TreeS
 
 Cause, in the CodeEditSourceEditor package: `TreeSitterClient.applyEdit` hops to the main queue on its synchronous path (`TreeSitterClient.swift:171`, `DispatchQueue.dispatchMainIfNot`) and on cancellation (`:185`), but the asynchronous path calls the completion directly inside the executor task (`:180`, `operation: { completion(.success(operation())) }`). The completion mutates `validSet` of `HighlightProviderState`, a `@MainActor` class, while the main thread uses it. The asynchronous path is taken for long edits and long documents (`Constants.maxSyncEditLength`, `Constants.maxSyncContentLength`) and also whenever `TreeSitterExecutor.execSync` refuses because another task is queued (`TreeSitterExecutor.swift:80`), for example an edit while the initial parse of `setUp` is still running. The race is therefore reachable in any file, and it restarted a test host again on 2026-11-10 (`Dreamder-2026-11-10-010700.ips`, same frames).
 
-Fix options, checked on 2026-11-10: an app-side `HighlightProviding` decorator is not possible, because `TextViewController.init` takes its `treeSitterClient` (tag completion, jump to definition) from the first concrete `TreeSitterClient` among the providers (`TextViewController.swift:227-229`), the class is `final`, the property is `internal(set)`, and any `TreeSitterClient` left in the provider list is driven by the highlighter directly. What remains is a fork or a vendored copy of the package with the dispatch added at `TreeSitterClient.swift:180` (needs approval, `AGENTS.md` rule 6 and the package notes); the package's `main` branch still has the defect.
+Fix, 2026-11-10: the project is pinned to a fork, `https://github.com/FeodosiiShus/CodeEditSourceEditor` at revision `488079a386ec299c86d7787a0a65e884dd7a4347` (branch `dreamder/0.15.1`, upstream 0.15.1 plus one commit), where the asynchronous path reads `let invalidatedRanges = operation()` and then `DispatchQueue.dispatchMainIfNot { completion(.success(invalidatedRanges)) }`. `TreeSitterClientEditCompletionTests` pins it with a long edit that must take the asynchronous path. An app-side `HighlightProviding` decorator was not possible: `TextViewController.init` takes its `treeSitterClient` (tag completion, jump to definition) from the first concrete `TreeSitterClient` among the providers (`TextViewController.swift:227-229`), the class is `final`, the property is `internal(set)`, and any `TreeSitterClient` left in the provider list is driven by the highlighter directly. The package's `main` branch still has the defect, so the fork stays until upstream fixes it.
 
 Standard: data-race safety and main-actor isolation; the rules and their official citations are the data-race entries of `swift-standards-checklist.md`.
 
 ## Bug audit: all findings
 
-12 P0, 22 P1 and 27 P2 findings. Status on 2026-11-10: every finding in the table except CRASH-1 is fixed in the application with regression tests, see "Fix status" at the end of this file; the reports keep the original analysis and name the reproducing test. Confidence and unverified assumptions are stated per finding in the reports.
+12 P0, 22 P1 and 27 P2 findings. Status on 2026-11-10: every finding in the table is fixed with regression tests, see "Fix status" at the end of this file; the reports keep the original analysis and name the reproducing test. Confidence and unverified assumptions are stated per finding in the reports.
 
 | Id | Severity | Defect | Report |
 |---|---|---|---|
@@ -130,7 +130,7 @@ Standard: data-race safety and main-actor isolation; the rules and their officia
 
 ## Fix status (2026-11-10)
 
-Sixty findings are fixed, each with regression tests written from the failing sequence in its report (the tests were run on the fixed code only, not against the old code); CRASH-1 is open because the defect is inside the `CodeEditSourceEditor` package.
+All 61 findings are fixed. Sixty are fixed in the application, each with regression tests written from the failing sequence in its report (the tests were run on the fixed code only, not against the old code); CRASH-1 is fixed in a fork of the `CodeEditSourceEditor` package (section above).
 
 | Area | Findings | Where the fix lives |
 |---|---|---|
@@ -143,4 +143,4 @@ Sixty findings are fixed, each with regression tests written from the failing se
 
 B-10 is bounded, not removed: files up to `FileSizeLimit.synchronousOpen` (1 MiB) still load on the main actor so `openTab` stays synchronous, larger files load asynchronously into a document in loading state.
 
-CRASH-1 cannot be fixed from the application: `TreeSitterClient.applyEdit` calls its completion from the executor's task (`operation: { completion(.success(operation())) }`, still so on the package's `main` branch), `TextViewController` only accepts the concrete `final class TreeSitterClient` for tag completion and jump to definition, and `forceSyncOperation` is `package`. Raising `TreeSitterClient.Constants.maxSyncEditLength` and `maxSyncContentLength` only narrows the window, because `execSync` also fails whenever another tree-sitter task is queued. The fix is one line in a fork of the package.
+One more defect surfaced while a flaky test was traced, and is fixed the same way: the git gutter lost a HEAD change that kept the branch name and the changed-file list (a commit, fast-forward or reset on a clean tree), because `GitGutterCoordinator.RepositorySignature` had no commit identity and a `refs/heads` event only refreshed the branch list. The signature now carries `SourceControlManager.currentHeadCommit` and the event also refreshes the current branch (`GitGutterStalenessTests/fastForwardOnTheSameBranchWithCleanTreeReloadsHead`).

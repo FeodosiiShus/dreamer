@@ -1784,10 +1784,10 @@
 		};
 		6C76D6D22E15B91E00EF52C3 /* XCRemoteSwiftPackageReference "CodeEditSourceEditor" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/CodeEditApp/CodeEditSourceEditor";
+			repositoryURL = "https://github.com/FeodosiiShus/CodeEditSourceEditor";
 			requirement = {
-				kind = exactVersion;
-				version = 0.15.1;
+				kind = revision;
+				revision = 488079a386ec299c86d7787a0a65e884dd7a4347;
 			};
 		};
 		6C85BB3E2C2105ED00EB5DEF /* XCRemoteSwiftPackageReference "CodeEditKit" */ = {
@@ -1808,10 +1808,10 @@
 		};
 		6C9DB9E22D55656300ACD86E /* XCRemoteSwiftPackageReference "CodeEditSourceEditor" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/CodeEditApp/CodeEditSourceEditor";
+			repositoryURL = "https://github.com/FeodosiiShus/CodeEditSourceEditor";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.10.0;
+				kind = revision;
+				revision = 488079a386ec299c86d7787a0a65e884dd7a4347;
 			};
 		};
 		6CB94D012CA1205100E8651C /* XCRemoteSwiftPackageReference "swift-async-algorithms" */ = {

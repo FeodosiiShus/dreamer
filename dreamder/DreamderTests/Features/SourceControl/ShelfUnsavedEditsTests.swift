@@ -22,6 +22,7 @@ struct ShelfUnsavedEditsTests {
         func open(_ relativePath: String) throws -> CodeFileDocument {
             let url = root.appending(path: relativePath)
             let document = try CodeFileDocument(for: url, withContentsOf: url, ofType: "public.plain-text")
+            document.autosavingInPlace = { false }
             NSDocumentController.shared.addDocument(document)
             return document
         }
@@ -145,6 +146,7 @@ struct ShelfUnsavedEditsTests {
             let first = try world.open("a.txt")
             let clean = try world.open("b.txt")
             let untitled = CodeFileDocument()
+            untitled.autosavingInPlace = { false }
             NSDocumentController.shared.addDocument(untitled)
             defer {
                 closeDocuments(guide, first, clean, untitled)

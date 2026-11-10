@@ -81,6 +81,14 @@ nonisolated extension GitClient {
         )
     }
 
+    func getHeadCommit() async -> String? {
+        guard let output = try? await run(arguments: ["rev-parse", "--verify", "--quiet", "HEAD"]) else {
+            return nil
+        }
+        let commit = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return commit.isEmpty ? nil : commit
+    }
+
     /// Checkout branch
     /// - Parameter branch: Branch to checkout
     func checkoutBranch(_ branch: GitBranch, forceLocal: Bool = false, newName: String? = nil) async throws {

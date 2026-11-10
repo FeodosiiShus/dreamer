@@ -26,27 +26,6 @@ final class GitGutterCoordinator: TextViewCoordinator {
         let untracked: Bool
     }
 
-    private nonisolated struct RepositorySignature: Equatable, Sendable {
-        var isGitRepository = false
-        var branchName: String?
-        var ahead = 0
-        var behind = 0
-        var changedFiles: Set<GitChangedFile> = []
-        var unsyncedAhead = 0
-        var unsyncedBehind = 0
-
-        @MainActor
-        init(manager: SourceControlManager) {
-            isGitRepository = manager.isGitRepository
-            branchName = manager.currentBranch?.longName
-            ahead = manager.currentBranch?.ahead ?? 0
-            behind = manager.currentBranch?.behind ?? 0
-            changedFiles = Set(manager.changedFiles)
-            unsyncedAhead = manager.numberOfUnsyncedCommits.ahead
-            unsyncedBehind = manager.numberOfUnsyncedCommits.behind
-        }
-    }
-
     init(codeFile: CodeFileDocument, debounceInterval: Duration = .milliseconds(500)) {
         fileURL = codeFile.fileURL
         self.debounceInterval = debounceInterval
@@ -64,8 +43,8 @@ final class GitGutterCoordinator: TextViewCoordinator {
         self.workspace = workspace
         guard let manager = workspace.sourceControlManager else { return }
         repositoryObservation = Task { [weak self, manager] in
-            let signatures = Observations { RepositorySignature(manager: manager) }
-            var previous: RepositorySignature?
+            let signatures = Observations { GitGutterRepositorySignature(manager: manager) }
+            var previous: GitGutterRepositorySignature?
             for await signature in signatures {
                 guard let self else { return }
                 guard signature != previous else { continue }
