@@ -2,6 +2,10 @@ import Foundation
 import Testing
 @testable import Dreamder
 
+nonisolated private struct DocumentOnAnotherThread: @unchecked Sendable {
+    let document: CodeFileDocument
+}
+
 @MainActor
 @Suite(.uiGate)
 struct CodeFileEditorConfigResolutionTests {
@@ -150,7 +154,8 @@ struct CodeFileEditorConfigResolutionTests {
             defer { document.close() }
             let renamed = dir.appending(path: "notes.md")
 
-            await Task.detached { document.fileURL = renamed }.value
+            let transferred = DocumentOnAnotherThread(document: document)
+            await Task.detached { transferred.document.fileURL = renamed }.value
 
             try await eventually(timeout: .seconds(20)) { document.editorConfig.trimTrailingWhitespace == false }
             #expect(document.editorConfig.indentStyle == .tab)

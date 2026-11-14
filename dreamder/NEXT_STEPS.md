@@ -4,7 +4,7 @@ Status when work stopped (2026-11-14, night session). Read `AGENTS.md` first; th
 
 ## Last verified state
 
-- The third batch (Swift 6.3.3 fixes for the test targets, strict coverage gate, test isolation, compilation caching) and the fixes of 2026-11-14 are one commit on top of `2b0049799117`.
+- The third batch (Swift 6.3.3 fixes for the test targets, strict coverage gate, test isolation, compilation caching) and the fixes of 2026-11-14 are commit `95aac6378eb6` on top of `2b0049799117`; the commit after it holds what its CI run found.
 - Local gate on Xcode 27.2 right before that commit: `make check`, `make lint`, `make coverage-sharded COVERAGE_CHECK=1` (three shards passed, strict gate at 100 %), `make smoke` on the instrumented build, `make release`.
 - Fixed on 2026-11-14, each with tests:
   - Task output lost when the shell exits before the app has read it: the root cause of the tests that were "flaky under load" (`docs/research/README.md`, last section). The terminal view holds the secondary side of the pseudo-terminal while a shell runs (`PtySecondaryHold`).
@@ -14,7 +14,8 @@ Status when work stopped (2026-11-14, night session). Read `AGENTS.md` first; th
   - `EventModifiers.hidden` was a `static var`, which Swift 6.3.3 rejected from the test target (CI run 42725881580).
   - Three coverage gaps the isolation seams of the third batch had opened (`DreamderDocumentController.openDocument(panels:)`, `WelcomeServices.applicationWindows`, the `Settings` subscript setter).
 - Not verified locally: Swift 6.3.3 and macOS 26. Only Xcode 27.2 is installed, so CI is the only check; the test shards and the coverage job have never run on macOS 26.
-- CI before this commit, run 42725881580 on `2b0049799117`: Release app passed; macOS 27 build, smoke and shard 1 passed, shard 0 failed on one Markdown test that is now replaced; the macOS 26 build listed the Swift 6.3.3 errors of the test targets that this commit fixes.
+- CI run 43540188691 on `95aac6378eb6`: Release app passed; on macOS 27 the build, smoke and both test shards passed for the first time and the coverage gate ran for the first time. It found two gaps the local gate cannot see: `CodeFileView.editorTheme(for:)` reads the background image path from the standard defaults, which are set on the developer machine and empty on the runner, and the setter of `WelcomeProjectsList.queryBinding` ran locally only through key events that need the key window. Both now have tests that do not depend on the machine (`CodeFileViewBackgroundImageTests` with `.defaultAppStorage`, the binding set directly). The macOS 26 build listed three more Swift 6.3.3 errors, fixed in the next commit: nested enums of `DreamderUITests/Query.swift` without `@MainActor`, a document returned from an `#expect(throws:)` closure, a document captured by `Task.detached`.
+- CI before that, run 42725881580 on `2b0049799117`: Release app passed; macOS 27 build, smoke and shard 1 passed, shard 0 failed on one Markdown test that is now replaced; the macOS 26 build listed the Swift 6.3.3 errors of the test targets that this commit fixes.
 - Test isolation (`docs/research/test-shared-state.md`): rows 1 to 6 and 8 of the audit are done. Inside a test host no document autosaves on a timer unless the test opts in.
 - Compilation caching is on for every command-line build and cached on CI per runner and week; it has never run on CI. Locally a clean rebuild with a warm cache took 32 s against 229 s.
 

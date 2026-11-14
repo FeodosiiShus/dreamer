@@ -313,7 +313,7 @@ struct CodeFileDocumentBackgroundLoadTests {
             let missing = dir.appending(path: "missing.txt")
 
             await #expect(throws: CocoaError.self) {
-                try await CodeFileDocument.open(contentsOf: missing, ofType: Self.plainText)
+                _ = try await CodeFileDocument.open(contentsOf: missing, ofType: Self.plainText)
             }
         }
     }

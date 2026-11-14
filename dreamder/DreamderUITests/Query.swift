@@ -32,6 +32,7 @@ enum Query {
         return application.windows.element(matching: .window, identifier: "about")
     }
 
+    @MainActor
     enum Window {
         static func getProjectNavigator(_ window: XCUIElement) -> XCUIElement {
             return window.descendants(matching: .any).matching(identifier: "ProjectNavigator").element
@@ -52,6 +53,7 @@ enum Query {
         }
     }
 
+    @MainActor
     enum Navigator {
         static func getRows(_ navigator: XCUIElement) -> XCUIElementQuery {
             navigator.descendants(matching: .outlineRow)
@@ -76,6 +78,7 @@ enum Query {
         }
     }
 
+    @MainActor
     enum TabBar {
         static func getTab(labeled title: String, _ tabBar: XCUIElement) -> XCUIElement {
             tabBar.descendants(matching: .group).containing(NSPredicate(format: "value = %@", title)).firstMatch

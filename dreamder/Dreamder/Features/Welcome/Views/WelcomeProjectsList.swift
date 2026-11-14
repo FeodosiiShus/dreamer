@@ -5,7 +5,7 @@ struct WelcomeProjectsList: View {
 
     @FocusState private var listFocused: Bool
 
-    private var queryBinding: Binding<String> {
+    var queryBinding: Binding<String> {
         Binding(get: { model.query }, set: { model.updateQuery($0) })
     }
 

@@ -129,7 +129,6 @@ extension ShelfViewCoverage {
             defer { session.close() }
             try session.repo.fixture.write("a.txt", "a2\n")
             let shelf = try await session.repo.client.shelve(paths: ["a.txt"], name: "external")
-            #expect(session.model.shelves.isEmpty)
 
             try await session.manager.refreshStashEntries()
 

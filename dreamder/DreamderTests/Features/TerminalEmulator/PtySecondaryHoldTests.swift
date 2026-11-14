@@ -92,6 +92,10 @@ nonisolated private struct ShellOnPty {
         return String(bytes: received, encoding: .utf8) ?? ""
     }
 
+    func sendLine() {
+        _ = "go\n".withCString { write(primary, $0, 3) }
+    }
+
     func reap(timeout: Duration) async throws -> ChildReap {
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: timeout)
@@ -106,7 +110,7 @@ nonisolated private struct ShellOnPty {
 
 struct PtySecondaryHoldTests {
     @Test
-    func aHoldKeepsTheTerminalConnectedUntilItIsReleased() throws {
+    func aHoldKeepsTheTerminalConnectedUntilItIsReleased() async throws {
         let primary = try makeNonBlockingPrimary()
         defer { close(primary) }
         var unused: [UInt8] = []
@@ -117,7 +121,13 @@ struct PtySecondaryHoldTests {
         #expect(whileHeld == .wouldBlock)
 
         hold = nil
-        let afterRelease = readPrimary(primary, into: &unused)
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(60))
+        var afterRelease = readPrimary(primary, into: &unused)
+        while afterRelease == .wouldBlock, clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+            afterRelease = readPrimary(primary, into: &unused)
+        }
         #expect(afterRelease == .endOfFile)
     }
 
@@ -165,10 +175,11 @@ struct PtySecondaryHoldTests {
 
     @Test
     func outputOfAShellThatAlreadyExitedSurvivesAReaderThatComesLate() async throws {
-        let shell = try ShellOnPty.start(command: "echo held-$((40+2))")
+        let shell = try ShellOnPty.start(command: "read line; echo held-$((40+2))")
         defer { close(shell.primary) }
         let hold = PtySecondaryHold(primary: shell.primary)
         #expect(hold != nil)
+        shell.sendLine()
 
         try await Task.sleep(for: .milliseconds(1500))
         let output = try await shell.readUntilEndOfFile(timeout: .seconds(60))
@@ -181,10 +192,11 @@ struct PtySecondaryHoldTests {
 
     @Test
     func aShellKilledBeforeItsOutputWasReadStillDeliversIt() async throws {
-        let shell = try ShellOnPty.start(command: "echo killed-$((40+2)); sleep 600")
+        let shell = try ShellOnPty.start(command: "read line; echo killed-$((40+2)); sleep 600")
         defer { close(shell.primary) }
         let hold = PtySecondaryHold(primary: shell.primary)
         #expect(hold != nil)
+        shell.sendLine()
 
         try await Task.sleep(for: .milliseconds(500))
         kill(shell.processIdentifier, SIGKILL)

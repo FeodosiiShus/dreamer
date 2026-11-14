@@ -186,6 +186,19 @@ struct WelcomeViewsCoverageTests {
     }
 
     @Test
+    func theSearchFieldBindingReadsAndUpdatesTheQuery() throws {
+        let (defaults, suiteName) = try makeIsolatedDefaults()
+        defer { removeIsolatedDefaults(defaults, suiteName: suiteName) }
+        let model = makeModel(defaults, paths: ["/p/alpha", "/p/beta"], recorder: WelcomeRecorder())
+        let list = WelcomeProjectsList(model: model)
+
+        list.queryBinding.wrappedValue = "be"
+
+        #expect(model.query == "be")
+        #expect(list.queryBinding.wrappedValue == "be")
+    }
+
+    @Test
     func droppingURLsOpensThemAndReportsWhetherAnythingWasDropped() throws {
         let (defaults, suiteName) = try makeIsolatedDefaults()
         defer { removeIsolatedDefaults(defaults, suiteName: suiteName) }
