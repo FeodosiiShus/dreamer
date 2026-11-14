@@ -225,9 +225,7 @@ struct BranchesPopupDefaultConflictsOpenerCoverage {
             try await eventually { MergeToolPresenter.conflictsModel(for: workspace) != nil }
             let shown = try #require(MergeToolPresenter.conflictsModel(for: workspace))
             #expect(shown.workspace === workspace)
-            if MergeToolPresenter.conflictsModel === shown {
-                MergeToolPresenter.conflictsWindow?.close()
-            }
+            MergeToolPresenter.conflictsWindow(for: workspace)?.close()
         }
     }
 }

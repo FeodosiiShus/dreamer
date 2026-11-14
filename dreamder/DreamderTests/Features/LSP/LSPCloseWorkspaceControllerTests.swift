@@ -8,24 +8,20 @@ import Testing
 struct LSPCloseWorkspaceControllerTests {
     let fixture = LSPServiceFixture()
 
-    @MainActor
-    struct ControllerScope {
-        let controller: DreamderDocumentController
-        private let originalService: LSPService
-        private let originalOpenDocuments: @MainActor () -> [NSDocument]
+    func removeWorkspace(_ workspace: LSPServiceWorkspace, service: LSPService, in directory: URL) throws {
+        let controller = try #require(DreamderDocumentController.shared as? DreamderDocumentController)
+        let settings = Dreamder.Settings(baseURL: directory.appending(path: "settings", directoryHint: .isDirectory))
 
-        init(controller: DreamderDocumentController, service: LSPService) {
-            self.controller = controller
-            originalService = controller.lspService
-            originalOpenDocuments = controller.openDocuments
-            controller.lspService = service
-            controller.openDocuments = { [NSDocument()] }
-        }
-
-        func restore() {
-            controller.lspService = originalService
-            controller.openDocuments = originalOpenDocuments
-        }
+        controller.finishRemoval(
+            of: workspace.workspace,
+            context: DocumentRemovalContext(
+                lspService: service,
+                openDocuments: { [NSDocument()] },
+                settings: settings,
+                showWelcomeWindow: {},
+                quitApplication: {}
+            )
+        )
     }
 
     func openWorkspace(
@@ -45,16 +41,13 @@ struct LSPCloseWorkspaceControllerTests {
     func removingAWorkspaceWhosePathNeedsPercentEncodingStopsItsServers() async throws {
         try await withTempDir { directory in
             let service = fixture.makeService()
-            let controller = try #require(DreamderDocumentController.shared as? DreamderDocumentController)
-            let scope = ControllerScope(controller: controller, service: service)
-            defer { scope.restore() }
             let (workspace, key) = try await openWorkspace(named: "my project é", in: directory, service: service)
             defer { workspace.close() }
             #expect(URL(fileURLWithPath: workspace.path).lastPathComponent == "my project é")
             #expect(service.languageClients[key] != nil)
             let created = try #require(fixture.created.first)
 
-            controller.removeDocument(workspace.workspace)
+            try removeWorkspace(workspace, service: service, in: directory)
 
             #expect(service.languageClients.isEmpty)
             #expect(service.serverStates[key] == nil)
@@ -68,13 +61,10 @@ struct LSPCloseWorkspaceControllerTests {
     func removingAWorkspaceWithAPlainPathStillStopsItsServers() async throws {
         try await withTempDir { directory in
             let service = fixture.makeService()
-            let controller = try #require(DreamderDocumentController.shared as? DreamderDocumentController)
-            let scope = ControllerScope(controller: controller, service: service)
-            defer { scope.restore() }
             let (workspace, key) = try await openWorkspace(named: "plain", in: directory, service: service)
             defer { workspace.close() }
 
-            controller.removeDocument(workspace.workspace)
+            try removeWorkspace(workspace, service: service, in: directory)
 
             #expect(service.languageClients.isEmpty)
             #expect(service.serverStates[key] == nil)
@@ -85,15 +75,12 @@ struct LSPCloseWorkspaceControllerTests {
     func removingAWorkspaceOnlyStopsTheServersOfThatWorkspace() async throws {
         try await withTempDir { directory in
             let service = fixture.makeService()
-            let controller = try #require(DreamderDocumentController.shared as? DreamderDocumentController)
-            let scope = ControllerScope(controller: controller, service: service)
-            defer { scope.restore() }
             let (closing, closingKey) = try await openWorkspace(named: "my project", in: directory, service: service)
             defer { closing.close() }
             let (staying, stayingKey) = try await openWorkspace(named: "my project 2", in: directory, service: service)
             defer { staying.close() }
 
-            controller.removeDocument(closing.workspace)
+            try removeWorkspace(closing, service: service, in: directory)
 
             #expect(service.languageClients[closingKey] == nil)
             #expect(service.languageClients[stayingKey] != nil)

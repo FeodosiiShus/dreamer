@@ -203,13 +203,10 @@ struct LanguageServerRowView: View, Equatable {
                     Text("Remove")
                 }
             }
-            Toggle(
-                "",
-                isOn: Binding(get: { isEnabled }, set: { setEnabled($0) })
-            )
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .labelsHidden()
+            Toggle("", isOn: isEnabledBinding)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .labelsHidden()
         }
     }
 
@@ -269,6 +266,10 @@ struct LanguageServerRowView: View, Equatable {
         Task {
             await onInstall(package)
         }
+    }
+
+    var isEnabledBinding: Binding<Bool> {
+        Binding(get: { isEnabled }, set: { setEnabled($0) })
     }
 
     func setEnabled(_ enabled: Bool) {

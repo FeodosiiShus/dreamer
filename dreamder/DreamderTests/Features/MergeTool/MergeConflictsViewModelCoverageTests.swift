@@ -27,7 +27,6 @@ struct MergeConflictsViewModelCoverageTests {
         try await withTempDir { dir in
             _ = try await GitMergeFixture.mergeConflict(in: dir)
             let model = try #require(MergeConflictsViewModel(workspace: workspace(dir)))
-            let revisionsPathBefore = MergeToolPresenter.lastRevisionsPath
 
             #expect(model.isEmpty)
             #expect(model.summary == "All conflicts have been resolved")
@@ -37,7 +36,7 @@ struct MergeConflictsViewModelCoverageTests {
             #expect(model.canMerge == false)
             #expect(model.primaryEntry == nil)
             model.openMergeWindow()
-            #expect(MergeToolPresenter.lastRevisionsPath == revisionsPathBefore)
+            #expect(MergeToolPresenter.revisionsWindow(for: model.workspace, path: nil) == nil)
 
             await model.accept(.yours)
             #expect(model.isBusy == false)

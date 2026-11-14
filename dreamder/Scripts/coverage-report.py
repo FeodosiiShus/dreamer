@@ -49,26 +49,52 @@ def read_json(path, description):
         fail(f"cannot read {description} {os.path.relpath(path, ROOT)}: {error}")
 
 
-def load_executed_lines(bundle):
+def xccov(view, bundle):
     if not os.path.exists(bundle):
         fail(f"coverage bundle {bundle} not found; run `make coverage` first")
     completed = subprocess.run(
-        ["xcrun", "xccov", "view", "--archive", "--json", bundle],
+        ["xcrun", "xccov", "view", view, "--json", bundle],
         capture_output=True, text=True,
     )
     if completed.returncode != 0:
         fail(f"xccov failed for {bundle}: {completed.stderr.strip()}")
+    return json.loads(completed.stdout)
+
+
+def load_executed_lines(bundles):
     executed = {}
-    for path, records in json.loads(completed.stdout).items():
-        if not path.startswith(SOURCES):
-            continue
-        lines = {
-            record["line"]: record.get("executionCount", 0) > 0
-            for record in records if record.get("isExecutable")
-        }
-        if lines:
-            executed[os.path.relpath(path, ROOT)] = lines
-    return executed
+    merged = []
+    for bundle in bundles:
+        has_regions = False
+        for path, records in xccov("--archive", bundle).items():
+            if not path.startswith(SOURCES):
+                continue
+            lines = executed.setdefault(os.path.relpath(path, ROOT), {})
+            for record in records:
+                has_regions = has_regions or "subranges" in record
+                if record.get("isExecutable"):
+                    number = record["line"]
+                    lines[number] = lines.get(number, False) or record.get("executionCount", 0) > 0
+        if not has_regions:
+            merged.append(bundle)
+    return {path: lines for path, lines in executed.items() if lines}, merged
+
+
+def load_entered_functions(bundles):
+    entered = {}
+    for bundle in bundles:
+        for target in xccov("--report", bundle).get("targets", []):
+            if not target.get("name", "").startswith("Dreamder.app"):
+                continue
+            for file in target.get("files", []):
+                if not file["path"].startswith(SOURCES):
+                    continue
+                functions = entered.setdefault(os.path.relpath(file["path"], ROOT), {})
+                for function in file.get("functions", []):
+                    if function.get("executableLines", 0) > 0:
+                        key = (function["lineNumber"], function["name"])
+                        functions[key] = functions.get(key, False) or function.get("executionCount", 0) > 0
+    return entered
 
 
 def glob_to_regex(pattern):
@@ -195,7 +221,7 @@ def uncovered_lines(lines):
     return shown + (f" and {len(missing) - MAX_LISTED_LINES} more" if len(missing) > MAX_LISTED_LINES else "")
 
 
-def check(snapshot, executed):
+def check(snapshot, executed, entered):
     violations = []
     files = snapshot["files"]
 
@@ -213,6 +239,9 @@ def check(snapshot, executed):
                 f"{path} has {entry_percent(entry):.1f}% coverage ({entry['covered']}/{entry['executable']} lines, "
                 f"uncovered: {uncovered_lines(executed[path])}), every file must be {TARGET_PERCENT:.0f}%"
             )
+        for (line, name), hit in sorted(entered.get(path, {}).items()):
+            if not hit and executed[path].get(line, True):
+                violations.append(f"{path}:{line} never runs although its line does: {name}")
     return violations
 
 
@@ -279,7 +308,7 @@ def validate_baseline(baseline, path):
 
 def main():
     parser = argparse.ArgumentParser(description="Per-file and per-scope line coverage of the Dreamder app sources.")
-    parser.add_argument("bundle", nargs="?", default=DEFAULT_BUNDLE)
+    parser.add_argument("bundles", nargs="*", default=[DEFAULT_BUNDLE], help="one result bundle, or every shard bundle of one run")
     parser.add_argument("--json", metavar="OUT", help="write total, scopes and files as JSON")
     parser.add_argument("--check", action="store_true", help="fail when any file or the total is below 100%% line coverage")
     parser.add_argument("--summary", action="store_true", help="append a markdown summary to $GITHUB_STEP_SUMMARY, or print it")
@@ -292,7 +321,7 @@ def main():
     if classifier is None and (arguments.check or arguments.write_baseline):
         fail(f"scopes file {os.path.relpath(arguments.scopes, ROOT)} not found")
 
-    executed = load_executed_lines(arguments.bundle)
+    executed, merged = load_executed_lines(arguments.bundles)
     snapshot = summarize(classify_rows(executed, classifier))
     quiet = arguments.check or arguments.write_baseline or arguments.summary
 
@@ -312,7 +341,13 @@ def main():
     violations = None
     exit_code = 0
     if arguments.check:
-        violations = check(snapshot, executed)
+        if merged:
+            fail(
+                f"{', '.join(os.path.relpath(bundle, ROOT) for bundle in merged)} has no region data: "
+                "a bundle written by `xcresulttool merge` lists functions as never run; "
+                "pass the bundles it was merged from (.build/shards/shard-*.xcresult)"
+            )
+        violations = check(snapshot, executed, load_entered_functions(arguments.bundles))
         if violations:
             print(f"Coverage check failed ({len(violations)} violation{'s' if len(violations) != 1 else ''}):")
             for violation in violations:

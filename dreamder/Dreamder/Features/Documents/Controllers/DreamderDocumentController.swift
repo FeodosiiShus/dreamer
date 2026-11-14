@@ -39,17 +39,27 @@ final class DreamderDocumentController: NSDocumentController {
     }
 
     func noteRecentProject(at url: URL) {
-        if recordsRecentDocuments { recordRecentProject(at: url) }
+        noteRecentProject(at: url, recording: recordsRecentDocuments, in: recentProjects)
     }
 
-    func recordRecentProject(at url: URL) {
-        recentProjects.markRecent(at: url, isDirectory: url.isFolder)
+    func noteRecentProject(at url: URL, recording: Bool, in manager: RecentProjectsManager) {
+        if recording { recordRecentProject(at: url, in: manager) }
+    }
+
+    func recordRecentProject(at url: URL, in manager: RecentProjectsManager) {
+        manager.markRecent(at: url, isDirectory: url.isFolder)
     }
 
     @MainActor
     @discardableResult
     func createAndOpenNewDocument() async -> Bool {
-        guard let url = createNewDocumentFile() else { return false }
+        await createAndOpenNewDocument(panels: filePanels)
+    }
+
+    @MainActor
+    @discardableResult
+    func createAndOpenNewDocument(panels: any FilePanelPresenting) async -> Bool {
+        guard let url = createNewDocumentFile(panels: panels) else { return false }
         await withCheckedContinuation { continuation in
             openDocument(withContentsOf: url, display: true) { _, _, _ in
                 continuation.resume()
@@ -59,12 +69,16 @@ final class DreamderDocumentController: NSDocumentController {
     }
 
     override func newDocument(_ sender: Any?) {
-        guard let url = createNewDocumentFile() else { return }
+        createNewDocument(panels: filePanels)
+    }
+
+    func createNewDocument(panels: any FilePanelPresenting) {
+        guard let url = createNewDocumentFile(panels: panels) else { return }
         openDocument(withContentsOf: url, display: true) { _, _, _ in }
     }
 
-    private func createNewDocumentFile() -> URL? {
-        guard let url = filePanels.chooseSaveLocation(SavePanelRequest()) else { return nil }
+    private func createNewDocumentFile(panels: any FilePanelPresenting) -> URL? {
+        guard let url = panels.chooseSaveLocation(SavePanelRequest()) else { return nil }
         let createdFile = fileManager.createFile(
             atPath: url.path,
             contents: nil,
@@ -80,7 +94,11 @@ final class DreamderDocumentController: NSDocumentController {
     var filePanels: any FilePanelPresenting = SystemFilePanels()
 
     override func openDocument(_ sender: Any?) {
-        openDocument(onCompletion: { _, _ in }, onCancel: {}, panels: filePanels)
+        openDocument(panels: filePanels)
+    }
+
+    func openDocument(panels: any FilePanelPresenting) {
+        openDocument(onCompletion: { _, _ in }, onCancel: {}, panels: panels)
     }
 
     override func openDocument(
@@ -150,15 +168,27 @@ final class DreamderDocumentController: NSDocumentController {
 
     override func removeDocument(_ document: NSDocument) {
         super.removeDocument(document)
+        finishRemoval(
+            of: document,
+            context: DocumentRemovalContext(
+                lspService: lspService,
+                openDocuments: openDocuments,
+                settings: settings,
+                showWelcomeWindow: showWelcomeWindow,
+                quitApplication: quitApplication
+            )
+        )
+    }
 
+    func finishRemoval(of document: NSDocument, context: DocumentRemovalContext) {
         if let workspace = document as? WorkspaceDocument, let path = workspace.fileURL?.absolutePath {
-            lspService.closeWorkspace(path)
+            context.lspService.closeWorkspace(path)
         }
 
-        guard openDocuments().isEmpty else { return }
-        switch settings.preferences.general.reopenWindowAfterClose {
-        case .showWelcomeWindow: showWelcomeWindow()
-        case .quit: quitApplication()
+        guard context.openDocuments().isEmpty else { return }
+        switch context.settings.preferences.general.reopenWindowAfterClose {
+        case .showWelcomeWindow: context.showWelcomeWindow()
+        case .quit: context.quitApplication()
         case .doNothing: break
         }
     }

@@ -1,30 +1,37 @@
 # Next steps
 
-Status when work stopped (2026-11-10, night session). Read `AGENTS.md` first; this file lists only what is still open. Research, measurements, the bug audit and its fix status are in `docs/research/README.md`.
+Status when work stopped (2026-11-14, night session). Read `AGENTS.md` first; this file lists only what is still open. Research, measurements, the bug audit and its fix status are in `docs/research/README.md`.
 
 ## Last verified state
 
-- Bug audit: all 61 findings are fixed with regression tests (`docs/research/README.md`, "Fix status"). CRASH-1 is fixed in a fork of `CodeEditSourceEditor` that the project pins by revision (`AGENTS.md`, "Package fork").
-- Local, Xcode 27.2: `make check` clean, `make lint` clean, `make build-for-testing FLAVOR=coverage` green.
-- One host, the canonical gate before the fork (`make coverage FLAVOR=coverage COVERAGE_CHECK=1`): `Test run with 10231 tests in 1047 suites passed after 803.038 seconds`, no host restart, `Coverage check passed: total 100.00%, logic 100.00%` (82 372 of 82 372 executable lines, 900 files).
-- Three hosts with the fork (`Scripts/sharded-tests.py --flavor coverage --shards 3`): two consecutive full runs with every shard passed, no host restart, 246 s and 230 s wall, coverage gate passed at 100 % on the merged bundle. The run before the fork had one host restarted by CRASH-1.
-- CI run 42721773641 on `9f6f32d62ea1`:
-  - macOS 27 / Xcode 27.2: build 13 min, headless smoke passed, both test shards ran all 10 231 tests (5 158 in 457 s and 5 073 in 713 s, against 1 812 s with one shard) and each had one failing test, both fixed in the tests: `ActiveTaskTerminalLaunchTests/anUnsupportedLoginShellFallsBackToZshAndTheTaskStillRuns` waited 20 s for terminal text (now a marker file and the exit), and `ShelfUnsavedEditsTests/shelvingIgnoresUnsavedEditsOutsideTheSelectionAndReloadsCleanDocuments` had its untouched document autosaved after 2 s because `AutosavePreferenceTests` flips the process-wide `AutosavePreference.isEnabled` in the same host (the suite now turns autosave off for its documents through `CodeFileDocument.autosavingInPlace`).
-  - macOS 26 / Xcode 26.6: the build and the Release job failed on a Swift 6.3.3 compiler crash in IR generation (`AGENTS.md` rule 8, `Binding` setters passed as method references). The three call sites are rewritten as closures; Swift 6.3.3 has not compiled the remaining 172 app files and the test target yet.
+- The third batch (Swift 6.3.3 fixes for the test targets, strict coverage gate, test isolation, compilation caching) and the fixes of 2026-11-14 are one commit on top of `2b0049799117`.
+- Local gate on Xcode 27.2 right before that commit: `make check`, `make lint`, `make coverage-sharded COVERAGE_CHECK=1` (three shards passed, strict gate at 100 %), `make smoke` on the instrumented build, `make release`.
+- Fixed on 2026-11-14, each with tests:
+  - Task output lost when the shell exits before the app has read it: the root cause of the tests that were "flaky under load" (`docs/research/README.md`, last section). The terminal view holds the secondary side of the pseudo-terminal while a shell runs (`PtySecondaryHold`).
+  - Exit status 0 reported for a child that SwiftTerm could not reap yet (`ChildReap`, `LocalProcessPump.resolveTermination`).
+  - zsh integration scripts removed and copied on every start in a directory all sessions share (`ShellIntegration.installScript`).
+  - Gutter line numbers painted outside the editor pane, over the breadcrumbs bar and over the split below (`EditorBackgroundCoordinator`).
+  - `EventModifiers.hidden` was a `static var`, which Swift 6.3.3 rejected from the test target (CI run 42725881580).
+  - Three coverage gaps the isolation seams of the third batch had opened (`DreamderDocumentController.openDocument(panels:)`, `WelcomeServices.applicationWindows`, the `Settings` subscript setter).
+- Not verified locally: Swift 6.3.3 and macOS 26. Only Xcode 27.2 is installed, so CI is the only check; the test shards and the coverage job have never run on macOS 26.
+- CI before this commit, run 42725881580 on `2b0049799117`: Release app passed; macOS 27 build, smoke and shard 1 passed, shard 0 failed on one Markdown test that is now replaced; the macOS 26 build listed the Swift 6.3.3 errors of the test targets that this commit fixes.
+- Test isolation (`docs/research/test-shared-state.md`): rows 1 to 6 and 8 of the audit are done. Inside a test host no document autosaves on a timer unless the test opts in.
+- Compilation caching is on for every command-line build and cached on CI per runner and week; it has never run on CI. Locally a clean rebuild with a warm cache took 32 s against 229 s.
 
 ## To do
 
-1. Watch CI until both platforms and the Release job are green. Expect more iterations on macOS 26: the tests and the coverage merge job have never run there.
-2. Send the one-commit fix of the fork upstream (`CodeEditApp/CodeEditSourceEditor`, `TreeSitterClient.swift:180`) and return to the upstream package once it is released.
-3. Give each test host its own preferences domain. Every host on the machine shares `dev.dreamder.Dreamder` with the installed app, tests leave keys in it, and `CFFIXED_USER_HOME` does not redirect it.
-4. Build settings still worth measuring (`docs/research/xcode-test-speed.md`): `COMPILATION_CACHE_ENABLE_CACHING=YES` and an arm64-only Release build. `RUN_DOCUMENTATION_COMPILER=NO` and `COMPILER_INDEX_STORE_ENABLE=NO` are applied to every command-line build.
-5. Dead code found during the fixes, left in place: `String.fullCommand`, `escapedQuotes`, `escapedWhiteSpaces`, `escape(replacing:)` and `MergeToolPresenter.showConflictsForActiveWorkspace(resolve:)` have no production callers.
-6. Flaky under load, root cause not found:
-   - Task output that never reaches the terminal (`CEActiveTaskTests/testRunMethod(.zsh)`): suspected pty race when a fast child exits before SwiftTerm's `LocalProcess` reads. Tests that need the output assert a file side effect instead.
-   - `ProjectNavigatorMenuTests/multipleSelectionHidesRenameAndOffersGroupingOnlyWithinOneParent`, `DiagnosticTooltipPresenterTests/monitorForwardsMouseMovesAndDismissesOnInput` and `CommitToolWindowCoverageTests/aDirectoryWithoutARepositoryShowsTheHintAndBecomesTheTreeAfterInit` (seen in earlier sessions, not in the last five full runs).
-7. Descriptor hygiene: `forkpty` children (SwiftTerm `LocalProcess`) inherit every non-close-on-exec descriptor of the app, and `LocalProcess` never closes the pty master. Both need a package fork or upstream fix.
-8. SwiftLint debt: `Scripts/swiftlint-baseline.json` records the pre-existing violations; `make lint` fails only on new ones. Pay it down file by file and regenerate with `make lint-baseline`.
-9. Known product follow-ups:
-   - The LSP client advertises no `workspace.inlayHint` / `workspace.diagnostics` refresh support, because the `LanguageServerProtocol` package lacks those fields.
-   - Files up to 1 MiB (`FileSizeLimit.synchronousOpen`) are still read and decoded on the main actor when a tab opens (B-10 is bounded, not removed).
-   - In an untrusted workspace only typescript-language-server starts; there is no per-server opt-in short of trusting the project.
+1. Watch CI until both platforms and the Release job are green. Expect iterations on macOS 26: its test shards and coverage job have never run, and a line that only one macOS version executes fails the absolute gate on the other.
+2. Close the primary descriptor of a finished terminal session. Every session keeps one of the 511 pseudo-terminals macOS allows system-wide until the app quits; a local run of three shards held 360 at its peak (two CI shards hold about half of that each). SwiftTerm's `LocalProcess` owns the `DispatchIO` channel and gives no access to it. A way without a fork that was not tried: open a second `DispatchIO` channel on the same descriptor whose cleanup handler closes it, replace the view's `LocalProcess` once the exit is delivered so SwiftTerm's channel is released, and close the second channel; libdispatch runs the cleanup handlers only after every channel on the descriptor is gone.
+3. Check on the second CI run with a warm compilation cache how long the build jobs take and how large the `cas-v1-*` caches are (GitHub keeps 10 GB per repository); drop the cache steps if they do not pay.
+4. Send the one-commit fix of the fork upstream (`CodeEditApp/CodeEditSourceEditor`, `TreeSitterClient.swift:180`) and return to the upstream package once it is released.
+5. Remaining rows of `docs/research/test-shared-state.md` (7 and 9 to 16): `LSPService.shared.languageClients` registrations in tests, `NotificationManager.shared`, the shift monitor and Escape event monitors, `CommandManager.shared` ids, `NSApp.appearance`, standard-defaults keys. One more shared thing showed up on 2026-11-14: the application's key window. Fifteen test files send key events through `NSApp.sendEvent`, which delivers them to whatever window is key; `BranchesPopupKeyMonitorCoverageTests/monitorStaysQuietWhileAMenuIsTracked` counted four key events of another suite (fixed by counting only events addressed to its own window). The other files have not been audited for the same assumption.
+6. Give each test host its own preferences domain. Every host on the machine shares `dev.dreamder.Dreamder` with the installed app, tests leave keys in it, and `CFFIXED_USER_HOME` does not redirect it.
+7. An arm64-only Release build is still worth measuring (`docs/research/xcode-test-speed.md`); it changes the shipped artifact.
+8. Dead code found during the fixes, left in place: `String.fullCommand`, `escapedQuotes`, `escapedWhiteSpaces`, `escape(replacing:)`, `MergeToolPresenter.showConflictsForActiveWorkspace(resolve:)` and the setter of the static `Settings` subscript have no production callers.
+9. Flaky under load, root cause not found: `ProjectNavigatorMenuTests/multipleSelectionHidesRenameAndOffersGroupingOnlyWithinOneParent`, `DiagnosticTooltipPresenterTests/monitorForwardsMouseMovesAndDismissesOnInput` and `CommitToolWindowCoverageTests/aDirectoryWithoutARepositoryShowsTheHintAndBecomesTheTreeAfterInit` (seen in earlier sessions, not in the last runs).
+10. Descriptor hygiene: `forkpty` children (SwiftTerm `LocalProcess`) inherit every non-close-on-exec descriptor of the app, and SwiftTerm runs Swift code between `fork` and `execve`. Both need a package fork or upstream fix.
+11. SwiftLint debt: `Scripts/swiftlint-baseline.json` records the pre-existing violations; `make lint` fails only on new ones. Pay it down file by file and regenerate with `make lint-baseline`.
+12. Known product follow-ups:
+    - The LSP client advertises no `workspace.inlayHint` / `workspace.diagnostics` refresh support, because the `LanguageServerProtocol` package lacks those fields.
+    - Files up to 1 MiB (`FileSizeLimit.synchronousOpen`) are still read and decoded on the main actor when a tab opens (B-10 is bounded, not removed).
+    - In an untrusted workspace only typescript-language-server starts; there is no per-server opt-in short of trusting the project.

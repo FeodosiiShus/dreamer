@@ -47,7 +47,15 @@ final class MarkdownHighlightProvider: HighlightProviding {
     private var cached: (generation: Int, tokens: [MarkdownToken])?
     private var pending: (generation: Int, task: Task<[MarkdownToken], Never>)?
 
-    init() {}
+    typealias Hook = @MainActor () async -> Void
+
+    private let beforeLex: Hook
+    private let beforeDelivery: Hook
+
+    init(beforeLex: @escaping Hook = {}, beforeDelivery: @escaping Hook = {}) {
+        self.beforeLex = beforeLex
+        self.beforeDelivery = beforeDelivery
+    }
 
     func setUp(textView: TextView, codeLanguage: CodeLanguage) {
         invalidateCache()
@@ -75,11 +83,17 @@ final class MarkdownHighlightProvider: HighlightProviding {
         if let pending, pending.generation == requested {
             task = pending.task
         } else {
-            task = Task { await Self.lex(text) }
+            let beforeLex = beforeLex
+            task = Task {
+                await beforeLex()
+                return await Self.lex(text)
+            }
             pending = (requested, task)
         }
+        let beforeDelivery = beforeDelivery
         Task { [weak self] in
             let tokens = await task.value
+            await beforeDelivery()
             guard let self, self.generation == requested, !task.isCancelled else {
                 completion(.failure(HighlightProvidingError.operationCancelled))
                 return

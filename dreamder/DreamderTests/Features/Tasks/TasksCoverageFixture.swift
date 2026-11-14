@@ -70,21 +70,48 @@ final class TasksCoverageFixture {
     func waitUntilReady(
         _ output: CEActiveTaskTerminalView,
         occurrences: Int = 1,
-        timeout: Duration = .seconds(90)
+        timeout: Duration = .seconds(90),
+        sourceLocation: SourceLocation = #_sourceLocation
     ) async throws {
-        try await eventually(timeout: timeout) {
+        try await eventually(timeout: timeout, sourceLocation: sourceLocation) {
             output.getBufferAsString().components(separatedBy: Self.readyMarker).count - 1 >= occurrences
+        }
+        let found = output.getBufferAsString().components(separatedBy: Self.readyMarker).count - 1
+        if found < occurrences {
+            let missing = "\(occurrences) x \(Self.readyMarker)"
+            recordTerminalState(of: output, missing: missing, sourceLocation: sourceLocation)
         }
     }
 
     func waitForOutput(
         _ output: CEActiveTaskTerminalView,
         containing marker: String,
-        timeout: Duration = .seconds(90)
+        timeout: Duration = .seconds(90),
+        sourceLocation: SourceLocation = #_sourceLocation
     ) async throws {
-        try await eventually(timeout: timeout) {
+        try await eventually(timeout: timeout, sourceLocation: sourceLocation) {
             output.getBufferAsString().contains(marker)
         }
+        if !output.getBufferAsString().contains(marker) {
+            recordTerminalState(of: output, missing: marker, sourceLocation: sourceLocation)
+        }
+    }
+
+    private func recordTerminalState(
+        of output: CEActiveTaskTerminalView,
+        missing marker: String,
+        sourceLocation: SourceLocation
+    ) {
+        let process = output.process
+        let pending = output.processPump.pendingByteCount
+        Issue.record(
+            """
+            '\(marker)' never reached the terminal: running=\(process.running) pid=\(process.shellPid) \
+            descriptor=\(process.childfd) held=\(output.secondaryHold != nil) pending=\(pending) \
+            terminal ends with: \(output.getBufferAsString().suffix(600))
+            """,
+            sourceLocation: sourceLocation
+        )
     }
 
     func waitUntilSignalTaskIsReady(timeout: Duration) async throws {

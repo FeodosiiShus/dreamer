@@ -133,6 +133,79 @@ struct ShellCoverageTests {
         }
     }
 
+    private func fileNumber(of url: URL) throws -> Int {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false))
+        return try #require(attributes[.systemFileNumber] as? Int)
+    }
+
+    @Test
+    func aStaleScriptIsReplacedAndAnUpToDateOneIsLeftUntouched() throws {
+        try withTempDir { directory in
+            let origin = directory.appending(path: "origin.zsh")
+            let destination = directory.appending(path: ".zshrc")
+            try "current\n".write(to: origin, atomically: true, encoding: .utf8)
+            try "stale\n".write(to: destination, atomically: true, encoding: .utf8)
+
+            try ShellIntegration.installScript(origin, at: destination)
+            #expect(try String(contentsOf: destination, encoding: .utf8) == "current\n")
+            let installed = try fileNumber(of: destination)
+
+            try ShellIntegration.installScript(origin, at: destination)
+            #expect(try fileNumber(of: destination) == installed)
+        }
+    }
+
+    @Test
+    func aScriptWithoutASourceIsNotInstalled() throws {
+        try withTempDir { directory in
+            let destination = directory.appending(path: ".zshrc")
+
+            #expect(throws: (any Error).self) {
+                try ShellIntegration.installScript(directory.appending(path: "missing.zsh"), at: destination)
+            }
+            #expect(FileManager.default.fileExists(atPath: destination.path(percentEncoded: false)) == false)
+        }
+    }
+
+    @concurrent
+    private static func installRepeatedly(_ origins: [URL], at destination: URL, rounds: Int) async throws {
+        for round in 0..<rounds {
+            try ShellIntegration.installScript(origins[round % origins.count], at: destination)
+        }
+    }
+
+    @concurrent
+    private static func readRepeatedly(_ destination: URL, rounds: Int) async -> Set<String> {
+        var seen: Set<String> = []
+        for _ in 0..<rounds {
+            seen.insert((try? String(contentsOf: destination, encoding: .utf8)) ?? "<missing>")
+        }
+        return seen
+    }
+
+    @Test
+    func shellsStartingWhileScriptsAreReinstalledAlwaysSeeACompleteScript() async throws {
+        try await withTempDir { directory in
+            let first = directory.appending(path: "first.zsh")
+            let second = directory.appending(path: "second.zsh")
+            let destination = directory.appending(path: ".zshrc")
+            let firstScript = String(repeating: "first line\n", count: 400)
+            let secondScript = String(repeating: "second line\n", count: 400)
+            try firstScript.write(to: first, atomically: true, encoding: .utf8)
+            try secondScript.write(to: second, atomically: true, encoding: .utf8)
+            try ShellIntegration.installScript(first, at: destination)
+
+            async let firstWriter: Void = Self.installRepeatedly([first, second], at: destination, rounds: 150)
+            async let secondWriter: Void = Self.installRepeatedly([second, first], at: destination, rounds: 150)
+            async let reader = Self.readRepeatedly(destination, rounds: 1500)
+
+            try await firstWriter
+            try await secondWriter
+            let seen = await reader
+            #expect(seen.isSubset(of: [firstScript, secondScript]))
+        }
+    }
+
     @Test
     func settingUpZshTwiceReplacesTheCopiedScripts() throws {
         try withTempDir { directory in

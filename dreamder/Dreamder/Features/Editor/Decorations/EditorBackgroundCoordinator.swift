@@ -15,6 +15,7 @@ final class EditorBackgroundCoordinator: TextViewCoordinator {
     }
 
     func controllerDidAppear(controller: TextViewController) {
+        controller.scrollView?.clipsToBounds = true
         if observer == nil {
             observer = NotificationCenter.default.addObserver(
                 forName: UserDefaults.didChangeNotification,

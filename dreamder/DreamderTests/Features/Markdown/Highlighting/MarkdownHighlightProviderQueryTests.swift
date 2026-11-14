@@ -86,23 +86,4 @@ struct MarkdownHighlightProviderQueryTests {
         #expect(invalidated == IndexSet(integersIn: 0..<11))
         #expect(locations(after) == [[0, 5], [6, 5]])
     }
-
-    @Test func editWhileLexingAsynchronouslyCancelsTheStaleQuery() async {
-        let provider = MarkdownHighlightProvider()
-        let text = String(repeating: "# Header\n\n", count: 6_000)
-        let textView = TextView(string: text)
-        provider.setUp(textView: textView, codeLanguage: .markdown)
-
-        async let stale = query(provider, textView, range: NSRange(location: 0, length: 20))
-        await Task.yield()
-        textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "x")
-        _ = await applyEdit(provider, textView, range: NSRange(location: 0, length: 0), delta: 1)
-        let outcome = await stale
-
-        var wasCancelled = false
-        if case .failure(let error) = outcome, let providing = error as? HighlightProvidingError {
-            wasCancelled = providing == .operationCancelled
-        }
-        #expect(wasCancelled)
-    }
 }

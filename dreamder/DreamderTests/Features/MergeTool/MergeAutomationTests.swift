@@ -54,16 +54,11 @@ struct MergeAutomationTests {
 
         func tearDown() async {
             MergeAutomation.registerBanner(path: nil, action: nil)
-            MergeToolConfirmation.automationAnswer = nil
             await MergeAutomation.perform("target:")
-            for _ in 0..<8 {
-                guard let window = MergeToolPresenter.revisionsWindow else { break }
-                window.close()
+            for path in [MergeAutomationTests.configPath, MergeAutomationTests.notesPath, "not-in-conflict.txt"] {
+                MergeToolPresenter.revisionsWindow(for: workspace, path: path)?.close()
             }
-            for _ in 0..<8 {
-                guard let window = MergeToolPresenter.conflictsWindow else { break }
-                window.close()
-            }
+            MergeToolPresenter.conflictsWindow(for: workspace)?.close()
             NSDocumentController.shared.removeDocument(workspace)
         }
     }
@@ -96,7 +91,7 @@ struct MergeAutomationTests {
     ) async throws -> MergeRevisionsViewModel {
         await MergeAutomation.perform("target:\(session.path)")
         await MergeAutomation.perform("mergeFile:\(path)")
-        let model = try #require(MergeToolPresenter.revisionsModel)
+        let model = try #require(MergeToolPresenter.revisionsModel(for: session.workspace, path: path))
         try await eventually { model.isLoading == false }
         return model
     }
@@ -110,9 +105,9 @@ struct MergeAutomationTests {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    func dumpLines(_ session: Session) async throws -> [String] {
+    func dumpLines(_ session: Session, mainMenu: NSMenu? = NSApp.mainMenu) async throws -> [String] {
         let directory = session.root.appending(path: "dump-output")
-        await MergeAutomation.perform("dump:\(directory.path(percentEncoded: false))")
+        await MergeAutomation.perform("dump:\(directory.path(percentEncoded: false))", mainMenu: mainMenu)
         let text = try String(contentsOf: directory.appending(path: "merge.txt"), encoding: .utf8)
         return text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
     }
@@ -126,7 +121,7 @@ struct MergeAutomationTests {
     }
 
     func paneTextView(_ pane: String) -> NSTextView? {
-        guard let content = MergeToolPresenter.revisionsWindow?.contentView else { return nil }
+        guard let content = MergeAutomation.targetRevisionsWindow?.contentView else { return nil }
         content.layoutSubtreeIfNeeded()
         return findTextView(in: content, identifier: "merge-pane-\(pane)")
     }
@@ -161,8 +156,8 @@ struct MergeAutomationTests {
         await MergeAutomation.perform("noSuchCommand:1:2")
         await MergeAutomation.perform("target:/tmp/dreamder-stable")
         #expect(MergeAutomation.targetPath == "/tmp/dreamder-stable")
-        #expect(MergeToolPresenter.conflictsWindow == nil)
-        #expect(MergeToolPresenter.revisionsWindow == nil)
+        #expect(MergeAutomation.targetConflictsWindow == nil)
+        #expect(MergeAutomation.targetRevisionsWindow == nil)
         await MergeAutomation.perform("target:")
     }
 
@@ -176,8 +171,8 @@ struct MergeAutomationTests {
         ] {
             await MergeAutomation.perform(command)
         }
-        #expect(MergeToolPresenter.conflictsModel == nil)
-        #expect(MergeToolPresenter.revisionsModel == nil)
+        #expect(MergeAutomation.targetConflictsModel == nil)
+        #expect(MergeAutomation.targetRevisionsModel == nil)
     }
 
     @Test
@@ -202,8 +197,8 @@ struct MergeAutomationTests {
 
             #expect(model.entries.map(\.path) == [Self.configPath, Self.notesPath])
             #expect(model.workspace === session.workspace)
-            #expect(MergeToolPresenter.conflictsWindow?.title == "Conflicts")
-            #expect(MergeToolPresenter.conflictsModel === model)
+            #expect(MergeToolPresenter.conflictsWindow(for: session.workspace)?.title == "Conflicts")
+            #expect(MergeToolPresenter.conflictsModel(for: session.workspace) === model)
         }
     }
 

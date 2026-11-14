@@ -4,7 +4,6 @@ import Foundation
 @MainActor
 enum MergeToolConfirmation {
     @TaskLocal static var override: Bool?
-    static var automationAnswer: Bool?
 
     static func ask(
         window: NSWindow?,
@@ -15,10 +14,6 @@ enum MergeToolConfirmation {
     ) async -> Bool {
         if let override {
             return override
-        }
-        if let automationAnswer {
-            self.automationAnswer = nil
-            return automationAnswer
         }
 
         let alert = NSAlert()

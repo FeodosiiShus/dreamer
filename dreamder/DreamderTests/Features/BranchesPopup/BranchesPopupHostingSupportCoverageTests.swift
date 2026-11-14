@@ -10,7 +10,7 @@ private final class BranchesPopupKeySinkView: NSView {
     override var acceptsFirstResponder: Bool { true }
 
     override func keyDown(with event: NSEvent) {
-        received += 1
+        received += event.windowNumber == window?.windowNumber ? 1 : 0
     }
 }
 

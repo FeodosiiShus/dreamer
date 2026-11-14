@@ -37,6 +37,14 @@ jobs:
           path: dreamder/.build/xcode-coverage/SourcePackages
           key: spm-v3-${{ inputs.runner }}-${{ hashFiles('dreamder/Dreamder.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: spm-v3-${{ inputs.runner }}-
+      - name: Compilation cache period
+        id: cas
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: dreamder/.build/xcode-coverage/CompilationCache.noindex
+          key: cas-v1-${{ inputs.runner }}-${{ steps.cas.outputs.week }}-${{ github.sha }}
+          restore-keys: cas-v1-${{ inputs.runner }}-${{ steps.cas.outputs.week }}-
       - name: Build for testing
         run: make build-for-testing KEEP_GOING=1
       - name: SwiftLint
@@ -160,7 +168,7 @@ jobs:
           FALLBACK_BASELINE_BRANCH: ${{ github.base_ref }}
           BASELINE_ARTIFACT: coverage-baseline-${{ inputs.runner }}
         run: |
-          python3 Scripts/coverage-report.py .build/coverage.xcresult --baseline .build/coverage-baseline.json --write-baseline
+          python3 Scripts/coverage-report.py .build/shards/shard-*.xcresult --baseline .build/coverage-baseline.json --write-baseline
           set --
           for branch in "$BASELINE_BRANCH" "$FALLBACK_BASELINE_BRANCH"; do
             [ -n "$branch" ] || continue
@@ -174,7 +182,7 @@ jobs:
           if [ "$#" -eq 0 ]; then
             echo "No coverage baseline from a previous successful run for $BASELINE_ARTIFACT; deltas use the committed baseline"
           fi
-          python3 Scripts/coverage-report.py .build/coverage.xcresult --check --summary "$@"
+          python3 Scripts/coverage-report.py .build/shards/shard-*.xcresult --check --summary "$@"
       - name: Upload coverage baseline
         uses: actions/upload-artifact@v7
         with:

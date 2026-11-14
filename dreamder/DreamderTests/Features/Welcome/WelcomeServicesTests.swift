@@ -118,24 +118,16 @@ struct WelcomeServicesTests {
     }
 
     @Test
-    func theLiveDismissClosesEveryWelcomeWindow() {
-        NSApp.windows.filter { $0.identifier?.rawValue == SceneID.welcome.rawValue }.forEach { $0.close() }
-        let windows = (0..<2).map { _ in
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 120, height: 80),
-                styleMask: [.titled, .closable],
-                backing: .buffered,
-                defer: false
-            )
-            window.isReleasedWhenClosed = false
-            window.identifier = NSUserInterfaceItemIdentifier(SceneID.welcome.rawValue)
-            window.orderFront(nil)
-            return window
-        }
+    func dismissClosesEveryWelcomeWindowOfTheGivenWindows() {
+        let windows = (0..<2).map { _ in makeWindow(scene: SceneID.welcome.rawValue) }
+        let bystander = makeWindow(scene: "not-welcome")
+        defer { bystander.close() }
+        let services = makeServices(controller: ScriptedDocumentController(), windows: { windows + [bystander] })
 
-        WelcomeServices.live.dismiss()
+        services.dismiss()
 
         #expect(windows.allSatisfy { !$0.isVisible })
+        #expect(bystander.isVisible)
     }
 
     @Test
@@ -217,22 +209,11 @@ struct WelcomeServicesTests {
     }
 
     @Test
-    func theLiveDismissClosesTheWelcomeWindow() {
-        NSApp.windows.filter { $0.identifier?.rawValue == SceneID.welcome.rawValue }.forEach { $0.close() }
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 120, height: 80),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
-        )
-        window.isReleasedWhenClosed = false
-        window.identifier = NSUserInterfaceItemIdentifier(SceneID.welcome.rawValue)
-        window.orderFront(nil)
-        #expect(window.isVisible)
+    func theApplicationWindowsIncludeAWindowTheTestCreated() {
+        let window = makeWindow(scene: SceneID.welcome.rawValue)
+        defer { window.close() }
 
-        WelcomeServices.live.dismiss()
-
-        #expect(window.isVisible == false)
+        #expect(WelcomeServices.applicationWindows().contains(window))
     }
 
     @Test
@@ -285,16 +266,13 @@ struct WelcomeServicesTests {
         let controller = try #require(NSDocumentController.shared as? DreamderDocumentController)
         let (defaults, suiteName) = try makeIsolatedDefaults()
         defer { removeIsolatedDefaults(defaults, suiteName: suiteName) }
-        let original = controller.recentProjects
         let manager = RecentProjectsManager(defaults: defaults)
-        controller.recentProjects = manager
-        defer { controller.recentProjects = original }
 
         try withTempDir { directory in
             let file = directory.appending(path: "note.txt")
             try Data("x".utf8).write(to: file)
-            controller.recordRecentProject(at: directory)
-            controller.recordRecentProject(at: file)
+            controller.recordRecentProject(at: directory, in: manager)
+            controller.recordRecentProject(at: file, in: manager)
 
             #expect(manager.recentProjects.map(\.displayName) == ["note.txt", directory.lastPathComponent])
             #expect(manager.recentProjects.map(\.isDirectory) == [false, true])
@@ -382,12 +360,26 @@ struct WelcomeServicesTests {
         #expect(log.completions == 0)
     }
 
+    private func makeWindow(scene: String) -> NSWindow {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 120, height: 80),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.identifier = NSUserInterfaceItemIdentifier(scene)
+        window.orderFront(nil)
+        return window
+    }
+
     private func makeServices(
         pasteboard: any PasteboardAccess = InMemoryPasteboard(),
         controller: ScriptedDocumentController,
         panels: any FilePanelPresenting = FakeFilePanels(),
         createsDocument: Bool = false,
-        attempts: AttemptCounter = AttemptCounter()
+        attempts: AttemptCounter = AttemptCounter(),
+        windows: @escaping @MainActor () -> [NSWindow] = { [] }
     ) -> WelcomeServices {
         WelcomeServices.make(
             pasteboard: pasteboard,
@@ -396,7 +388,8 @@ struct WelcomeServicesTests {
             createDocument: {
                 attempts.count += 1
                 return createsDocument
-            }
+            },
+            windows: windows
         )
     }
 }

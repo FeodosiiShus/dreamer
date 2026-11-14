@@ -137,9 +137,7 @@ struct GitToolWindowShelfCoverage {
             try await repo.fixture.commit("diverge")
             let session = try makeSession(directory)
             defer {
-                if let own = MergeToolPresenter.conflictsModel(for: session.workspace), MergeToolPresenter.conflictsModel === own {
-                    MergeToolPresenter.conflictsWindow?.close()
-                }
+                MergeToolPresenter.conflictsWindow(for: session.workspace)?.close()
                 session.close()
             }
             try await eventually { session.manager.currentBranch != nil }

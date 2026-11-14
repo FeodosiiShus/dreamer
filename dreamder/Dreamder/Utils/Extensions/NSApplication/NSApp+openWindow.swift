@@ -15,11 +15,7 @@ extension OpenWindowAction {
 }
 
 extension NSApplication {
-    func closeWindow(_ id: SceneID) {
-        windows.first { $0.identifier?.rawValue == id.rawValue }?.close()
-    }
-
-    func closeWindow(_ ids: SceneID...) {
+    func closeWindow(_ ids: SceneID..., in windows: [NSWindow] = NSApp.windows) {
         ids.forEach { id in
             windows.first { $0.identifier?.rawValue == id.rawValue }?.close()
         }

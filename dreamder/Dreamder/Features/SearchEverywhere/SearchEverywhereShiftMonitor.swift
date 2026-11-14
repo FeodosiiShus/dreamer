@@ -2,6 +2,16 @@ import AppKit
 
 @MainActor
 final class SearchEverywhereShiftMonitor {
+    struct Windows {
+        let keyWindow: NSWindow?
+        let mainWindow: NSWindow?
+        let all: [NSWindow]
+
+        static func application() -> Windows {
+            Windows(keyWindow: NSApp.keyWindow, mainWindow: NSApp.mainWindow, all: NSApp.windows)
+        }
+    }
+
     static let shared = SearchEverywhereShiftMonitor()
 
     private var monitor: Any?
@@ -10,13 +20,16 @@ final class SearchEverywhereShiftMonitor {
     private var releasedAt: TimeInterval?
     private let interval: TimeInterval = 0.5
     private let keymap: Keymap
-    private let open: @MainActor () -> Void
+    private let windows: @MainActor () -> Windows
+    private let open: @MainActor (Windows) -> Void
 
     init(
         keymap: Keymap = .shared,
-        open: @escaping @MainActor () -> Void = SearchEverywhereShiftMonitor.openActiveController
+        windows: @escaping @MainActor () -> Windows = SearchEverywhereShiftMonitor.Windows.application,
+        open: @escaping @MainActor (Windows) -> Void = SearchEverywhereShiftMonitor.openActiveController
     ) {
         self.keymap = keymap
+        self.windows = windows
         self.open = open
     }
 
@@ -54,7 +67,7 @@ final class SearchEverywhereShiftMonitor {
             shiftDown = true
             if let releasedAt, event.timestamp - releasedAt <= interval {
                 reset()
-                open()
+                open(windows())
                 return
             }
             pressedAt = event.timestamp
@@ -73,8 +86,8 @@ final class SearchEverywhereShiftMonitor {
         releasedAt = nil
     }
 
-    static func openActiveController() {
-        openController(keyWindow: NSApp.keyWindow, mainWindow: NSApp.mainWindow, windows: NSApp.windows)
+    static func openActiveController(_ windows: Windows) {
+        openController(keyWindow: windows.keyWindow, mainWindow: windows.mainWindow, windows: windows.all)
     }
 
     static func openController(keyWindow: NSWindow?, mainWindow: NSWindow?, windows: [NSWindow]) {

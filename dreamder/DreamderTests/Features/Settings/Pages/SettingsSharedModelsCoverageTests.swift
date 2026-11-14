@@ -189,12 +189,33 @@ struct SettingsSharedModelsCoverageTests {
     }
 
     @Test
-    func theSharedSearchSettingsModelPersistsIntoTheSettings() async throws {
-        let model = SearchSettingsModel.shared
+    func aSearchSettingsModelStartsFromAndPersistsIntoTheSettingsItWasBuiltFrom() async throws {
+        try await withTempDir { dir in
+            let store = Dreamder.Settings(baseURL: dir)
+            store.preferences.search.ignoreGlobPatterns = [GlobPattern(value: "*.log")]
+            let model = SearchSettingsModel(settings: store)
+            #expect(model.ignoreGlobPatterns.map(\.value) == ["*.log"])
 
-        model.ignoreGlobPatterns = model.ignoreGlobPatterns
+            model.addPattern()
 
-        try await eventually { Settings[\.search].ignoreGlobPatterns == model.ignoreGlobPatterns }
+            try await eventually { store.preferences.search.ignoreGlobPatterns == model.ignoreGlobPatterns }
+            #expect(store.preferences.search.ignoreGlobPatterns.count == 2)
+        }
+    }
+
+    @Test
+    func theSettingsSubscriptReadsAndWritesTheSuiteItIsGiven() throws {
+        try withTempDir { dir in
+            let store = Dreamder.Settings(baseURL: dir)
+            let other = Dreamder.Settings(baseURL: dir.appending(path: "other", directoryHint: .isDirectory))
+            let pattern = GlobPattern(value: "*.generated")
+
+            Dreamder.Settings[\.search, store].ignoreGlobPatterns = [pattern]
+
+            #expect(Dreamder.Settings[\.search, store].ignoreGlobPatterns == [pattern])
+            #expect(store.preferences.search.ignoreGlobPatterns == [pattern])
+            #expect(other.preferences.search.ignoreGlobPatterns.contains(pattern) == false)
+        }
     }
 
     @Test

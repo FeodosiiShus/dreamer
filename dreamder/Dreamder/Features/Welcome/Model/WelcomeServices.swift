@@ -25,7 +25,8 @@ struct WelcomeServices {
         pasteboard: any PasteboardAccess,
         documents: @escaping @MainActor () -> any AppDocumentControlling,
         panels: any FilePanelPresenting,
-        createDocument: @escaping @MainActor () async -> Bool
+        createDocument: @escaping @MainActor () async -> Bool,
+        windows: @escaping @MainActor () -> [NSWindow] = WelcomeServices.applicationWindows
     ) -> WelcomeServices {
         WelcomeServices(
             open: { url, completion in
@@ -42,13 +43,15 @@ struct WelcomeServices {
             confirmRemoval: { presentRemovalConfirmation(for: $0) },
             copyToClipboard: { pasteboard.replaceContents(withText: $0) },
             reveal: { NSWorkspace.shared.activateFileViewerSelecting($0) },
-            dismiss: { closeWelcomeWindows() },
+            dismiss: { closeWelcomeWindows(in: windows()) },
             makeCloneViewModel: { GitCloneViewModel() }
         )
     }
 
-    static func closeWelcomeWindows() {
-        NSApp.windows
+    static let applicationWindows: @MainActor () -> [NSWindow] = { NSApp.windows }
+
+    static func closeWelcomeWindows(in windows: [NSWindow]) {
+        windows
             .filter { $0.identifier?.rawValue == SceneID.welcome.rawValue }
             .forEach { $0.close() }
     }

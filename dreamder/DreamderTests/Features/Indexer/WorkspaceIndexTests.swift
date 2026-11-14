@@ -231,20 +231,23 @@ struct WorkspaceIndexTests {
 
     @Test
     func searchSettingsGlobsReachTheScope() async throws {
-        try await withTempDir { dir in
-            let workspace = try makeWorkspace(dir, files: ["x.zzglob": "glob words", "keep.txt": "keep words"])
-            defer { workspace.tearDownFileScope() }
-            let scope = try #require(workspace.fileScope)
-            let pattern = GlobPattern(value: "*.zzglob")
-            defer { Settings.shared.preferences.search.ignoreGlobPatterns.removeAll { $0.value == pattern.value } }
+        try await withTempDir { settingsDir in
+            try await withTempDir { dir in
+                let store = Dreamder.Settings(baseURL: settingsDir)
+                try touch(dir, "x.zzglob", "glob words")
+                try touch(dir, "keep.txt", "keep words")
+                let workspace = WorkspaceDocument()
+                try SettingsScope.$current.withValue(store) { try workspace.read(from: dir, ofType: "") }
+                defer { workspace.tearDownFileScope() }
+                let scope = try #require(workspace.fileScope)
 
-            try await eventually {
-                if !Settings.shared.preferences.search.ignoreGlobPatterns.contains(where: { $0.value == pattern.value }) {
-                    Settings.shared.preferences.search.ignoreGlobPatterns.append(pattern)
+                store.preferences.search.ignoreGlobPatterns.append(GlobPattern(value: "*.zzglob"))
+
+                try await eventually {
+                    guard scope.isExcluded(dir.appending(path: "x.zzglob")) else { return false }
+                    let files = await scope.enumerateFiles(limit: nil)
+                    return relativePaths(files, in: dir) == ["keep.txt"]
                 }
-                guard scope.isExcluded(dir.appending(path: "x.zzglob")) else { return false }
-                let files = await scope.enumerateFiles(limit: nil)
-                return relativePaths(files, in: dir) == ["keep.txt"]
             }
         }
     }

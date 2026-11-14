@@ -78,20 +78,4 @@ struct MergeToolConfirmationCoverageTests {
         #expect(declined == false)
         #expect(DreamderHeadless.suppressedModals.contains(title) == false)
     }
-
-    @Test
-    func automationAnswerIsConsumedByTheNextQuestionOnly() async throws {
-        try #require(DreamderHeadless.interceptedSelectors.contains("NSAlert.runModal"))
-        let title = "Merge confirmation automation \(UUID().uuidString)"
-        MergeToolConfirmation.automationAnswer = true
-
-        let automated = await ask(window: nil, title: title)
-        #expect(automated)
-        #expect(MergeToolConfirmation.automationAnswer == nil)
-        #expect(DreamderHeadless.suppressedModals.contains(title) == false)
-
-        let manual = await ask(window: nil, title: title)
-        #expect(manual == false)
-        #expect(DreamderHeadless.suppressedModals.contains(title))
-    }
 }

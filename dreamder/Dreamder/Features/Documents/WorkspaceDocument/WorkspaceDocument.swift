@@ -171,7 +171,7 @@ final class WorkspaceDocument: NSDocument, NSToolbarDelegate {
         )
         self.sourceControlManager = sourceControlManager
         sourceControlManager.fileManager = workspaceFileManager
-        configureFileScope(rootURL: url)
+        configureFileScope(rootURL: url, settings: SettingsScope.current ?? .shared)
         self.searchState = .init(self)
         self.openQuicklyViewModel = .init(fileURL: url, scope: fileScope)
         self.commandsPaletteState = .init()

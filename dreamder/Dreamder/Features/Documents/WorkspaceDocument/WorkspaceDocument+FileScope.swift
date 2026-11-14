@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 extension WorkspaceDocument {
-    func configureFileScope(rootURL: URL, settings: Settings = .shared) {
+    func configureFileScope(rootURL: URL, settings: Settings) {
         let scope = WorkspaceFileScope(rootURL: rootURL)
         scope.setIgnoreGlobs(settings.preferences.search.ignoreGlobPatterns.map(\.value))
         scope.startWatching()
@@ -14,7 +14,7 @@ extension WorkspaceDocument {
         workspaceFileManager?.addObserver(observer)
 
         let globsTask = Task { [weak self] in
-            for await globs in Observations({ Settings.shared.preferences.search.ignoreGlobPatterns.map(\.value) }) {
+            for await globs in Observations({ settings.preferences.search.ignoreGlobPatterns.map(\.value) }) {
                 self?.fileScope?.setIgnoreGlobs(globs)
             }
         }

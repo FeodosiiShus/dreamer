@@ -7,6 +7,7 @@
 
 import XCTest
 
+@MainActor
 enum App {
     static func launchWithDreamderWorkspace() -> XCUIApplication {
         let application = XCUIApplication()

@@ -13,6 +13,7 @@ struct LanguageServerInstallView: View {
     var dismiss
     let operation: PackageManagerInstallOperation
     let registryManager: RegistryManager
+    var settingsWindow: @MainActor () -> NSWindow? = { NSApp.settingsWindow }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,7 +21,7 @@ struct LanguageServerInstallView: View {
             Divider()
             footer
         }
-        .constrainHeightToWindow()
+        .constrainHeightToWindow(of: settingsWindow)
         .alert(
             "Confirm Step",
             isPresented: .constant(operation.waitingForConfirmation != nil),

@@ -46,8 +46,7 @@ extension MergeAutomationTests {
 
             await MergeAutomation.perform("mergeSelected")
 
-            #expect(MergeToolPresenter.lastRevisionsPath == Self.notesPath)
-            let model = try #require(MergeToolPresenter.revisionsModel)
+            let model = try #require(MergeToolPresenter.revisionsModel(for: session.workspace, path: Self.notesPath))
             #expect(model.path == Self.notesPath)
             try await eventually { model.isLoading == false }
             #expect(model.merge?.conflictCount == 1)
@@ -74,8 +73,8 @@ extension MergeAutomationTests {
             await MergeAutomation.perform("target:\(session.path)")
             await MergeAutomation.perform("mergeFile:")
 
-            #expect(MergeToolPresenter.revisionsModel == nil)
-            #expect(MergeToolPresenter.revisionsWindow == nil)
+            #expect(MergeAutomation.targetRevisionsModel == nil)
+            #expect(MergeAutomation.targetRevisionsWindow == nil)
         }
     }
 

@@ -27,6 +27,11 @@ private actor LoaderGate {
 private struct LoaderFailure: Error {}
 
 @MainActor
+private final class OpenedDocument {
+    var result: Result<CodeFileDocument, any Error>?
+}
+
+@MainActor
 @Suite(.serialized, .uiGate)
 struct CodeFileDocumentBackgroundLoadTests {
     private static let plainText = "public.plain-text"
@@ -241,13 +246,21 @@ struct CodeFileDocumentBackgroundLoadTests {
             try "a {\n  b\n  c\n}\n".write(to: url, atomically: true, encoding: .utf8)
             let gate = LoaderGate()
             let loader = gatedLoader(gate)
-            let opening = Task {
-                try await CodeFileDocument.open(contentsOf: url, ofType: Self.plainText, loader: loader)
+            let opened = OpenedDocument()
+            let opening = Task { @MainActor in
+                do {
+                    opened.result = .success(
+                        try await CodeFileDocument.open(contentsOf: url, ofType: Self.plainText, loader: loader)
+                    )
+                } catch {
+                    opened.result = .failure(error)
+                }
             }
             try await eventually(timeout: .seconds(20)) { await gate.hasEntered }
 
             await gate.open()
-            let document = try await opening.value
+            await opening.value
+            let document = try #require(opened.result).get()
             defer { document.close() }
 
             #expect(document.content?.string == "a {\n  b\n  c\n}\n")

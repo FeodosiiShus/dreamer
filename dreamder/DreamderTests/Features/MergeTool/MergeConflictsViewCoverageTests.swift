@@ -293,12 +293,10 @@ struct MergeConflictsViewCoverageTests {
             let row = MergeConflictRowView(model: model, entry: entry, sideColumnWidth: 190)
 
             row.openMerge()
-            let window = MergeToolPresenter.revisionsWindow
-            let openedPath = MergeToolPresenter.lastRevisionsPath
+            let window = MergeToolPresenter.revisionsWindow(for: model.workspace, path: notesPath)
             window?.close()
 
             #expect(model.primaryEntry?.path == notesPath)
-            #expect(openedPath == notesPath)
             #expect(window != nil)
         }
     }

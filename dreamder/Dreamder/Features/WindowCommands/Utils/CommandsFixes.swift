@@ -8,7 +8,7 @@
 import SwiftUI
 
 extension EventModifiers {
-    static var hidden: EventModifiers = .numericPad
+    nonisolated static let hidden: EventModifiers = .numericPad
 }
 
 extension NSMenuItem {

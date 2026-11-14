@@ -7,11 +7,12 @@
 
 import XCTest
 
+@MainActor
 final class ProjectNavigatorUITests: XCTestCase {
 
     var application: XCUIApplication!
 
-    override func setUp() {
+    override func setUp() async throws {
         application = App.launchWithDreamderWorkspace()
     }
 

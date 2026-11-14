@@ -5,41 +5,39 @@ import Foundation
 enum MergeToolPresenter {
     private static var conflictsWindows: [String: MergeConflictsWindowController] = [:]
     private static var revisionsWindows: [String: MergeRevisionsWindowController] = [:]
-    private(set) static var lastConflictsKey: String?
-    private(set) static var lastRevisionsKey: String?
-    private(set) static var lastRevisionsPath: String?
 
-    static var conflictsModel: MergeConflictsViewModel? {
-        if let key = lastConflictsKey, let controller = conflictsWindows[key] {
-            return controller.model
-        }
-        return conflictsWindows.values.first?.model
+    private static func conflictsController(for workspace: WorkspaceDocument) -> MergeConflictsWindowController? {
+        guard let manager = workspace.sourceControlManager else { return nil }
+        return conflictsWindows[MergeConflictsCenter.workspaceKey(manager.workspaceURL)]
     }
 
-    static var revisionsModel: MergeRevisionsViewModel? {
-        if let key = lastRevisionsKey, let controller = revisionsWindows[key] {
-            return controller.model
+    private static func revisionsController(
+        for workspace: WorkspaceDocument,
+        path: String?
+    ) -> MergeRevisionsWindowController? {
+        guard let manager = workspace.sourceControlManager else { return nil }
+        let prefix = MergeConflictsCenter.workspaceKey(manager.workspaceURL) + "|"
+        if let path {
+            return revisionsWindows[prefix + path]
         }
-        return revisionsWindows.values.first?.model
-    }
-
-    static var conflictsWindow: NSWindow? {
-        if let key = lastConflictsKey, let controller = conflictsWindows[key] {
-            return controller.window
-        }
-        return conflictsWindows.values.first?.window
-    }
-
-    static var revisionsWindow: NSWindow? {
-        if let key = lastRevisionsKey, let controller = revisionsWindows[key] {
-            return controller.window
-        }
-        return revisionsWindows.values.first?.window
+        let matches = revisionsWindows.filter { $0.key.hasPrefix(prefix) }
+        return matches.count == 1 ? matches.first?.value : nil
     }
 
     static func conflictsModel(for workspace: WorkspaceDocument) -> MergeConflictsViewModel? {
-        guard let manager = workspace.sourceControlManager else { return nil }
-        return conflictsWindows[MergeConflictsCenter.workspaceKey(manager.workspaceURL)]?.model
+        conflictsController(for: workspace)?.model
+    }
+
+    static func conflictsWindow(for workspace: WorkspaceDocument) -> NSWindow? {
+        conflictsController(for: workspace)?.window
+    }
+
+    static func revisionsModel(for workspace: WorkspaceDocument, path: String?) -> MergeRevisionsViewModel? {
+        revisionsController(for: workspace, path: path)?.model
+    }
+
+    static func revisionsWindow(for workspace: WorkspaceDocument, path: String?) -> NSWindow? {
+        revisionsController(for: workspace, path: path)?.window
     }
 
     static func activeWorkspace(
@@ -63,7 +61,6 @@ enum MergeToolPresenter {
         let key = MergeConflictsCenter.workspaceKey(manager.workspaceURL)
 
         if let controller = conflictsWindows[key], let window = controller.window {
-            lastConflictsKey = key
             controller.reload()
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
@@ -76,7 +73,6 @@ enum MergeToolPresenter {
             conflictsWindows[key] = nil
         }
         conflictsWindows[key] = controller
-        lastConflictsKey = key
         controller.place(relativeTo: workspace.windowControllers.first?.window)
         controller.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -87,8 +83,6 @@ enum MergeToolPresenter {
         let key = MergeConflictsCenter.workspaceKey(manager.workspaceURL) + "|" + path
 
         if let controller = revisionsWindows[key], let window = controller.window {
-            lastRevisionsKey = key
-            lastRevisionsPath = path
             if !controller.model.isResultEdited {
                 let model = controller.model
                 Task { await model.load() }
@@ -108,8 +102,6 @@ enum MergeToolPresenter {
             }
         }
         revisionsWindows[key] = controller
-        lastRevisionsKey = key
-        lastRevisionsPath = path
         controller.place(relativeTo: workspace.windowControllers.first?.window)
         controller.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)

@@ -9,6 +9,10 @@ struct SearchEverywhereShiftMonitorTests {
         var opens = 0
     }
 
+    private final class WindowRecorder {
+        var windows: [NSWindow]?
+    }
+
     private struct Session {
         let monitor: SearchEverywhereShiftMonitor
         let keymap: Keymap
@@ -25,7 +29,7 @@ struct SearchEverywhereShiftMonitorTests {
         let (defaults, suiteName) = try makeIsolatedDefaults()
         let keymap = Keymap(defaults: defaults)
         let counter = Counter()
-        let monitor = SearchEverywhereShiftMonitor(keymap: keymap) { counter.opens += 1 }
+        let monitor = SearchEverywhereShiftMonitor(keymap: keymap, open: { _ in counter.opens += 1 })
         return Session(monitor: monitor, keymap: keymap, counter: counter, defaults: defaults, suiteName: suiteName)
     }
 
@@ -206,18 +210,43 @@ struct SearchEverywhereShiftMonitorTests {
     }
 
     @Test
-    func theDefaultOpenActionLooksAtTheApplicationsWindowsAndLeavesNoPanelBehindOnceClosed() throws {
+    func theDefaultWindowSourceReadsTheApplicationsWindows() throws {
         let session = try makeSession()
         defer { session.tearDown() }
-        let monitor = SearchEverywhereShiftMonitor(keymap: session.keymap)
+        let recorder = WindowRecorder()
+        let monitor = SearchEverywhereShiftMonitor(keymap: session.keymap, open: { recorder.windows = $0.all })
 
         monitor.handle(try flags(.shift, at: 2))
         monitor.handle(try flags([], at: 2.05))
         monitor.handle(try flags(.shift, at: 2.15))
-        closeSearchPanels(in: NSApp.windows)
 
-        #expect(NSApp.windows.allSatisfy { window in
-            (window.childWindows ?? []).allSatisfy { !($0 is SearchEverywherePanel) }
-        })
+        #expect(recorder.windows == NSApp.windows)
+    }
+
+    @Test
+    func theDefaultOpenActionOpensSearchEverywhereInTheControllerOfTheGivenWindows() throws {
+        let session = try makeSession()
+        defer { session.tearDown() }
+        try withTempDir { dir in
+            let workspace = try SearchEverywhereFixtures.makeWorkspace(dir)
+            let (controller, window) = makeController(workspace: workspace)
+            let workspaceKey = "dreamder.recentFiles.\(workspace.fileURL?.standardizedFileURL.path ?? "untitled")"
+            defer {
+                closeSearchPanels(in: [window])
+                window.close()
+                workspace.tearDownFileScope()
+                UserDefaults.standard.removeObject(forKey: workspaceKey)
+            }
+            let windows = SearchEverywhereShiftMonitor.Windows(keyWindow: window, mainWindow: nil, all: [window])
+            let monitor = SearchEverywhereShiftMonitor(keymap: session.keymap, windows: { windows })
+
+            monitor.handle(try flags(.shift, at: 2))
+            monitor.handle(try flags([], at: 2.05))
+            monitor.handle(try flags(.shift, at: 2.15))
+
+            let panel = try #require((window.childWindows ?? []).compactMap { $0 as? SearchEverywherePanel }.first)
+            #expect(panel.isVisible)
+            #expect(controller.window === window)
+        }
     }
 }

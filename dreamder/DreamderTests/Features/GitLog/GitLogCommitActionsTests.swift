@@ -615,7 +615,7 @@ struct GitLogCommitActionsTests {
             let live = GitLogCommitSeams.live(pasteboard: SystemPasteboard(board: InMemoryPasteboard()))
 
             live.presentConflicts(rig.workspace)
-            let window = MergeToolPresenter.conflictsWindow
+            let window = MergeToolPresenter.conflictsWindow(for: rig.workspace)
             let model = MergeToolPresenter.conflictsModel(for: rig.workspace)
             window?.close()
 

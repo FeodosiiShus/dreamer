@@ -7,8 +7,17 @@ enum MergeAutomation {
 
     private(set) static var queue: Task<Void, Never> = Task {}
     private(set) static var targetPath = ""
-    private static var bannerPath: String?
-    private static var bannerAction: (() -> Void)?
+    private(set) static var revisionsPath: String?
+    private(set) static var pendingAnswer: Bool?
+    private(set) static var bannerPath: String?
+    private(set) static var bannerAction: (() -> Void)?
+
+    private struct Invocation {
+        let command: String
+        let name: String
+        let first: String
+        let second: String
+    }
 
     static func registerBanner(path: String?, action: (() -> Void)?) {
         bannerPath = path
@@ -36,230 +45,128 @@ enum MergeAutomation {
         }
     }
 
-    static func perform(_ command: String) async {
+    static func perform(_ command: String, mainMenu: NSMenu? = NSApp.mainMenu) async {
         let parts = command.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
             .map(String.init)
         guard let name = parts.first, !name.isEmpty else { return }
-        let first = parts.count > 1 ? parts[1] : ""
-        let second = parts.count > 2 ? parts[2] : ""
+        let invocation = Invocation(
+            command: command,
+            name: name,
+            first: parts.count > 1 ? parts[1] : "",
+            second: parts.count > 2 ? parts[2] : ""
+        )
+        if name == "confirm" {
+            pendingAnswer = invocation.first == "yes"
+            return
+        }
+        guard let answer = pendingAnswer else {
+            await execute(invocation, mainMenu: mainMenu)
+            return
+        }
+        pendingAnswer = nil
+        await MergeToolConfirmation.$override.withValue(answer) {
+            await execute(invocation, mainMenu: mainMenu)
+        }
+    }
 
-        switch name {
+    private static func execute(_ invocation: Invocation, mainMenu: NSMenu?) async {
+        let first = invocation.first
+
+        switch invocation.name {
         case "target":
             targetPath = first
+            revisionsPath = nil
         case "conflicts":
-            if let workspace = workspace(for: first.isEmpty ? targetPath : first) {
+            if let workspace = commandWorkspace(path: first) {
+                adoptTarget(workspace)
                 MergeToolPresenter.showConflicts(workspace: workspace)
                 await MergeToolPresenter.conflictsModel(for: workspace)?.reload()
             }
         case "select":
-            MergeToolPresenter.conflictsModel?.select(first)
+            targetConflictsModel?.select(first)
         case "selectAdd":
-            MergeToolPresenter.conflictsModel?.select(first, toggling: true)
+            targetConflictsModel?.select(first, toggling: true)
         case "selectRange":
-            MergeToolPresenter.conflictsModel?.select(first, extending: true)
+            targetConflictsModel?.select(first, extending: true)
         case "acceptYours":
-            await MergeToolPresenter.conflictsModel?.accept(.yours)
+            await targetConflictsModel?.accept(.yours)
         case "acceptTheirs":
-            await MergeToolPresenter.conflictsModel?.accept(.theirs)
+            await targetConflictsModel?.accept(.theirs)
         case "mergeSelected":
-            MergeToolPresenter.conflictsModel?.openMergeWindow()
+            targetConflictsModel?.openMergeWindow()
         case "mergeFile":
-            if let workspace = workspace(for: targetPath), !first.isEmpty {
+            if let workspace = openingWorkspace(), !first.isEmpty {
+                adoptTarget(workspace)
+                revisionsPath = first
                 MergeToolPresenter.showMergeRevisions(workspace: workspace, path: first)
             }
         case "resolve":
-            guard let model = MergeToolPresenter.revisionsModel,
-                  let blockID = Int(first) else { return }
-            let resolution: ThreeWayMerge.Resolution
-            switch second {
-            case "left": resolution = .left
-            case "right": resolution = .right
-            case "ignored": resolution = .ignored
-            default: return
-            }
-            await model.requestResolve(blockID, with: resolution, window: nil)
+            await resolveBlock(blockID: first, side: invocation.second)
         case "clickChip":
-            let all = command.split(separator: ":").map(String.init)
+            let all = invocation.command.split(separator: ":").map(String.init)
             guard all.count == 4, let blockID = Int(all[2]) else { return }
             clickChip(pane: all[1], blockID: blockID, action: all[3])
         case "applyNonConflicting":
-            guard let model = MergeToolPresenter.revisionsModel else { return }
-            switch first {
-            case "left": await model.requestApplyNonConflicting(.left, window: nil)
-            case "all": await model.requestApplyNonConflicting(.all, window: nil)
-            case "right": await model.requestApplyNonConflicting(.right, window: nil)
-            default: return
-            }
+            await applyNonConflicting(mode: first)
         case "editResult":
-            let text = String(command.dropFirst(name.count + 1))
-            MergeToolPresenter.revisionsModel?.userEditedResult(unescaped(text))
+            let text = String(invocation.command.dropFirst(invocation.name.count + 1))
+            targetRevisionsModel?.userEditedResult(unescaped(text))
         case "acceptLeft":
-            closeRevisionsIfNeeded(await MergeToolPresenter.revisionsModel?.requestAcceptSide(.yours, window: nil))
+            closeRevisionsIfNeeded(await targetRevisionsModel?.requestAcceptSide(.yours, window: nil))
         case "acceptRight":
-            closeRevisionsIfNeeded(await MergeToolPresenter.revisionsModel?.requestAcceptSide(.theirs, window: nil))
+            closeRevisionsIfNeeded(await targetRevisionsModel?.requestAcceptSide(.theirs, window: nil))
         case "apply":
-            closeRevisionsIfNeeded(await MergeToolPresenter.revisionsModel?.requestApply(window: nil))
+            closeRevisionsIfNeeded(await targetRevisionsModel?.requestApply(window: nil))
         case "cancel":
-            closeRevisionsIfNeeded(await MergeToolPresenter.revisionsModel?.requestCancel(window: nil))
+            closeRevisionsIfNeeded(await targetRevisionsModel?.requestCancel(window: nil))
         case "closeRevisions":
-            MergeToolPresenter.revisionsWindow?.performClose(nil)
+            targetRevisionsWindow?.performClose(nil)
         case "closeConflicts":
-            MergeToolPresenter.conflictsWindow?.performClose(nil)
+            targetConflictsWindow?.performClose(nil)
         case "bannerResolve":
             bannerAction?()
         case "focusWorkspace":
-            if let workspace = workspace(for: first.isEmpty ? targetPath : first),
+            if let workspace = commandWorkspace(path: first),
                let window = workspace.windowControllers.first?.window {
                 window.makeKeyAndOrderFront(nil)
             }
         case "menuResolve":
-            if let item = gitMenuItem("Resolve Conflicts"), let action = item.action {
+            if let item = gitMenuItem("Resolve Conflicts", in: mainMenu), let action = item.action {
                 NSApp.sendAction(action, to: item.target, from: item)
             }
-        case "confirm":
-            MergeToolConfirmation.automationAnswer = first == "yes"
         case "dump":
-            writeDump(to: first)
+            writeDump(to: first, mainMenu: mainMenu)
         default:
             return
         }
     }
 
-    private static func closeRevisionsIfNeeded(_ finished: Bool?) {
-        guard finished == true else { return }
-        MergeToolPresenter.revisionsWindow?.performClose(nil)
+    private static func adoptTarget(_ workspace: WorkspaceDocument) {
+        guard targetPath.isEmpty, let manager = workspace.sourceControlManager else { return }
+        targetPath = manager.workspaceURL.path(percentEncoded: false)
     }
 
-    private static func gitMenuItem(_ titlePrefix: String) -> NSMenuItem? {
-        guard let gitMenu = NSApp.mainMenu?.items.first(where: { $0.title == "Git" })?.submenu else {
+    private static func closeRevisionsIfNeeded(_ finished: Bool?) {
+        guard finished == true else { return }
+        targetRevisionsWindow?.performClose(nil)
+    }
+
+    static func gitMenuItem(_ titlePrefix: String, in menu: NSMenu?) -> NSMenuItem? {
+        guard let gitMenu = menu?.items.first(where: { $0.title == "Git" })?.submenu else {
             return nil
         }
         return gitMenu.items.first { $0.title.hasPrefix(titlePrefix) }
     }
 
-    private static func clickChip(pane: String, blockID: Int, action: String) {
-        guard let window = MergeToolPresenter.revisionsWindow,
-              let contentView = window.contentView,
-              let textView = findTextView(in: contentView, identifier: "merge-pane-\(pane)"),
-              let storage = textView.textStorage,
-              let target = NSURL(string: "merge-block://\(action)/\(blockID)") else { return }
-        var location: Int?
-        storage.enumerateAttribute(.link, in: NSRange(location: 0, length: storage.length)) { value, range, stop in
-            if let url = value as? NSURL, url == target {
-                location = range.location
-                stop.pointee = true
-            }
-        }
-        guard let location else { return }
-        textView.clicked(onLink: target, at: location)
-    }
-
-    private static func findTextView(in view: NSView, identifier: String) -> NSTextView? {
-        if let textView = view as? NSTextView, textView.identifier?.rawValue == identifier {
-            return textView
-        }
-        for subview in view.subviews {
-            if let found = findTextView(in: subview, identifier: identifier) {
-                return found
-            }
-        }
-        return nil
-    }
-
     static func workspace(for path: String, keyWindow: NSWindow? = NSApp.keyWindow) -> WorkspaceDocument? {
-        let documents = NSDocumentController.shared.documents.compactMap { $0 as? WorkspaceDocument }
-        if !path.isEmpty {
-            let target = URL(fileURLWithPath: path).standardizedFileURL.path
-            if let match = documents.first(where: {
-                $0.sourceControlManager?.workspaceURL.standardizedFileURL.path == target
-            }) {
-                return match
-            }
+        if !path.isEmpty, let match = exactWorkspace(at: path) {
+            return match
         }
         if let controller = keyWindow?.windowController as? DreamderWindowController,
            let workspace = controller.workspace {
             return workspace
         }
-        return documents.first
-    }
-
-    private static func writeDump(to directoryPath: String) {
-        let directory = URL(fileURLWithPath: directoryPath.isEmpty ? NSTemporaryDirectory() : directoryPath)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let output = directory.appendingPathComponent("merge.txt")
-
-        var lines: [String] = []
-        let target = workspace(for: targetPath)
-        if let manager = target?.sourceControlManager {
-            lines.append("workspace=\(manager.workspaceURL.path(percentEncoded: false))")
-        }
-        lines.append("target=\(targetPath)")
-        lines.append("documents=\(NSDocumentController.shared.documents.compactMap { ($0 as? WorkspaceDocument)?.sourceControlManager?.workspaceURL.path(percentEncoded: false) }.joined(separator: ","))")
-        lines.append("windowTitles=\(NSApp.windows.map(\.title).joined(separator: "|"))")
-        lines.append("menu.resolvePresent=\(flag(gitMenuItem("Resolve Conflicts") != nil))")
-        lines.append("menu.resolveEnabled=\(flag(gitMenuItem("Resolve Conflicts")?.isEnabled == true))")
-        lines.append("menu.resolveTitle=\(gitMenuItem("Resolve Conflicts")?.title ?? "")")
-        lines.append("banner.path=\(bannerPath ?? "")")
-        lines.append("banner.action=\(flag(bannerAction != nil))")
-
-        let conflictsModel = target.flatMap { MergeToolPresenter.conflictsModel(for: $0) }
-            ?? MergeToolPresenter.conflictsModel
-        lines.append("conflicts.open=\(flag(conflictsModel != nil))")
-        if let model = conflictsModel {
-            lines.append("conflicts.summary=\(escaped(model.summary))")
-            lines.append("conflicts.error=\(escaped(model.errorMessage ?? ""))")
-            lines.append("conflicts.busy=\(flag(model.isBusy))")
-            lines.append("conflicts.primary=\(model.primaryPath ?? "")")
-            lines.append("conflicts.selected=\(model.selectedPaths.sorted().joined(separator: ","))")
-            lines.append("conflicts.count=\(model.entries.count)")
-            for entry in model.entries {
-                lines.append("conflicts.entry=\(entry.path)|\(model.detail(for: entry, choice: .yours))"
-                             + "|\(model.detail(for: entry, choice: .theirs))")
-            }
-            lines.append("conflicts.yoursHeader=\(model.yoursHeader)")
-            lines.append("conflicts.theirsHeader=\(model.theirsHeader)")
-        }
-
-        let revisionsModel = MergeToolPresenter.revisionsModel
-        lines.append("revisions.open=\(flag(revisionsModel != nil))")
-        if let model = revisionsModel {
-            lines.append("revisions.path=\(model.path)")
-            lines.append("revisions.title=\(escaped(model.title))")
-            lines.append("revisions.summary=\(escaped(model.summary))")
-            lines.append("revisions.error=\(escaped(model.errorMessage ?? ""))")
-            lines.append("revisions.valid=\(flag(model.isConflictValid))")
-            lines.append("revisions.edited=\(flag(model.isResultEdited))")
-            lines.append("revisions.loading=\(flag(model.isLoading))")
-            lines.append("revisions.leftTitle=\(escaped(model.leftTitle))")
-            lines.append("revisions.rightTitle=\(escaped(model.rightTitle))")
-            if let merge = model.merge {
-                lines.append("revisions.conflicts=\(merge.conflictCount)")
-                lines.append("revisions.changes=\(merge.changeCount)")
-                for block in merge.blocks {
-                    lines.append("revisions.block=\(block.id)|\(block.kind)|\(block.resolution)"
-                                 + "|\(block.baseRange.lowerBound)-\(block.baseRange.upperBound)")
-                }
-            }
-            lines.append("revisions.nonConflictingLeft=\(flag(model.hasNonConflictingChanges(.left)))")
-            lines.append("revisions.nonConflictingAll=\(flag(model.hasNonConflictingChanges(.all)))")
-            lines.append("revisions.nonConflictingRight=\(flag(model.hasNonConflictingChanges(.right)))")
-            lines.append("revisions.result=\(escaped(model.resultText))")
-            lines.append("revisions.left=\(escaped(model.leftPane.text))")
-            lines.append("revisions.right=\(escaped(model.rightPane.text))")
-        }
-
-        try? lines.joined(separator: "\n").appending("\n").write(to: output, atomically: true, encoding: .utf8)
-    }
-
-    private static func flag(_ value: Bool) -> String {
-        value ? "1" : "0"
-    }
-
-    private static func escaped(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
+        return NSDocumentController.shared.documents.lazy.compactMap { $0 as? WorkspaceDocument }.first
     }
 
     private static func unescaped(_ value: String) -> String {

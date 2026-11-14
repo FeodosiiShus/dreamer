@@ -260,9 +260,7 @@ struct ShelfViewCoverage {
         try await withTempDir { directory in
             let session = try await makeSession(directory, livePresenter: true)
             defer {
-                if let own = MergeToolPresenter.conflictsModel(for: session.workspace), MergeToolPresenter.conflictsModel === own {
-                    MergeToolPresenter.conflictsWindow?.close()
-                }
+                MergeToolPresenter.conflictsWindow(for: session.workspace)?.close()
                 session.close()
             }
             try session.repo.fixture.write("a.txt", "shelved\n")

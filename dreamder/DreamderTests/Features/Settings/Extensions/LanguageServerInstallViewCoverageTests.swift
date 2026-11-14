@@ -16,9 +16,11 @@ final class CovExtGitInstallHost {
             defer: false
         )
         standIn.isReleasedWhenClosed = false
-        standIn.identifier = NSUserInterfaceItemIdentifier(SceneID.settings.rawValue)
         self.standIn = standIn
-        hosted = HostedViewFixture.host(size: NSSize(width: 700, height: 700)) { view }
+        var configured = view
+        configured.settingsWindow = { standIn }
+        let injected = configured
+        hosted = HostedViewFixture.host(size: NSSize(width: 700, height: 700)) { injected }
     }
 
     func settle() async throws {

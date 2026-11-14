@@ -9,6 +9,7 @@ import XCTest
 
 /// Tests for window closing commands.
 /// - Note: feel free to add on in the future and change this test name.
+@MainActor
 final class WindowCloseCommandTests: XCTestCase {
     // swiftier api (expectation(that: , on:, willEqual:) doesn't work :(
     let notExistsPredicate = NSPredicate(format: "exists == false")

@@ -40,10 +40,7 @@ struct WindowExtensionsCoverageTests {
             bystander.close()
         }
 
-        for existing in NSApp.windows where existing !== window && existing.identifier?.rawValue == SceneID.about.rawValue {
-            existing.identifier = nil
-        }
-        NSApp.closeWindow(.about)
+        NSApp.closeWindow(.about, in: [bystander, window])
 
         #expect(counter.closeCount == 1)
         #expect(bystanderCounter.closeCount == 0)
@@ -55,7 +52,7 @@ struct WindowExtensionsCoverageTests {
         let window = makeWindow(counter: counter)
         defer { window.close() }
 
-        NSApp.closeWindow(.about)
+        NSApp.closeWindow(.about, in: [window])
 
         #expect(counter.closeCount == 0)
     }
@@ -71,16 +68,21 @@ struct WindowExtensionsCoverageTests {
             settingsWindow.close()
         }
 
-        for existing in NSApp.windows where existing !== extensionsWindow && existing !== settingsWindow {
-            let raw = existing.identifier?.rawValue
-            if raw == SceneID.about.rawValue || raw == SceneID.settings.rawValue {
-                existing.identifier = nil
-            }
-        }
-        NSApp.closeWindow(.about, .settings)
+        NSApp.closeWindow(.about, .settings, in: [extensionsWindow, settingsWindow])
 
         #expect(extensionsCounter.closeCount == 1)
         #expect(settingsCounter.closeCount == 1)
+    }
+
+    @Test
+    func closeWindowWithoutIdentifiersLeavesTheApplicationsWindowsOpen() {
+        let counter = CloseCounter()
+        let window = makeWindow(identifier: .about, counter: counter)
+        defer { window.close() }
+
+        NSApp.closeWindow()
+
+        #expect(counter.closeCount == 0)
     }
 
     @Test

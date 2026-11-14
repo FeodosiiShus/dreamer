@@ -33,29 +33,27 @@ struct DreamderDocumentControllerCoverageTests {
         let controller: DreamderDocumentController
         let recorder = LastDocumentActionRecorder()
         let settings: Dreamder.Settings
-        private let originalSettings: Dreamder.Settings
-        private let originalOpenDocuments: @MainActor () -> [NSDocument]
-        private let originalShowWelcomeWindow: @MainActor () -> Void
-        private let originalQuitApplication: @MainActor () -> Void
+        let service = LSPServiceFixture().makeService()
+        let remainingDocuments: [NSDocument]
 
         init(controller: DreamderDocumentController, directory: URL, remainingDocuments: [NSDocument]) {
             self.controller = controller
+            self.remainingDocuments = remainingDocuments
             settings = Dreamder.Settings(baseURL: directory)
-            originalSettings = controller.settings
-            originalOpenDocuments = controller.openDocuments
-            originalShowWelcomeWindow = controller.showWelcomeWindow
-            originalQuitApplication = controller.quitApplication
-            controller.settings = settings
-            controller.openDocuments = { remainingDocuments }
-            controller.showWelcomeWindow = { [recorder] in recorder.showWelcome() }
-            controller.quitApplication = { [recorder] in recorder.quit() }
         }
 
-        func restore() {
-            controller.settings = originalSettings
-            controller.openDocuments = originalOpenDocuments
-            controller.showWelcomeWindow = originalShowWelcomeWindow
-            controller.quitApplication = originalQuitApplication
+        func remove(_ document: NSDocument) {
+            let remaining = remainingDocuments
+            controller.finishRemoval(
+                of: document,
+                context: DocumentRemovalContext(
+                    lspService: service,
+                    openDocuments: { remaining },
+                    settings: settings,
+                    showWelcomeWindow: { [recorder] in recorder.showWelcome() },
+                    quitApplication: { [recorder] in recorder.quit() }
+                )
+            )
         }
     }
 
@@ -74,17 +72,14 @@ struct DreamderDocumentControllerCoverageTests {
             let (defaults, suiteName) = try makeIsolatedDefaults()
             defer { removeIsolatedDefaults(defaults, suiteName: suiteName) }
             let controller = try sharedController()
-            let original = controller.recentProjects
             let manager = RecentProjectsManager(defaults: defaults)
-            controller.recentProjects = manager
-            defer { controller.recentProjects = original }
             let folder = directory.appending(path: "Project", directoryHint: .isDirectory)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let file = directory.appending(path: "Loose.txt")
             try "text\n".write(to: file, atomically: true, encoding: .utf8)
 
-            controller.recordRecentProject(at: folder)
-            controller.recordRecentProject(at: file)
+            controller.recordRecentProject(at: folder, in: manager)
+            controller.recordRecentProject(at: file, in: manager)
 
             #expect(manager.recentProjects.map(\.isDirectory) == [false, true])
             #expect(manager.recentProjects.map(\.displayName) == ["Loose.txt", "Project"])
@@ -92,19 +87,18 @@ struct DreamderDocumentControllerCoverageTests {
     }
 
     @Test
-    func notingARecentProjectFollowsTheHeadlessSwitch() throws {
+    func notingARecentProjectFollowsTheRecordingSwitch() throws {
         try withTempDir { directory in
             let (defaults, suiteName) = try makeIsolatedDefaults()
             defer { removeIsolatedDefaults(defaults, suiteName: suiteName) }
             let controller = try sharedController()
-            let original = controller.recentProjects
             let manager = RecentProjectsManager(defaults: defaults)
-            controller.recentProjects = manager
-            defer { controller.recentProjects = original }
 
-            controller.noteRecentProject(at: directory)
+            controller.noteRecentProject(at: directory, recording: false, in: manager)
+            #expect(manager.recentProjects.isEmpty)
 
-            #expect(manager.recentProjects.count == (controller.recordsRecentDocuments ? 1 : 0))
+            controller.noteRecentProject(at: directory, recording: true, in: manager)
+            #expect(manager.recentProjects.count == 1)
         }
     }
 
@@ -176,10 +170,8 @@ struct DreamderDocumentControllerCoverageTests {
             defer { workspace.close() }
             let controller = try sharedController()
             controller.addDocument(workspace)
-            controller.filePanels = FakeFilePanels(files: [file])
-            defer { controller.filePanels = SystemFilePanels() }
 
-            controller.openDocument(nil)
+            controller.openDocument(panels: FakeFilePanels(files: [file]))
 
             #expect(openFileNames(in: workspace) == ["Chosen.txt"])
         }
@@ -190,10 +182,9 @@ struct DreamderDocumentControllerCoverageTests {
         try withTempDir { directory in
             let controller = try sharedController()
             let scope = LastDocumentScope(controller: controller, directory: directory, remainingDocuments: [])
-            defer { scope.restore() }
             scope.settings.preferences.general.reopenWindowAfterClose = .showWelcomeWindow
 
-            controller.removeDocument(NSDocument())
+            scope.remove(NSDocument())
 
             #expect(scope.recorder.welcomeWindows == 1)
             #expect(scope.recorder.quits == 0)
@@ -219,10 +210,9 @@ struct DreamderDocumentControllerCoverageTests {
         try withTempDir { directory in
             let controller = try sharedController()
             let scope = LastDocumentScope(controller: controller, directory: directory, remainingDocuments: [])
-            defer { scope.restore() }
             scope.settings.preferences.general.reopenWindowAfterClose = .quit
 
-            controller.removeDocument(NSDocument())
+            scope.remove(NSDocument())
 
             #expect(scope.recorder.quits == 1)
             #expect(scope.recorder.welcomeWindows == 0)
@@ -234,9 +224,8 @@ struct DreamderDocumentControllerCoverageTests {
         try withTempDir { directory in
             let controller = try sharedController()
             let scope = LastDocumentScope(controller: controller, directory: directory, remainingDocuments: [])
-            defer { scope.restore() }
 
-            controller.removeDocument(NSDocument())
+            scope.remove(NSDocument())
 
             #expect(scope.recorder.quits == 0)
             #expect(scope.recorder.welcomeWindows == 0)
@@ -252,10 +241,9 @@ struct DreamderDocumentControllerCoverageTests {
                 directory: directory,
                 remainingDocuments: [NSDocument()]
             )
-            defer { scope.restore() }
             scope.settings.preferences.general.reopenWindowAfterClose = .quit
 
-            controller.removeDocument(NSDocument())
+            scope.remove(NSDocument())
 
             #expect(scope.recorder.quits == 0)
             #expect(scope.recorder.welcomeWindows == 0)
@@ -263,18 +251,12 @@ struct DreamderDocumentControllerCoverageTests {
     }
 
     @Test
-    func removingAWorkspaceDocumentStopsItsLanguageServersAndForgetsTheDocument() throws {
+    func removingAWorkspaceDocumentForgetsTheDocument() throws {
         try withTempDir { directory in
             let workspace = try WorkspaceDocument(for: directory, withContentsOf: directory, ofType: "")
             defer { workspace.close() }
             let controller = try sharedController()
             controller.addDocument(workspace)
-            let scope = LastDocumentScope(
-                controller: controller,
-                directory: directory.appending(path: "settings", directoryHint: .isDirectory),
-                remainingDocuments: [NSDocument()]
-            )
-            defer { scope.restore() }
 
             controller.removeDocument(workspace)
 

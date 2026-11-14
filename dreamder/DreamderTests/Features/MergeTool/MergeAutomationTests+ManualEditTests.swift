@@ -14,7 +14,7 @@ extension MergeAutomationTests {
             await MergeAutomation.perform("confirm:no")
             await MergeAutomation.perform("resolve:\(blockID):left")
 
-            #expect(MergeToolConfirmation.automationAnswer == nil)
+            #expect(MergeAutomation.pendingAnswer == nil)
             #expect(model.resultText == "draft")
             #expect(model.isResultEdited)
             #expect(model.merge?.conflictCount == 1)
@@ -37,7 +37,7 @@ extension MergeAutomationTests {
             await MergeAutomation.perform("confirm:no")
             await MergeAutomation.perform("applyNonConflicting:all")
 
-            #expect(MergeToolConfirmation.automationAnswer == nil)
+            #expect(MergeAutomation.pendingAnswer == nil)
             #expect(model.resultText == "draft")
             #expect(model.isResultEdited)
 

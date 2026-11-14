@@ -31,25 +31,25 @@ extension MergeAutomationTests {
 
     @Test
     func showingWindowsForAWorkspaceWithoutSourceControlDoesNothing() {
-        let conflictsKey = MergeToolPresenter.lastConflictsKey
-        let revisionsKey = MergeToolPresenter.lastRevisionsKey
+        let workspace = WorkspaceDocument()
 
-        MergeToolPresenter.showConflicts(workspace: WorkspaceDocument())
-        MergeToolPresenter.showMergeRevisions(workspace: WorkspaceDocument(), path: "a.txt")
+        MergeToolPresenter.showConflicts(workspace: workspace)
+        MergeToolPresenter.showMergeRevisions(workspace: workspace, path: "a.txt")
 
-        #expect(MergeToolPresenter.lastConflictsKey == conflictsKey)
-        #expect(MergeToolPresenter.lastRevisionsKey == revisionsKey)
-        #expect(MergeToolPresenter.conflictsModel(for: WorkspaceDocument()) == nil)
+        #expect(MergeToolPresenter.conflictsModel(for: workspace) == nil)
+        #expect(MergeToolPresenter.conflictsWindow(for: workspace) == nil)
+        #expect(MergeToolPresenter.revisionsModel(for: workspace, path: "a.txt") == nil)
+        #expect(MergeToolPresenter.revisionsWindow(for: workspace, path: nil) == nil)
     }
 
     @Test
     func showingMergeRevisionsWithoutAPathDoesNothing() {
         let workspace = presenterWorkspace(URL(filePath: "/Users/dreamder-test/presenter"))
-        let revisionsKey = MergeToolPresenter.lastRevisionsKey
 
         MergeToolPresenter.showMergeRevisions(workspace: workspace, path: "")
 
-        #expect(MergeToolPresenter.lastRevisionsKey == revisionsKey)
+        #expect(MergeToolPresenter.revisionsModel(for: workspace, path: nil) == nil)
+        #expect(MergeToolPresenter.revisionsModel(for: workspace, path: "") == nil)
     }
 
     @Test
@@ -59,15 +59,14 @@ extension MergeAutomationTests {
             let workspace = presenterWorkspace(dir)
 
             MergeToolPresenter.showConflicts(workspace: workspace)
-            let window = try #require(MergeToolPresenter.conflictsWindow)
+            let window = try #require(MergeToolPresenter.conflictsWindow(for: workspace))
             let model = try #require(MergeToolPresenter.conflictsModel(for: workspace))
             defer { window.close() }
 
             MergeToolPresenter.showConflicts(workspace: workspace)
 
-            #expect(MergeToolPresenter.conflictsWindow === window)
+            #expect(MergeToolPresenter.conflictsWindow(for: workspace) === window)
             #expect(MergeToolPresenter.conflictsModel(for: workspace) === model)
-            #expect(MergeToolPresenter.lastConflictsKey == MergeConflictsCenter.workspaceKey(dir))
             try await eventually { model.entries.count == 2 }
         }
     }
@@ -79,16 +78,18 @@ extension MergeAutomationTests {
             let workspace = presenterWorkspace(dir)
 
             MergeToolPresenter.showMergeRevisions(workspace: workspace, path: Self.presenterConfigPath)
-            let window = try #require(MergeToolPresenter.revisionsWindow)
-            let model = try #require(MergeToolPresenter.revisionsModel)
+            let window = try #require(
+                MergeToolPresenter.revisionsWindow(for: workspace, path: Self.presenterConfigPath)
+            )
+            let model = try #require(MergeToolPresenter.revisionsModel(for: workspace, path: Self.presenterConfigPath))
             defer { window.close() }
             try await eventually { model.isLoading == false && model.merge != nil }
             let firstRevision = model.contentRevision
 
             MergeToolPresenter.showMergeRevisions(workspace: workspace, path: Self.presenterConfigPath)
 
-            #expect(MergeToolPresenter.revisionsWindow === window)
-            #expect(MergeToolPresenter.lastRevisionsPath == Self.presenterConfigPath)
+            #expect(MergeToolPresenter.revisionsWindow(for: workspace, path: Self.presenterConfigPath) === window)
+            #expect(MergeToolPresenter.revisionsWindow(for: workspace, path: nil) === window)
             try await eventually { model.contentRevision > firstRevision }
             let reloadedRevision = model.contentRevision
 
@@ -109,7 +110,9 @@ extension MergeAutomationTests {
             let workspace = presenterWorkspace(dir)
 
             MergeToolPresenter.showMergeRevisions(workspace: workspace, path: Self.presenterConfigPath)
-            let window = try #require(MergeToolPresenter.revisionsWindow)
+            let window = try #require(
+                MergeToolPresenter.revisionsWindow(for: workspace, path: Self.presenterConfigPath)
+            )
             #expect(MergeConflictsCenter.shared.state(for: dir) == nil)
 
             window.close()
@@ -172,16 +175,14 @@ extension MergeAutomationTests {
         try await withTempDir { dir in
             _ = try await GitMergeFixture.mergeConflict(in: dir)
             let workspace = presenterWorkspace(dir)
-            let conflictsKey = MergeToolPresenter.lastConflictsKey
 
             MergeToolPresenter.showConflictsForActiveWorkspace(resolve: { nil })
-            #expect(MergeToolPresenter.lastConflictsKey == conflictsKey)
+            #expect(MergeToolPresenter.conflictsModel(for: workspace) == nil)
 
             MergeToolPresenter.showConflictsForActiveWorkspace(resolve: { workspace })
-            let window = try #require(MergeToolPresenter.conflictsWindow)
+            let window = try #require(MergeToolPresenter.conflictsWindow(for: workspace))
             defer { window.close() }
             #expect(MergeToolPresenter.conflictsModel(for: workspace) != nil)
-            #expect(MergeToolPresenter.lastConflictsKey == MergeConflictsCenter.workspaceKey(dir))
         }
     }
 
@@ -202,10 +203,7 @@ extension MergeAutomationTests {
             let manager = try #require(workspace.sourceControlManager)
             NSDocumentController.shared.addDocument(workspace)
             defer {
-                for _ in 0..<8 {
-                    guard let window = MergeToolPresenter.conflictsWindow else { break }
-                    window.close()
-                }
+                MergeToolPresenter.conflictsWindow(for: workspace)?.close()
                 NSDocumentController.shared.removeDocument(workspace)
             }
             let center = MergeConflictsCenter()

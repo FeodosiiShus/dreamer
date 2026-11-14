@@ -152,7 +152,7 @@ final class CodeFileDocument: NSDocument {
     // MARK: - NSDocument
 
     nonisolated override static var autosavesInPlace: Bool {
-        AutosavePreference.isEnabled.withLock { $0 }
+        AutosavePreference.shared.isEnabled
     }
 
     nonisolated override var autosavingFileType: String? {

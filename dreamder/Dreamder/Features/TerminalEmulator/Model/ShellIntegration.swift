@@ -160,22 +160,16 @@ nonisolated enum ShellIntegration {
         environment.append("\(Variables.userZDotDir)=\(userZDotDir)")
 
         // Move all shell files to new temp dir
-        try copyFile(profileScriptURL, toDir: tempDir.appending(path: ".zprofile"))
-        try copyFile(envScriptURL, toDir: tempDir.appending(path: ".zshenv"))
-        try copyFile(loginScriptURL, toDir: tempDir.appending(path: ".zlogin"))
-        try copyFile(rcScriptURL, toDir: tempDir.appending(path: ".zshrc"))
+        try installScript(profileScriptURL, at: tempDir.appending(path: ".zprofile"))
+        try installScript(envScriptURL, at: tempDir.appending(path: ".zshenv"))
+        try installScript(loginScriptURL, at: tempDir.appending(path: ".zlogin"))
+        try installScript(rcScriptURL, at: tempDir.appending(path: ".zshrc"))
     }
 
-    /// Helper function for safely copying files, removing existing ones if needed.
-    /// - Parameters:
-    ///   - origin: The path of the file to copy from
-    ///   - destination: The destination URL to copy the file to.
-    /// - Throws: Errors from `FileManager` operations.
-    private static func copyFile(_ origin: URL, toDir destination: URL) throws {
-        if FileManager.default.fileExists(atPath: destination.path()) {
-            try FileManager.default.removeItem(at: destination)
-        }
-        try FileManager.default.copyItem(at: origin, to: destination)
+    static func installScript(_ origin: URL, at destination: URL) throws {
+        let script = try Data(contentsOf: origin)
+        if (try? Data(contentsOf: destination)) == script { return }
+        try script.write(to: destination, options: .atomic)
     }
 
     /// Creates a temporary directory for a user/shell combination.

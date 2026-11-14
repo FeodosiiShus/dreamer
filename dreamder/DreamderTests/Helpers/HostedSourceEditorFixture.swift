@@ -3,6 +3,7 @@ import CodeEditLanguages
 import CodeEditSourceEditor
 import CodeEditTextView
 import SwiftUI
+import Testing
 @testable import Dreamder
 
 struct HostedSourceEditorView: View {
@@ -153,5 +154,32 @@ struct HostedSourceEditorFixture {
             coordinators: allCoordinators,
             controllerReference: controllerReference
         )
+    }
+}
+
+@MainActor
+extension HostedSourceEditor {
+    private static let insetTolerance: CGFloat = 0.01
+
+    var hasSettledGeometry: Bool {
+        guard let controller, let textView = controller.textView else { return false }
+        window.layoutIfNeeded()
+        return gutterInsetIsApplied(controller: controller, textView: textView) && firstLineIsTypeset(in: textView)
+    }
+
+    func waitForSettledGeometry() async throws {
+        try await eventually { self.hasSettledGeometry }
+    }
+
+    private func gutterInsetIsApplied(controller: TextViewController, textView: TextView) -> Bool {
+        guard controller.showGutter else { return abs(textView.textInsets.left) < Self.insetTolerance }
+        guard let gutter = views(ofType: GutterView.self).first, gutter.frame.width > 0 else { return false }
+        return abs(textView.textInsets.left - gutter.frame.width) < Self.insetTolerance
+    }
+
+    private func firstLineIsTypeset(in textView: TextView) -> Bool {
+        guard textView.textStorage.length > 0 else { return true }
+        guard let line = textView.layoutManager.textLineForIndex(0) else { return false }
+        return !line.data.lineFragments.isEmpty
     }
 }

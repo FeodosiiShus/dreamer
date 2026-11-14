@@ -4,6 +4,10 @@ import Testing
 @testable import Dreamder
 
 extension MergeAutomationTests {
+    func revisionsWindow(_ session: Session, path: String = MergeAutomationTests.configPath) -> NSWindow? {
+        MergeToolPresenter.revisionsWindow(for: session.workspace, path: path)
+    }
+
     @Test
     func acceptLeftWritesTheLeftSideAndClosesTheWindow() async throws {
         try await withSession { session in
@@ -13,7 +17,7 @@ extension MergeAutomationTests {
 
             #expect(try trimmed(session.fixture.read(Self.configPath)) == Self.mainSide)
             #expect(try await session.fixture.isFullyStaged(Self.configPath))
-            try await eventually { MergeToolPresenter.revisionsWindow == nil }
+            try await eventually(timeout: .seconds(20)) { revisionsWindow(session) == nil }
         }
     }
 
@@ -26,7 +30,7 @@ extension MergeAutomationTests {
 
             #expect(try trimmed(session.fixture.read(Self.configPath)) == Self.featureSide)
             #expect(try await session.fixture.unmergedPaths() == [Self.notesPath])
-            try await eventually { MergeToolPresenter.revisionsWindow == nil }
+            try await eventually(timeout: .seconds(20)) { revisionsWindow(session) == nil }
         }
     }
 
@@ -39,16 +43,16 @@ extension MergeAutomationTests {
             await MergeAutomation.perform("confirm:no")
             await MergeAutomation.perform("acceptLeft")
 
-            #expect(MergeToolConfirmation.automationAnswer == nil)
+            #expect(MergeAutomation.pendingAnswer == nil)
             #expect(session.fixture.hasConflictMarkers(Self.configPath))
-            #expect(MergeToolPresenter.revisionsWindow != nil)
+            #expect(revisionsWindow(session) != nil)
             #expect(model.isResultEdited)
 
             await MergeAutomation.perform("confirm:yes")
             await MergeAutomation.perform("acceptLeft")
 
             #expect(try trimmed(session.fixture.read(Self.configPath)) == Self.mainSide)
-            try await eventually { MergeToolPresenter.revisionsWindow == nil }
+            try await eventually(timeout: .seconds(20)) { revisionsWindow(session) == nil }
         }
     }
 
@@ -64,7 +68,7 @@ extension MergeAutomationTests {
             #expect(try trimmed(session.fixture.read(Self.configPath)) == Self.resolvedLeft)
             #expect(session.fixture.hasConflictMarkers(Self.configPath) == false)
             #expect(try await session.fixture.isFullyStaged(Self.configPath))
-            try await eventually { MergeToolPresenter.revisionsWindow == nil }
+            try await eventually(timeout: .seconds(20)) { revisionsWindow(session) == nil }
         }
     }
 
@@ -76,16 +80,16 @@ extension MergeAutomationTests {
             await MergeAutomation.perform("confirm:no")
             await MergeAutomation.perform("apply")
 
-            #expect(MergeToolConfirmation.automationAnswer == nil)
+            #expect(MergeAutomation.pendingAnswer == nil)
             #expect(session.fixture.hasConflictMarkers(Self.configPath))
-            #expect(MergeToolPresenter.revisionsWindow != nil)
+            #expect(revisionsWindow(session) != nil)
 
             await MergeAutomation.perform("confirm:yes")
             await MergeAutomation.perform("apply")
 
             #expect(try trimmed(session.fixture.read(Self.configPath)) == trimmed(Self.unresolvedResult))
             #expect(try await session.fixture.unmergedPaths() == [Self.notesPath])
-            try await eventually { MergeToolPresenter.revisionsWindow == nil }
+            try await eventually(timeout: .seconds(20)) { revisionsWindow(session) == nil }
         }
     }
 
@@ -99,7 +103,7 @@ extension MergeAutomationTests {
             await MergeAutomation.perform("apply")
 
             #expect(try session.fixture.read(Self.configPath) == "hand\nwritten: text")
-            try await eventually { MergeToolPresenter.revisionsWindow == nil }
+            try await eventually(timeout: .seconds(20)) { revisionsWindow(session) == nil }
         }
     }
 
@@ -111,7 +115,7 @@ extension MergeAutomationTests {
             await MergeAutomation.perform("cancel")
 
             #expect(session.fixture.hasConflictMarkers(Self.configPath))
-            try await eventually { MergeToolPresenter.revisionsWindow == nil }
+            try await eventually(timeout: .seconds(20)) { revisionsWindow(session) == nil }
         }
     }
 
@@ -124,14 +128,14 @@ extension MergeAutomationTests {
             await MergeAutomation.perform("confirm:no")
             await MergeAutomation.perform("cancel")
 
-            #expect(MergeToolPresenter.revisionsWindow != nil)
+            #expect(revisionsWindow(session) != nil)
             #expect(model.isResultEdited)
 
             await MergeAutomation.perform("confirm:yes")
             await MergeAutomation.perform("cancel")
 
             #expect(session.fixture.hasConflictMarkers(Self.configPath))
-            try await eventually { MergeToolPresenter.revisionsWindow == nil }
+            try await eventually(timeout: .seconds(20)) { revisionsWindow(session) == nil }
         }
     }
 
@@ -142,8 +146,8 @@ extension MergeAutomationTests {
 
             await MergeAutomation.perform("closeRevisions")
 
-            try await eventually { MergeToolPresenter.revisionsWindow == nil }
-            #expect(MergeToolPresenter.revisionsModel == nil)
+            try await eventually(timeout: .seconds(20)) { revisionsWindow(session) == nil }
+            #expect(MergeToolPresenter.revisionsModel(for: session.workspace, path: Self.configPath) == nil)
         }
     }
 
@@ -155,14 +159,14 @@ extension MergeAutomationTests {
 
             await MergeAutomation.perform("confirm:no")
             await MergeAutomation.perform("closeRevisions")
-            try await eventually { MergeToolConfirmation.automationAnswer == nil }
 
-            #expect(MergeToolPresenter.revisionsWindow != nil)
+            #expect(MergeAutomation.pendingAnswer == nil)
+            #expect(revisionsWindow(session) != nil)
             #expect(model.isResultEdited)
 
             await MergeAutomation.perform("confirm:yes")
             await MergeAutomation.perform("closeRevisions")
-            try await eventually { MergeToolPresenter.revisionsWindow == nil }
+            try await eventually(timeout: .seconds(20)) { revisionsWindow(session) == nil }
         }
     }
 
@@ -170,12 +174,14 @@ extension MergeAutomationTests {
     func closeConflictsClosesTheConflictsDialog() async throws {
         try await withSession { session in
             _ = try await openConflicts(session)
-            #expect(MergeToolPresenter.conflictsWindow != nil)
+            #expect(MergeToolPresenter.conflictsWindow(for: session.workspace) != nil)
 
             await MergeAutomation.perform("closeConflicts")
 
-            try await eventually { MergeToolPresenter.conflictsWindow == nil }
-            #expect(MergeToolPresenter.conflictsModel == nil)
+            try await eventually(timeout: .seconds(20)) {
+                MergeToolPresenter.conflictsWindow(for: session.workspace) == nil
+            }
+            #expect(MergeToolPresenter.conflictsModel(for: session.workspace) == nil)
         }
     }
 }

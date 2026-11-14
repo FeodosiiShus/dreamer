@@ -22,14 +22,24 @@ struct DreamderDocumentControllerFilePanelTests {
     }
 
     @Test
-    func aCancelledSaveDialogCreatesNothing() async throws {
+    func theDefaultPresenterCancelsEveryDialogInHeadlessMode() async throws {
+        try #require(DreamderHeadless.isEnabled)
         let controller = try sharedController()
-        let panels = FakeFilePanels()
-        controller.filePanels = panels
-        defer { controller.filePanels = SystemFilePanels() }
 
         controller.newDocument(nil)
         let created = await controller.createAndOpenNewDocument()
+        controller.openDocument(nil)
+
+        #expect(!created)
+    }
+
+    @Test
+    func aCancelledSaveDialogCreatesNothing() async throws {
+        let controller = try sharedController()
+        let panels = FakeFilePanels()
+
+        controller.createNewDocument(panels: panels)
+        let created = await controller.createAndOpenNewDocument(panels: panels)
 
         #expect(panels.saveRequests == [SavePanelRequest(), SavePanelRequest()])
         #expect(!created)
@@ -40,11 +50,10 @@ struct DreamderDocumentControllerFilePanelTests {
         try await withTempDir { directory in
             let controller = try sharedController()
             let missing = directory.appending(path: "missing/New.txt")
-            controller.filePanels = FakeFilePanels(saveLocation: missing)
-            defer { controller.filePanels = SystemFilePanels() }
+            let panels = FakeFilePanels(saveLocation: missing)
 
-            controller.newDocument(nil)
-            let created = await controller.createAndOpenNewDocument()
+            controller.createNewDocument(panels: panels)
+            let created = await controller.createAndOpenNewDocument(panels: panels)
 
             #expect(FileManager.default.fileExists(atPath: missing.path(percentEncoded: false)) == false)
             #expect(!created)
@@ -61,12 +70,10 @@ struct DreamderDocumentControllerFilePanelTests {
             let first = directory.appending(path: "First.txt")
             let second = directory.appending(path: "Second.txt")
             let panels = FakeFilePanels(saveLocation: first)
-            controller.filePanels = panels
-            defer { controller.filePanels = SystemFilePanels() }
 
-            controller.newDocument(nil)
+            controller.createNewDocument(panels: panels)
             panels.chosenSaveLocation = second
-            let created = await controller.createAndOpenNewDocument()
+            let created = await controller.createAndOpenNewDocument(panels: panels)
 
             #expect(created)
             #expect(FileManager.default.fileExists(atPath: first.path(percentEncoded: false)))
@@ -79,10 +86,8 @@ struct DreamderDocumentControllerFilePanelTests {
     func theOpenActionAsksForAFileOrWorkspaceAndStopsWhenCancelled() throws {
         let controller = try sharedController()
         let panels = FakeFilePanels()
-        controller.filePanels = panels
-        defer { controller.filePanels = SystemFilePanels() }
 
-        controller.openDocument(nil)
+        controller.openDocument(panels: panels)
 
         let request = try #require(panels.openRequests.first)
         #expect(panels.openRequests.count == 1)

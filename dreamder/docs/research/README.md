@@ -8,6 +8,7 @@ Three research streams and one audit, all read-only except where this file says 
 | `xcode-test-speed.md` | `xcodebuild` test actions and identifiers, parallel-testing switches, Swift Testing parallelism, build-speed settings, coverage tooling, ranked recommendations. |
 | `swift-standards-checklist.md` | 40 production-readiness rules for a Swift 6 macOS editor, each with a detection pattern and an official citation, ordered by risk reduction. |
 | `bugs-*.md` | Six audit reports, one per area of `Dreamder/`: failing sequence, evidence, standard, fix sketch and reproducing test for every finding. |
+| `test-shared-state.md` | Audit of process-wide state that tests mutate while other suites run in the same host: ranked hazards with their production readers, and the three isolations that remove most of the risk. |
 
 ## Why CI was red and slow
 
@@ -16,6 +17,14 @@ Run 42691211270 (commit `827e7804bf`):
 - The macOS 26 job never started: `The job was not acquired by Runner of type hosted even after multiple attempts`. GitHub documents neither the message nor a setting that prevents it; re-running the failed job is the documented answer (`ci-runners.md`, Q2).
 - The macOS 27 job compiled the app twice before the first test ran: `make build` without instrumentation (8 min 5 s), then `make coverage` with instrumentation (7 min 39 s). `make smoke` would have compiled it a third time and `make release` a fourth.
 - The unit tests took 19 min 25 s and failed on `CEActiveTaskCoverageTests/interruptSendsSigintToARunningTask(.bash)`: `Time limit was exceeded: 120.000 seconds`, followed by a host restart. `bugs-process-terminal.md`, section 1, shows it is a test defect: three chained waits of up to 90 s each, a signal loop that ends by itself with exit code 0, and a marker read from terminal text. The test now uses bounded waits, a marker file and `exit 7` for an unhandled signal; `make test FLAVOR=coverage FILTER=CEActiveTaskCoverageTests` passes.
+
+Runs of the new workflows on 2026-11-10 (one instrumented build per platform, products handed to the test, coverage and smoke jobs):
+
+| Run, commit | macOS 26 / Xcode 26.6 | macOS 27 / Xcode 27.2 | What it showed |
+|---|---|---|---|
+| 42706519487, `7886dab2c6d5` | build and Release failed after 5 min | build 17 min, smoke passed, one test shard failed after 1 812 s | `FinderSync.swift` did not compile under Swift 6.3; twelve tests hit the 120 s allowance while queued behind the UI gate |
+| 42721773641, `9f6f32d62ea1` | build and Release failed after 9 and 18 min | build 13 min, smoke passed, two shards ran 5 158 tests in 457 s and 5 073 in 713 s with one failure each | Swift 6.3.3 crashes in IR generation on a `Binding` setter passed as a method reference; a test read terminal text, another had its document autosaved by the process-wide flag |
+| 42725881580, `2b0049799117` | Release passed (18 min 41 s); the build compiled the app and listed the remaining errors | build and smoke passed, shard 1 passed, shard 0 failed on one test | four UI-test files lacked `@MainActor` for the macOS 26.5 SDK, one test sent a `CodeFileDocument` through `Task.value`; a Markdown test depended on a single `Task.yield()` |
 
 ## Where the local test time went
 
@@ -35,6 +44,8 @@ Machine: M1 Pro, 10 cores, Xcode 27.2. The suite has 9 822 test cases (9 704 tes
 | `make build-for-testing FLAVOR=coverage` into an empty `.build/xcode-coverage` (packages cloned from the local SwiftPM cache, app and tests instrumented) | 230 s |
 | `make lint FLAVOR=coverage` right after it | 2 s |
 | `make pack-test-products FLAVOR=coverage` | 1 s, archive of 135 MB |
+| Clean instrumented `build-for-testing` of an export of `2b0049799117` with `COMPILATION_CACHE_ENABLE_CACHING=YES`, empty cache | 229 s, `CompilationCache.noindex` 1.9 GB |
+| The same build again after deleting `Build/` and keeping the cache | 32 s |
 
 - 120 main-thread stall samples of the test host (`.build/logs/stalls`, threshold 3 s): in 54 the main thread was inside `removeDefaultsKeys`/`removeStandardDefaultsKeys`, the cleanup that every `withTempDir` runs. The process was 93 % idle in those samples. The hot frames were `_StringGuts._opaqueCharacterStride`, `_CFStringGetCStringPtrInternal` and grapheme breaking: `String.contains` over keys bridged from `UserDefaults`. The helper now searches through `NSString.range(of:options:)` (`DreamderTests/Utils/withTempDir.swift`).
 - A long-lived host slows down as it runs: the key-match fix alone saved 6 % (802 s to 757 s), a restart in the middle saved 38 %, three fresh hosts took a third of the time. What accumulates in the host is not identified; two of the eleven CI stall samples end in `_CFXNotificationRegistrarRemoveObservers` under a `deinit`. Every test host on the machine also shares one preferences domain with the installed app.
@@ -144,3 +155,29 @@ All 61 findings are fixed. Sixty are fixed in the application, each with regress
 B-10 is bounded, not removed: files up to `FileSizeLimit.synchronousOpen` (1 MiB) still load on the main actor so `openTab` stays synchronous, larger files load asynchronously into a document in loading state.
 
 One more defect surfaced while a flaky test was traced, and is fixed the same way: the git gutter lost a HEAD change that kept the branch name and the changed-file list (a commit, fast-forward or reset on a clean tree), because `GitGutterCoordinator.RepositorySignature` had no commit identity and a `refs/heads` event only refreshed the branch list. The signature now carries `SourceControlManager.currentHeadCommit` and the event also refreshes the current branch (`GitGutterStalenessTests/fastForwardOnTheSameBranchWithCleanTreeReloadsHead`).
+
+## Task output lost when the shell exits before the app has read it (2026-11-14)
+
+Symptom, seen in three sessions as "flaky under load, root cause not found": a task that prints and exits at once (`echo confirmed-$((1+1))`) ends as `Finished` with exit status 0, and its output never reaches the terminal. Tests that read terminal text failed about once in two or three full runs (`CEActiveTaskTests/testRunMethod(.zsh)`, `ActiveTaskTerminalLaunchTests/anUnsupportedLoginShellFallsBackToZshAndTheTaskStillRuns`, `TaskManagerTrustTests/aConfirmedWorkspaceRunsAndIsNotAskedAgain`), always tests whose shell exits right after printing, never tests whose shell keeps running.
+
+Cause, measured with a C program that calls `forkpty`, runs `zsh -lic 'echo marker-$((40+2))'` and reads the primary side of the pseudo-terminal only after a delay (macOS 27.2, Not documented in official sources):
+
+| Parent holds its own descriptor of the secondary side | Read starts | Result |
+|---|---|---|
+| no | 0.05 s after the start | 11 bytes, then end of file |
+| no | 1.5 s after the start | 0 bytes, end of file, exit status 0; the exit event (`EVFILT_PROC`, `NOTE_EXIT`) arrived after 0.64 s without any read |
+| no, shell killed with `SIGKILL` while it sleeps after printing | 1.5 s | 0 bytes |
+| yes | 1.5 s and 6 s | 11 bytes, then end of file; the exit event arrived only after the read, 40 runs of 40 |
+| yes, shell killed with `SIGKILL` or `SIGHUP` | 1.5 s | 11 bytes, exit status is the signal |
+| yes, 20 kB of output | 1.5 s | 20 011 bytes |
+
+When the shell is the only process that has the secondary side open, its exit waits about half a second for the reader and then discards what was not read. SwiftTerm's `LocalProcess` reads through `DispatchIO` on a queue without a quality-of-service class, so under load (three test hosts, a three-core CI runner, or a busy machine) the first read can be later than that. With a prompt reader nothing is lost: 8 000 sessions of the same command through the same `DispatchIO` code lost none.
+
+Fix: `CELocalShellTerminalView.spawn` opens the secondary side in the app (`PtySecondaryHold`, `O_RDWR | O_NOCTTY | O_CLOEXEC`) and releases it when the exit is delivered. The kernel then keeps the exiting shell until the app has read everything and reports the exit afterwards. `PtySecondaryHoldTests` runs the measurement above as tests (late reader, killed shell).
+
+Two more defects found on the way, both fixed:
+
+- SwiftTerm calls `waitpid(pid, &status, WNOHANG)` once when the exit event fires and reports status 0 when the child is not reapable yet. That happened in 12 of 8 000 sessions; such a task shows as finished whatever its real status, and the zombie stays. `LocalProcessPump.resolveTermination` asks again (`ChildReap.nonBlocking`, at most 250 times, 2 ms apart, on the pump queue) and reports the real status.
+- zsh integration scripts live in one directory per user, shared by every session of every Dreamder process, and each start removed and copied all four. A shell starting in between found a script missing, and two starts at once made `setUpIntegration` throw: 86 failures in 240 task starts while a second process reinstalled the scripts in a loop. A terminal tab does not start at all in that case ("Failed to start a terminal session"). `ShellIntegration.installScript` writes atomically and only when the content differs.
+
+Not fixed, needs a SwiftTerm change: `LocalProcess` never closes the primary descriptor, and macOS allows 511 pseudo-terminals for the whole system (`sysctl kern.tty.ptmx_max`). A stress program that kept its descriptors the same way got `forkpty` error `ENXIO` after 510 sessions.

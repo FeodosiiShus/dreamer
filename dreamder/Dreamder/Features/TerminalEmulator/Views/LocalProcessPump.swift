@@ -16,21 +16,32 @@ nonisolated final class LocalProcessPump: LocalProcessDelegate, Sendable {
     }
 
     static let defaultHighWaterBytes = 256 * 1024
+    static let defaultReapAttempts = 250
+    static let defaultReapInterval = DispatchTimeInterval.milliseconds(2)
 
     let queue = DispatchQueue(label: "dev.dreamder.LocalProcessPump", qos: .userInitiated)
 
     private let state = Mutex(State())
     private let drained = DispatchSemaphore(value: 0)
     private let highWaterBytes: Int
+    private let reapAttempts: Int
+    private let reapInterval: DispatchTimeInterval
+    private let reap: @Sendable (pid_t) -> ChildReap
     private let windowSize: @Sendable () -> winsize
     private let wake: @Sendable () -> Bool
 
     init(
         highWaterBytes: Int = LocalProcessPump.defaultHighWaterBytes,
+        reapAttempts: Int = LocalProcessPump.defaultReapAttempts,
+        reapInterval: DispatchTimeInterval = LocalProcessPump.defaultReapInterval,
+        reap: @escaping @Sendable (pid_t) -> ChildReap = ChildReap.nonBlocking,
         windowSize: @escaping @Sendable () -> winsize,
         wake: @escaping @Sendable () -> Bool
     ) {
         self.highWaterBytes = highWaterBytes
+        self.reapAttempts = reapAttempts
+        self.reapInterval = reapInterval
+        self.reap = reap
         self.windowSize = windowSize
         self.wake = wake
     }
@@ -47,7 +58,24 @@ nonisolated final class LocalProcessPump: LocalProcessDelegate, Sendable {
     }
 
     func processTerminated(_ source: LocalProcess, exitCode: Int32?) {
-        append(.terminated(exitCode), byteCount: 0)
+        resolveTermination(of: source.shellPid, reported: exitCode, attemptsLeft: reapAttempts)
+    }
+
+    func resolveTermination(of processIdentifier: pid_t, reported: Int32?, attemptsLeft: Int) {
+        guard processIdentifier > 0 else {
+            append(.terminated(reported), byteCount: 0)
+            return
+        }
+        switch reap(processIdentifier) {
+        case .exited(let waitStatus):
+            append(.terminated(waitStatus), byteCount: 0)
+        case .pending where attemptsLeft > 0:
+            queue.asyncAfter(deadline: .now() + reapInterval) { [weak self] in
+                self?.resolveTermination(of: processIdentifier, reported: reported, attemptsLeft: attemptsLeft - 1)
+            }
+        case .pending, .unavailable:
+            append(.terminated(reported), byteCount: 0)
+        }
     }
 
     func getWindowSize() -> winsize {

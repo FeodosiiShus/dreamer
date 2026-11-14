@@ -73,6 +73,14 @@ jobs:
           path: dreamder/.build/xcode/SourcePackages
           key: spm-v3-release-macos-26-${{ hashFiles('dreamder/Dreamder.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
           restore-keys: spm-v3-release-macos-26-
+      - name: Compilation cache period
+        id: cas
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: dreamder/.build/xcode/CompilationCache.noindex
+          key: cas-v1-release-macos-26-${{ steps.cas.outputs.week }}-${{ github.sha }}
+          restore-keys: cas-v1-release-macos-26-${{ steps.cas.outputs.week }}-
       - name: Build Release app
         run: make release
       - name: Upload app

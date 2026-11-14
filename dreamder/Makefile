@@ -18,18 +18,21 @@ XCODEBUILD_BASE = xcodebuild -project $(PROJECT) -scheme $(SCHEME) -configuratio
 	-derivedDataPath $(DERIVED) -destination 'platform=macOS,arch=arm64' \
 	-skipPackagePluginValidation -skipMacroValidation \
 	CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
-	ENABLE_HARDENED_RUNTIME=NO RUN_DOCUMENTATION_COMPILER=NO COMPILER_INDEX_STORE_ENABLE=NO
+	ENABLE_HARDENED_RUNTIME=NO RUN_DOCUMENTATION_COMPILER=NO COMPILER_INDEX_STORE_ENABLE=NO \
+	COMPILATION_CACHE_ENABLE_CACHING=YES
 XCODEBUILD = $(XCODEBUILD_BASE) $(if $(filter coverage,$(FLAVOR)),$(COVERAGE_BUILD)) \
 	$(if $(filter 1,$(KEEP_GOING)),-IDEBuildingContinueBuildingAfterErrors=YES)
 BUILD_FAILURES := error:|failed with a nonzero exit code|While evaluating request|While emitting
 PACKAGES = sh Scripts/resolve-packages.sh $(DERIVED) $(XCODEBUILD_BASE) && sh Scripts/stub-swiftlint.sh $(DERIVED)/SourcePackages/artifacts
 TEST_ENVIRONMENT := TEST_RUNNER_DREAMDER_HEADLESS=1 TEST_RUNNER_SWIFT_DETERMINISTIC_HASHING=1
-COVERAGE_REPORT = python3 Scripts/coverage-report.py .build/coverage.xcresult --json .build/coverage.json | tee $(LOGS)/coverage.txt | tail -$(if $(TOP),$(TOP),40)
-COVERAGE_GATE = $(if $(filter 1,$(COVERAGE_CHECK)),python3 Scripts/coverage-report.py .build/coverage.xcresult --check $(if $(GITHUB_STEP_SUMMARY),--summary),:)
+COVERAGE_BUNDLES = .build/coverage.xcresult
+COVERAGE_REPORT = python3 Scripts/coverage-report.py $(COVERAGE_BUNDLES) --json .build/coverage.json | tee $(LOGS)/coverage.txt | tail -$(if $(TOP),$(TOP),40)
+COVERAGE_GATE = $(if $(filter 1,$(COVERAGE_CHECK)),python3 Scripts/coverage-report.py $(COVERAGE_BUNDLES) --check $(if $(GITHUB_STEP_SUMMARY),--summary),:)
 
 .PHONY: build build-for-testing release run headless test test-sharded test-shard coverage coverage-sharded coverage-merge coverage-baseline pack-test-products unpack-test-products check lint lint-baseline ui-test screenshot action open toolwindow contextmenu annotate menuitem merge smoke clean
 
 coverage coverage-sharded: FLAVOR = coverage
+coverage-sharded coverage-merge: COVERAGE_BUNDLES = .build/shards/shard-*.xcresult
 
 check:
 	@python3 Scripts/crash-guard.py

@@ -10,6 +10,7 @@ import XCTest
 /// Query helpers for querying for specific UI elements. Organized by category in the app.
 /// Queries should not evaluate if an element exists. This allows for tests to expect an element to exist,
 /// perform an action, and then wait for that element to exist.
+@MainActor
 enum Query {
     static func getWindow(_ application: XCUIApplication, named: String? = nil) -> XCUIElement {
         if let named {

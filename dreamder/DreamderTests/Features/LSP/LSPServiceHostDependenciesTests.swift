@@ -7,7 +7,7 @@ import Testing
 struct LSPServiceHostDependenciesTests {
     @Test func theXCTestHostNeverDiscoversRealServers() async {
         let dependencies = LSPService.Dependencies.forHost(
-            environment: [LSPService.Dependencies.testHostEnvironmentKey: "/tmp/dreamder.xctestconfiguration"]
+            environment: [TestHost.environmentKey: "/tmp/dreamder.xctestconfiguration"]
         )
 
         for language in [LSPLanguage.swift, .typescript, .python, .go] {

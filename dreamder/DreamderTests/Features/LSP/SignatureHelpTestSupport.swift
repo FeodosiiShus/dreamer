@@ -217,13 +217,9 @@ struct SignatureHelpEditorHarness {
             )
         }
         let hosted = fixture.host(coordinators: [coordinator], size: NSSize(width: 900, height: 600))
-        try await eventually { hosted.controller?.textView != nil }
+        try await hosted.waitForSettledGeometry()
         let controller = try #require(hosted.controller)
         let textView = try #require(controller.textView)
-        try await eventually {
-            hosted.window.layoutIfNeeded()
-            return textView.layoutManager.rectForOffset(0) != nil
-        }
         hosted.window.makeFirstResponder(textView)
         return Self(
             fixture: fixture,

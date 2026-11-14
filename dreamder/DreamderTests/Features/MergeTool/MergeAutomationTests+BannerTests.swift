@@ -56,34 +56,49 @@ extension MergeAutomationTests {
     }
 
     @Test
-    func confirmCommandAnswersTheNextQuestionOnce() async {
+    func confirmCommandAnswersTheQuestionsOfTheNextCommandOnly() async throws {
+        try await withSession { session in
+            let model = try await openRevisions(session)
+            model.userEditedResult("draft")
+
+            await MergeAutomation.perform("confirm:no")
+            #expect(MergeAutomation.pendingAnswer == false)
+            await MergeAutomation.perform("applyNonConflicting:all")
+            #expect(MergeAutomation.pendingAnswer == nil)
+            #expect(model.isResultEdited)
+
+            await MergeAutomation.perform("confirm:yes")
+            #expect(MergeAutomation.pendingAnswer == true)
+            await MergeAutomation.perform("applyNonConflicting:all")
+            #expect(MergeAutomation.pendingAnswer == nil)
+            #expect(model.isResultEdited == false)
+
+            await MergeAutomation.perform("confirm:maybe")
+            #expect(MergeAutomation.pendingAnswer == false)
+            await MergeAutomation.perform("noSuchCommand")
+            #expect(MergeAutomation.pendingAnswer == nil)
+        }
+    }
+
+    @Test
+    func aPendingAnswerNeverReachesQuestionsAskedOutsideTheNextCommand() async throws {
+        try #require(DreamderHeadless.interceptedSelectors.contains("NSAlert.runModal"))
+        let title = "Merge confirmation automation \(UUID().uuidString)"
+
         await MergeAutomation.perform("confirm:yes")
-        #expect(MergeToolConfirmation.automationAnswer == true)
-        let first = await MergeToolConfirmation.ask(
+        let answer = await MergeToolConfirmation.ask(
             window: nil,
-            title: "t",
+            title: title,
             message: "m",
             confirmTitle: "c",
             cancelTitle: "x"
         )
-        #expect(first)
-        #expect(MergeToolConfirmation.automationAnswer == nil)
 
-        await MergeAutomation.perform("confirm:no")
-        #expect(MergeToolConfirmation.automationAnswer == false)
-        let second = await MergeToolConfirmation.ask(
-            window: nil,
-            title: "t",
-            message: "m",
-            confirmTitle: "c",
-            cancelTitle: "x"
-        )
-        #expect(second == false)
-        #expect(MergeToolConfirmation.automationAnswer == nil)
-
-        await MergeAutomation.perform("confirm:maybe")
-        #expect(MergeToolConfirmation.automationAnswer == false)
-        MergeToolConfirmation.automationAnswer = nil
+        #expect(answer == false)
+        #expect(DreamderHeadless.suppressedModals.contains(title))
+        #expect(MergeAutomation.pendingAnswer == true)
+        await MergeAutomation.perform("noSuchCommand")
+        #expect(MergeAutomation.pendingAnswer == nil)
     }
 
     @Test
@@ -113,9 +128,9 @@ extension MergeAutomationTests {
         await MergeAutomation.perform("bannerResolve")
         #expect(counter.value == 1)
 
-        let revisionsKey = MergeToolPresenter.lastRevisionsKey
-        banner.showMergeRevisions(WorkspaceDocument(), "app/config.txt")
-        #expect(MergeToolPresenter.lastRevisionsKey == revisionsKey)
+        let workspace = WorkspaceDocument()
+        banner.showMergeRevisions(workspace, "app/config.txt")
+        #expect(MergeToolPresenter.revisionsModel(for: workspace, path: "app/config.txt") == nil)
     }
 
     @Test
@@ -136,14 +151,11 @@ extension MergeAutomationTests {
             let mainMenu = NSMenu()
             mainMenu.addItem(gitItem)
 
-            let savedMenu = NSApp.mainMenu
-            defer { NSApp.mainMenu = savedMenu }
-            NSApp.mainMenu = mainMenu
-            await MergeAutomation.perform("menuResolve")
-            let withMenu = try await dumpLines(session)
-            NSApp.mainMenu = NSMenu()
-            await MergeAutomation.perform("menuResolve")
-            let withoutMenu = try await dumpLines(session)
+            await MergeAutomation.perform("menuResolve", mainMenu: mainMenu)
+            let withMenu = try await dumpLines(session, mainMenu: mainMenu)
+            let emptyMenu = NSMenu()
+            await MergeAutomation.perform("menuResolve", mainMenu: emptyMenu)
+            let withoutMenu = try await dumpLines(session, mainMenu: emptyMenu)
 
             #expect(probe.invocations == 1)
             #expect(value("menu.resolvePresent", in: withMenu) == "1")
@@ -174,10 +186,7 @@ extension MergeAutomationTests {
             let mainMenu = NSMenu()
             mainMenu.addItem(gitItem)
 
-            let savedMenu = NSApp.mainMenu
-            defer { NSApp.mainMenu = savedMenu }
-            NSApp.mainMenu = mainMenu
-            let lines = try await dumpLines(session)
+            let lines = try await dumpLines(session, mainMenu: mainMenu)
 
             #expect(value("menu.resolvePresent", in: lines) == "1")
             #expect(value("menu.resolveEnabled", in: lines) == "0")

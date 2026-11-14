@@ -175,12 +175,15 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
         }
     }
 
+    private(set) var secondaryHold: PtySecondaryHold?
+
     func spawn(_ request: ProcessSpawn) -> Bool {
         SignalMask.withEmptyMask { spawnProcess(process, request) }
         guard process.running else {
             reportLaunchNotice("Failed to start \(request.executable).")
             return false
         }
+        secondaryHold = PtySecondaryHold(primary: process.childfd)
         return true
     }
 
@@ -275,6 +278,7 @@ class CELocalShellTerminalView: CETerminalView, TerminalViewDelegate, LocalProce
 
     /// Implements the LocalProcessDelegate method.
     public func processTerminated(_ source: LocalProcess, exitCode: Int32?) {
+        secondaryHold = nil
         handleProcessExit(exitCode.map(ProcessExit.init(waitStatus:)))
     }
 

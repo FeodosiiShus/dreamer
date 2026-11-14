@@ -11,8 +11,24 @@ import Observation
 import Synchronization
 import os
 
+nonisolated final class AutosaveFlag: Sendable {
+    private let state: Mutex<Bool>
+
+    init(isEnabled: Bool = false) {
+        state = Mutex(isEnabled)
+    }
+
+    var isEnabled: Bool {
+        state.withLock { $0 }
+    }
+
+    func set(_ isEnabled: Bool) {
+        state.withLock { $0 = isEnabled }
+    }
+}
+
 nonisolated enum AutosavePreference {
-    static let isEnabled = Mutex(false)
+    static let shared = AutosaveFlag()
 }
 
 /// The Preferences View Model. Accessible via the singleton "``SettingsModel/shared``".
@@ -36,17 +52,23 @@ final class Settings {
     private static let logger = Logger(subsystem: "dev.dreamder.Dreamder", category: "Settings")
 
     private convenience init() {
-        self.init(baseURL: Self.defaultBaseURL(), drivesAutosavePreference: true)
+        self.init(baseURL: Self.defaultBaseURL(), autosaveFlag: Self.processWideAutosaveFlag())
+    }
+
+    static func processWideAutosaveFlag(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> AutosaveFlag? {
+        TestHost.isActive(in: environment) ? nil : AutosavePreference.shared
     }
 
     init(
         baseURL: URL,
-        drivesAutosavePreference: Bool = false,
+        autosaveFlag: AutosaveFlag? = nil,
         clock: any Clock<Duration> = ContinuousClock(),
         fileManager: FileManager = .default
     ) {
         self.baseURL = baseURL
-        self.drivesAutosavePreference = drivesAutosavePreference
+        self.autosaveFlag = autosaveFlag
         self.clock = clock
         self.filemanager = fileManager
         self.preferences = .init()
@@ -83,8 +105,7 @@ final class Settings {
     }
 
     private func applyAutosavePreference() {
-        guard drivesAutosavePreference else { return }
-        AutosavePreference.isEnabled.withLock { $0 = preferences.general.isAutoSaveOn }
+        autosaveFlag?.set(preferences.general.isAutoSaveOn)
     }
 
     static subscript<T>(_ path: WritableKeyPath<SettingsData, T>, suite: Settings = .shared) -> T {
@@ -105,7 +126,7 @@ final class Settings {
         }
     }
 
-    private let drivesAutosavePreference: Bool
+    private let autosaveFlag: AutosaveFlag?
 
     /// Load and construct ``Settings`` model from
     /// `~/Library/Application Support/Dreamder/settings.json`
@@ -163,7 +184,7 @@ final class Settings {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         fileManager: FileManager = .default
     ) -> URL {
-        if environment["XCTestConfigurationFilePath"] != nil {
+        if TestHost.isActive(in: environment) {
             let shard = environment["DREAMDER_SHARD"].map { "-\($0)" } ?? ""
             return fileManager.temporaryDirectory.appending(path: "DreamderTests\(shard)", directoryHint: .isDirectory)
         }

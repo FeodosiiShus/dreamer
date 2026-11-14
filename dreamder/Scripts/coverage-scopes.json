@@ -98,6 +98,7 @@
     "Features/Settings/Pages/ThemeSettings/Models/Theme.swift",
     "Features/Settings/Pages/ThemeSettings/Models/Theme+FuzzySearchable.swift",
     "Utils/withTimeout.swift",
+    "Utils/TestHost.swift",
     "Utils/Protocols/Loopable.swift",
     "Utils/Formatters/**",
     "Utils/Extensions/Array/**",

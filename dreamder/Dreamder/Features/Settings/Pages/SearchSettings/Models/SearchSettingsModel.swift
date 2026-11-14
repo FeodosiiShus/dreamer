@@ -17,9 +17,13 @@ final class SearchSettingsModel {
         self.ignoreGlobPatterns = patterns
     }
 
-    static let shared = SearchSettingsModel(patterns: Settings[\.search].ignoreGlobPatterns) {
-        Settings[\.search].ignoreGlobPatterns = $0
+    convenience init(settings: Settings) {
+        self.init(patterns: settings.preferences.search.ignoreGlobPatterns) {
+            settings.preferences.search.ignoreGlobPatterns = $0
+        }
     }
+
+    static let shared = SearchSettingsModel(settings: .shared)
 
     private var baseURL: URL {
         Settings.defaultBaseURL()
